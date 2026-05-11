@@ -1,0 +1,2 @@
+source /home/ralsina/code/esposito/build/bootloader/gdbinit/symbols
+source /home/ralsina/code/esposito/build/bootloader/gdbinit/connect

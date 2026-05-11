@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(idf.py create-project *)",
+      "Bash(chmod +x *)",
+      "Bash(./test_structure.sh)",
+      "Bash(git config *)",
+      "Bash(dmesg)",
+      "Bash(make flash *)",
+      "Bash(make clean *)",
+      "Bash(make build *)",
+      "Bash(idf.py build *)",
+      "Bash(idf.py reconfigure *)",
+      "Bash(idf.py *)",
+      "Bash(timeout 10s cat *)",
+      "Bash(timeout 10s python -m serial.tools.miniterm /dev/ttyUSB0 115200 --raw)",
+      "Bash(timeout 5s head -c 500 /dev/ttyUSB0)",
+      "Bash(timeout 15s python -m esptool --chip esp32 --port /dev/ttyUSB0 --after no_reset read_flash 0x1000 0x100)",
+      "Bash(timeout 15s picocom /dev/ttyUSB0 -b 115200 -l)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(timeout 10 python -m esptool --chip esp32 -p /dev/ttyUSB0 -b 115200 run)",
+      "Bash(timeout 8 picocom -b 115200 /dev/ttyUSB0 --imap lfcrlf)",
+      "Bash(git add *)"
+    ]
+  }
+}

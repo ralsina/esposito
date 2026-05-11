@@ -1,0 +1,91 @@
+Command: ninja all
+[1/9] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/bbq20_keyboard.c.obj
+FAILED: [code=1] esp-idf/main/CMakeFiles/__idf_main.dir/bbq20_keyboard.c.obj 
+/home/ralsina/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin/xtensa-esp32-elf-gcc -DESP_PLATFORM -DIDF_VER=\"v6.0.1\" -DSOC_MMU_PAGE_SIZE=CONFIG_MMU_PAGE_SIZE -DSOC_XTAL_FREQ_MHZ=CONFIG_XTAL_FREQ -D_GLIBCXX_HAVE_POSIX_SEMAPHORE -D_GLIBCXX_USE_POSIX_SEMAPHORE -D_GNU_SOURCE -D_POSIX_READER_WRITER_LOCKS -I/home/ralsina/code/esposito/build/config -I/home/ralsina/code/esposito/main -I/opt/esp-idf/components/esp_libc/platform_include -I/opt/esp-idf/components/freertos/config/include -I/opt/esp-idf/components/freertos/config/include/freertos -I/opt/esp-idf/components/freertos/config/xtensa/include -I/opt/esp-idf/components/freertos/FreeRTOS-Kernel/include -I/opt/esp-idf/components/freertos/FreeRTOS-Kernel/portable/xtensa/include -I/opt/esp-idf/components/freertos/FreeRTOS-Kernel/portable/xtensa/include/freertos -I/opt/esp-idf/components/freertos/esp_additions/include -I/opt/esp-idf/components/esp_hw_support/include -I/opt/esp-idf/components/esp_hw_support/include/soc -I/opt/esp-idf/components/esp_hw_support/ldo/include -I/opt/esp-idf/components/esp_hw_support/debug_probe/include -I/opt/esp-idf/components/esp_hw_support/etm/include -I/opt/esp-idf/components/esp_hw_support/mspi_timing_tuning/include -I/opt/esp-idf/components/esp_hw_support/mspi_timing_tuning/tuning_scheme_impl/include -I/opt/esp-idf/components/esp_hw_support/power_supply/include -I/opt/esp-idf/components/esp_hw_support/modem/include -I/opt/esp-idf/components/esp_hw_support/port/esp32/. -I/opt/esp-idf/components/esp_hw_support/port/esp32/include -I/opt/esp-idf/components/heap/include -I/opt/esp-idf/components/heap/tlsf -I/opt/esp-idf/components/log/include -I/opt/esp-idf/components/soc/include -I/opt/esp-idf/components/soc/esp32 -I/opt/esp-idf/components/soc/esp32/include -I/opt/esp-idf/components/soc/esp32/register -I/opt/esp-idf/components/hal/platform_port/include -I/opt/esp-idf/components/hal/esp32/include -I/opt/esp-idf/components/hal/include -I/opt/esp-idf/components/esp_rom/include -I/opt/esp-idf/components/esp_rom/esp32/include -I/opt/esp-idf/components/esp_rom/esp32/include/esp32 -I/opt/esp-idf/components/esp_rom/esp32 -I/opt/esp-idf/components/esp_common/include -I/opt/esp-idf/components/esp_system/include -I/opt/esp-idf/components/esp_system/port/soc -I/opt/esp-idf/components/esp_system/port/include/private -I/opt/esp-idf/components/esp_stdio/include -I/opt/esp-idf/components/xtensa/esp32/include -I/opt/esp-idf/components/xtensa/include -I/opt/esp-idf/components/xtensa/deprecated_include -I/opt/esp-idf/components/esp_hal_gpio/include -I/opt/esp-idf/components/esp_hal_gpio/esp32/include -I/opt/esp-idf/components/esp_hal_usb/include -I/opt/esp-idf/components/esp_hal_pmu/include -I/opt/esp-idf/components/esp_hal_pmu/esp32/include -I/opt/esp-idf/components/esp_hal_ana_conv/include -I/opt/esp-idf/components/esp_hal_ana_conv/esp32/include -I/opt/esp-idf/components/esp_hal_dma/include -I/opt/esp-idf/components/esp_hal_i2s/include -I/opt/esp-idf/components/esp_hal_i2s/esp32/include -I/opt/esp-idf/components/lwip/include -I/opt/esp-idf/components/lwip/include/apps -I/opt/esp-idf/components/lwip/lwip/src/include -I/opt/esp-idf/components/lwip/port/include -I/opt/esp-idf/components/lwip/port/freertos/include -I/opt/esp-idf/components/lwip/port/esp32xx/include -I/opt/esp-idf/components/lwip/port/esp32xx/include/arch -I/opt/esp-idf/components/lwip/port/esp32xx/include/sys -I/opt/esp-idf/components/driver/i2c/include -I/opt/esp-idf/components/driver/touch_sensor/include -I/opt/esp-idf/components/driver/twai/include -I/opt/esp-idf/components/driver/touch_sensor/esp32/include -I/opt/esp-idf/components/esp_hal_i2c/esp32/include -I/opt/esp-idf/components/esp_hal_i2c/include -I/opt/esp-idf/components/esp_hal_twai/include -I/opt/esp-idf/components/esp_hal_twai/esp32/include -I/opt/esp-idf/components/esp_hal_touch_sens/esp32/include -I/opt/esp-idf/components/esp_hal_touch_sens/include -I/opt/esp-idf/components/esp_app_format/include -I/opt/esp-idf/components/pthread/include -I/opt/esp-idf/components/spiffs/include -I/opt/esp-idf/components/esp_partition/include -I/opt/esp-idf/components/esp_blockdev/include -I/opt/esp-idf/components/esp_driver_spi/include -I/opt/esp-idf/components/esp_pm/include -I/opt/esp-idf/components/esp_hal_gpspi/include -I/opt/esp-idf/components/esp_hal_gpspi/esp32/include -I/opt/esp-idf/components/esp_driver_dma/include -I/home/ralsina/code/esposito/managed_components/LovyanGFX/src -I/opt/esp-idf/components/nvs_flash/include -I/opt/esp-idf/components/efuse/include -I/opt/esp-idf/components/efuse/esp32/include -I/opt/esp-idf/components/esp_lcd/include -I/opt/esp-idf/components/esp_lcd/interface -I/opt/esp-idf/components/esp_driver_gpio/include -I/opt/esp-idf/components/esp_driver_i2c/include -I/opt/esp-idf/components/esp_driver_parlio/include -I/opt/esp-idf/components/esp_hal_parlio/include -I/opt/esp-idf/components/esp_hal_lcd/include -I/opt/esp-idf/components/esp_timer/include -I/opt/esp-idf/components/esp_mm/include -I/opt/esp-idf/components/esp_driver_ledc/include -I/opt/esp-idf/components/esp_hal_ledc/include -I/opt/esp-idf/components/esp_hal_ledc/esp32/include -I/opt/esp-idf/components/esp_driver_i2s/include @"/home/ralsina/code/esposito/build/toolchain/cflags" -fdiagnostics-color=always -ffunction-sections -fdata-sections -Wall -Werror -Wno-error=unused-function -Wno-error=unused-variable -Wno-error=unused-but-set-variable -Wno-error=deprecated-declarations -Wextra -Wno-error=extra -Wno-unused-parameter -Wno-sign-compare -Wno-enum-conversion -gdwarf-4 -ggdb -Og -fno-shrink-wrap -fmacro-prefix-map=/home/ralsina/code/esposito=. -fmacro-prefix-map=/opt/esp-idf=/IDF -fstrict-volatile-bitfields -fno-jump-tables -fno-tree-switch-conversion -std=gnu23 -Wno-old-style-declaration -fzero-init-padding-bits=all -fno-malloc-dce -MD -MT esp-idf/main/CMakeFiles/__idf_main.dir/bbq20_keyboard.c.obj -MF esp-idf/main/CMakeFiles/__idf_main.dir/bbq20_keyboard.c.obj.d -o esp-idf/main/CMakeFiles/__idf_main.dir/bbq20_keyboard.c.obj -c /home/ralsina/code/esposito/main/bbq20_keyboard.c
+/home/ralsina/code/esposito/main/bbq20_keyboard.c: In function 'bbq20_keyboard_init':
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:38:5: error: unknown type name 'i2c_config_t'
+   38 |     i2c_config_t conf = {
+      |     ^~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:39:9: error: field name not in record or union initializer
+   39 |         .mode = I2C_MODE_MASTER,
+      |         ^
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:39:9: note: (near initialization for 'conf')
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:40:9: error: field name not in record or union initializer
+   40 |         .sda_io_num = I2C_MASTER_SDA_IO,
+      |         ^
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:40:9: note: (near initialization for 'conf')
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:13:30: error: excess elements in scalar initializer [-Werror]
+   13 | #define I2C_MASTER_SDA_IO    21    // Default SDA pin (adjust if needed)
+      |                              ^~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:40:23: note: in expansion of macro 'I2C_MASTER_SDA_IO'
+   40 |         .sda_io_num = I2C_MASTER_SDA_IO,
+      |                       ^~~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:13:30: note: (near initialization for 'conf')
+   13 | #define I2C_MASTER_SDA_IO    21    // Default SDA pin (adjust if needed)
+      |                              ^~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:40:23: note: in expansion of macro 'I2C_MASTER_SDA_IO'
+   40 |         .sda_io_num = I2C_MASTER_SDA_IO,
+      |                       ^~~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:41:9: error: field name not in record or union initializer
+   41 |         .scl_io_num = I2C_MASTER_SCL_IO,
+      |         ^
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:41:9: note: (near initialization for 'conf')
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:12:30: error: excess elements in scalar initializer [-Werror]
+   12 | #define I2C_MASTER_SCL_IO    22    // Default SCL pin (adjust if needed)
+      |                              ^~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:41:23: note: in expansion of macro 'I2C_MASTER_SCL_IO'
+   41 |         .scl_io_num = I2C_MASTER_SCL_IO,
+      |                       ^~~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:12:30: note: (near initialization for 'conf')
+   12 | #define I2C_MASTER_SCL_IO    22    // Default SCL pin (adjust if needed)
+      |                              ^~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:41:23: note: in expansion of macro 'I2C_MASTER_SCL_IO'
+   41 |         .scl_io_num = I2C_MASTER_SCL_IO,
+      |                       ^~~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:42:9: error: field name not in record or union initializer
+   42 |         .sda_pullup_en = GPIO_PULLUP_ENABLE,
+      |         ^
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:42:9: note: (near initialization for 'conf')
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:42:26: error: excess elements in scalar initializer [-Werror]
+   42 |         .sda_pullup_en = GPIO_PULLUP_ENABLE,
+      |                          ^~~~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:42:26: note: (near initialization for 'conf')
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:43:9: error: field name not in record or union initializer
+   43 |         .scl_pullup_en = GPIO_PULLUP_ENABLE,
+      |         ^
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:43:9: note: (near initialization for 'conf')
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:43:26: error: excess elements in scalar initializer [-Werror]
+   43 |         .scl_pullup_en = GPIO_PULLUP_ENABLE,
+      |                          ^~~~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:43:26: note: (near initialization for 'conf')
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:44:9: error: field name not in record or union initializer
+   44 |         .master.clk_speed = I2C_MASTER_FREQ_HZ,
+      |         ^
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:44:9: note: (near initialization for 'conf')
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:14:30: error: excess elements in scalar initializer [-Werror]
+   14 | #define I2C_MASTER_FREQ_HZ   100000 // 100kHz
+      |                              ^~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:44:29: note: in expansion of macro 'I2C_MASTER_FREQ_HZ'
+   44 |         .master.clk_speed = I2C_MASTER_FREQ_HZ,
+      |                             ^~~~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:14:30: note: (near initialization for 'conf')
+   14 | #define I2C_MASTER_FREQ_HZ   100000 // 100kHz
+      |                              ^~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:44:29: note: in expansion of macro 'I2C_MASTER_FREQ_HZ'
+   44 |         .master.clk_speed = I2C_MASTER_FREQ_HZ,
+      |                             ^~~~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:47:21: error: implicit declaration of function 'i2c_param_config' [-Wimplicit-function-declaration]
+   47 |     esp_err_t ret = i2c_param_config(I2C_NUM_0, &conf);
+      |                     ^~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:53:11: error: implicit declaration of function 'i2c_driver_install' [-Wimplicit-function-declaration]
+   53 |     ret = i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
+      |           ^~~~~~~~~~~~~~~~~~
+/home/ralsina/code/esposito/main/bbq20_keyboard.c:61:11: error: implicit declaration of function 'i2c_master_read_from_device'; did you mean 'i2c_master_bus_rm_device'? [-Wimplicit-function-declaration]
+   61 |     ret = i2c_master_read_from_device(I2C_NUM_0, BBQ20_I2C_ADDR,
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |           i2c_master_bus_rm_device
+cc1: all warnings being treated as errors
+[2/9] Performing build step for 'bootloader'
+[1/1] cd /home/ralsina/code/esposito/build/bootloader && /home/ralsina/.espressif/python_env/idf6.0_py3.14_env/bin/python /opt/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 /home/ralsina/code/esposito/build/bootloader/bootloader.bin
+Bootloader binary size 0x6610 bytes. 0x9f0 bytes (9%) free.
+ninja: build stopped: subcommand failed.

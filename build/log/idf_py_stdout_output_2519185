@@ -1,0 +1,18 @@
+Command: ninja all
+[1/9] Building C object esp-idf/main/CMakeFiles/__idf_main.dir/bbq20_keyboard.c.obj
+[2/9] Performing build step for 'bootloader'
+[1/1] cd /home/ralsina/code/esposito/build/bootloader && /home/ralsina/.espressif/python_env/idf6.0_py3.14_env/bin/python /opt/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 /home/ralsina/code/esposito/build/bootloader/bootloader.bin
+Bootloader binary size 0x6610 bytes. 0x9f0 bytes (9%) free.
+[3/9] No install step for 'bootloader'
+[4/9] Linking C static library esp-idf/main/libmain.a
+[5/9] Completed 'bootloader'
+[6/9] Generating esp-idf/esp_system/ld/sections.ld
+[7/9] Linking CXX executable esposito.elf
+[8/9] Generating binary image from built executable
+esptool v5.3.dev3
+Creating ESP32 image...
+Merged 3 ELF sections.
+Successfully created ESP32 image.
+Generated /home/ralsina/code/esposito/build/esposito.bin
+[9/9] cd /home/ralsina/code/esposito/build && /home/ralsina/.espressif/python_env/idf6.0_py3.14_env/bin/python /opt/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /home/ralsina/code/esposito/build/partition_table/partition-table.bin /home/ralsina/code/esposito/build/esposito.bin
+esposito.bin binary size 0x41be0 bytes. Smallest app partition is 0x70000 bytes. 0x2e420 bytes (41%) free.

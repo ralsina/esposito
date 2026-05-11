@@ -1,0 +1,12 @@
+## IDF Component Manager Manifest File
+dependencies:
+  ## Required IDF version
+  idf:
+    version: ">=4.1.0"
+  ## LovyanGFX display library
+  LovyanGFX:
+    git: https://github.com/lovyan03/LovyanGFX.git
+    # For transient dependencies `public` flag can be set.
+    # `public` flag doesn't have an effect dependencies of the `main` component.
+    #   # All dependencies of `main` are public by default.
+    #   public: true

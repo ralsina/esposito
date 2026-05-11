@@ -1,0 +1,19 @@
+dependencies:
+  LovyanGFX:
+    component_hash: c6f8e740f202b65d472d38ba04a0c7d4472628e77e211f32e96851bce8f1f61b
+    dependencies: []
+    source:
+      git: https://github.com/lovyan03/LovyanGFX.git
+      path: .
+      type: git
+    version: c14105d8a0f8b431e4fdb0b7d0757d5100ca2159
+  idf:
+    source:
+      type: idf
+    version: 6.0.1
+direct_dependencies:
+- LovyanGFX
+- idf
+manifest_hash: 4d845e5e2ec303b07d4e0dc922ad05b388bdf3ce597e84d4eb8e027aa6d01cb9
+target: esp32
+version: 3.0.0

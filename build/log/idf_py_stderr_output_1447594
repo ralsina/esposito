@@ -1,0 +1,2 @@
+Command: /home/ralsina/.espressif/python_env/idf6.0_py3.14_env/bin/python /opt/esp-idf/tools/idf_monitor.py -p /dev/ttyUSB0 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 /home/ralsina/code/esposito/build/esposito.elf /home/ralsina/code/esposito/build/bootloader/bootloader.elf -m '/home/ralsina/.espressif/python_env/idf6.0_py3.14_env/bin/python' '/opt/esp-idf/tools/idf.py' '-p' '/dev/ttyUSB0'
+Error: Monitor requires standard input to be attached to TTY. Try using a different terminal.
