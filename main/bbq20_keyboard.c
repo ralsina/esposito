@@ -159,6 +159,13 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
         return key_code;  // Return the ASCII character directly
     }
 
+    // Special keys (must be checked before range checks to avoid conflicts)
+    if (key_code == 10) return '\n';  // Enter key (0x0A)
+    if (key_code == 40) return ' ';
+    if (key_code == 41) return '\t';
+    if (key_code == 42) return '\n';
+    if (key_code == 43) return '\b';
+
     // Fallback to BBQ10 key code mapping for non-ASCII keys
     // Key codes 4-29 are A-Z in BBQ10 protocol
     if (key_code >= 4 && key_code <= 29) {
@@ -169,12 +176,6 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
     if (key_code >= 30 && key_code <= 39) {
         return '0' + (key_code - 30);
     }
-
-    // Special keys
-    if (key_code == 40) return ' ';
-    if (key_code == 41) return '\t';
-    if (key_code == 42) return '\n';
-    if (key_code == 43) return '\b';
 
     return 0;
 }

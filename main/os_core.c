@@ -10,6 +10,71 @@
 
 static const char *TAG = "os_core";
 
+// App launcher/switcher
+static bool app_launcher_active = false;
+static int app_launcher_selected = 0;
+
+static void app_launcher_show(void) {
+    char app_names[4][64];
+    int app_count = app_loader_scan(app_names, 4);
+
+    // Clear screen and show launcher
+    display_clear(0x001F); // Blue background
+    display_draw_text(5, 5, "App Launcher", 0xFFFF); // White title
+    display_draw_text(5, 25, "Use +/- to select", 0xFFE0); // Yellow instructions
+    display_draw_text(5, 45, "Enter to launch", 0xFFE0); // Yellow instructions
+
+    // Show available apps
+    int y = 75;
+    for (int i = 0; i < app_count; i++) {
+        uint16_t color = (i == app_launcher_selected) ? 0x07E0 : 0xFFFF; // Green for selected, white otherwise
+        char prefix[] = {(i == app_launcher_selected) ? '>' : ' ', '\0'};
+        char buf[80]; // Larger buffer to avoid truncation warning
+        snprintf(buf, sizeof(buf), "%s %s", prefix, app_names[i]);
+        display_draw_text(10, y, buf, color);
+        y += 20;
+    }
+
+    ESP_LOGI(TAG, "App launcher shown, %d apps available", app_count);
+}
+
+static void app_launcher_handle_key(char key) {
+    char app_names[4][64];
+    int app_count = app_loader_scan(app_names, 4);
+
+    switch (key) {
+        case '+':
+        case '=':
+            app_launcher_selected = (app_launcher_selected + 1) % app_count;
+            app_launcher_show();
+            break;
+
+        case '-':
+        case '_':
+            app_launcher_selected = (app_launcher_selected - 1 + app_count) % app_count;
+            app_launcher_show();
+            break;
+
+        case '\n':
+        case '\r':
+            // Launch selected app
+            ESP_LOGI(TAG, "Launching app: %s", app_names[app_launcher_selected]);
+            app_launcher_active = false;
+            os_load_app(app_names[app_launcher_selected]);
+            break;
+
+        case 27: // ESC
+            // Cancel launcher, return to current app
+            ESP_LOGI(TAG, "Launcher cancelled");
+            app_launcher_active = false;
+            break;
+
+        default:
+            // Ignore other keys
+            break;
+    }
+}
+
 #define MAX_EVENTS 32
 #define EVENT_QUEUE_SIZE 32
 
@@ -164,6 +229,22 @@ void os_event_loop(void) {
 
         // Check if we have events in queue
         if (event_queue_pop(&event)) {
+            // Check for app launcher trigger (L key)
+            if (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
+                (event.keyboard.key == 'l' || event.keyboard.key == 'L')) {
+                ESP_LOGI(TAG, "Launcher activated (L key)");
+                app_launcher_active = true;
+                app_launcher_selected = 0;
+                app_launcher_show();
+                continue;
+            }
+
+            // If launcher is active, handle keys there
+            if (app_launcher_active && event.type == EVENT_KEYBOARD && event.keyboard.pressed) {
+                app_launcher_handle_key(event.keyboard.key);
+                continue;
+            }
+
             // Deliver to current app if subscribed
             if (current_app && (current_app->subscriptions & event.type)) {
                 if (current_app->event_fn) {
