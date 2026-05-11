@@ -12,6 +12,21 @@ static const char *TAG = "bbq20_kbd";
 #define BBQ20_I2C_ADDR     0x1F
 #define BBQ20_I2C_FREQ_HZ  100000
 
+// BBQ20 special key codes (from terminado project)
+#define BBQ20_KEY_ESCAPE     5   // Escape key
+#define BBQ20_KEY_LEFT       6   // Left arrow
+#define BBQ20_KEY_DOWN       17  // Down arrow
+#define BBQ20_KEY_CTRL       18  // SYMBOL key (Ctrl modifier)
+#define BBQ20_KEY_FN         7   // BACK key (Fn modifier)
+#define BBQ20_KEY_ALT        19  // CALL key (Alt modifier)
+#define BBQ20_KEY_FN2        20  // BlackBerry key (Fn2 modifier)
+
+// Modifier key states (based on terminado implementation)
+static bool fn_pressed = false;     // BACK key (Fn)
+static bool fn2_pressed = false;    // BlackBerry key (Fn2)
+static bool ctrl_pressed = false;   // SYMBOL key (Ctrl)
+static bool alt_pressed = false;    // CALL key (Alt)
+
 static i2c_master_bus_handle_t i2c_bus = NULL;
 static i2c_master_dev_handle_t i2c_device = NULL;
 
@@ -32,6 +47,41 @@ static i2c_master_dev_handle_t i2c_device = NULL;
 #define BBQ10_NUMLOCK        (1 << 6)  // 0x40
 
 static bool bbq20_initialized = false;
+
+// Update modifier key state based on key code and state
+static void update_modifier_state(uint8_t key_code, uint8_t state) {
+    uint8_t actual_state = state & BBQ10_STATE_MASK;
+    bool pressed = (actual_state == BBQ10_STATE_PRESS || actual_state == BBQ10_STATE_LONG_PRESS);
+
+    switch (key_code) {
+        case BBQ20_KEY_FN:
+            fn_pressed = pressed;
+            ESP_LOGI(TAG, "🔧 Fn key %s", pressed ? "pressed" : "released");
+            break;
+        case BBQ20_KEY_CTRL:
+            ctrl_pressed = pressed;
+            ESP_LOGI(TAG, "🔧 Ctrl key %s", pressed ? "pressed" : "released");
+            break;
+        case BBQ20_KEY_ALT:
+            alt_pressed = pressed;
+            ESP_LOGI(TAG, "🔧 Alt key %s", pressed ? "pressed" : "released");
+            break;
+        case BBQ20_KEY_FN2:
+            fn2_pressed = pressed;
+            ESP_LOGI(TAG, "🔧 Fn2 key %s", pressed ? "pressed" : "released");
+            break;
+    }
+}
+
+// Get current modifier state as bit flags
+uint8_t bbq20_get_modifiers(void) {
+    uint8_t modifiers = 0;
+    if (fn_pressed) modifiers |= 0x08;     // MODIFIER_FN
+    if (ctrl_pressed) modifiers |= 0x02;   // MODIFIER_CTRL
+    if (alt_pressed) modifiers |= 0x04;    // MODIFIER_ALT
+    if (fn2_pressed) modifiers |= 0x10;    // MODIFIER_FN2
+    return modifiers;
+}
 
 // Read from BBQ20 register using new I2C master driver
 static esp_err_t bbq20_read_reg(uint8_t reg, uint8_t *data, size_t len) {
@@ -153,6 +203,51 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
         return 0;
     }
 
+    // Handle modifier key combinations (based on terminado implementation)
+    if (key_code >= 'a' && key_code <= 'z') {
+        // Check for Fn key combinations (from terminado)
+        if (fn_pressed) {
+            switch (key_code) {
+                case 'q': return '\t';    // Fn+Q = TAB
+                case 'w': return 0x11;    // Fn+W = Up arrow (Ctrl+Q)
+                case 'a': return 0x10;    // Fn+A = Left arrow (Ctrl+P)
+                case 's': return 0x0E;    // Fn+S = Down arrow (Ctrl+N)
+                case 'd': return 0x0F;    // Fn+D = Right arrow (Ctrl+O)
+            }
+        }
+
+        // Check for Ctrl key combinations
+        if (ctrl_pressed) {
+            return key_code & 0x1F;  // Convert to control character
+        }
+
+        // Return normal character
+        return key_code;
+    }
+
+    // Handle uppercase letters
+    if (key_code >= 'A' && key_code <= 'Z') {
+        // Check for Fn key combinations
+        if (fn_pressed) {
+            char lower = key_code + 32;  // Convert to lowercase
+            switch (lower) {
+                case 'q': return '\t';    // Fn+Q = TAB
+                case 'w': return 0x11;    // Fn+W = Up arrow
+                case 'a': return 0x10;    // Fn+A = Left arrow
+                case 's': return 0x0E;    // Fn+S = Down arrow
+                case 'd': return 0x0F;    // Fn+D = Right arrow
+            }
+        }
+
+        // Check for Ctrl key combinations
+        if (ctrl_pressed) {
+            return (key_code + 32) & 0x1F;  // Convert to lowercase, then control
+        }
+
+        // Return normal uppercase character
+        return key_code;
+    }
+
     // BBQ20 keyboard sends ASCII directly (0x61 = 'a', 0x41 = 'A', etc.)
     // Check if it's a printable ASCII character
     if (key_code >= 32 && key_code <= 126) {
@@ -161,6 +256,7 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
 
     // Special keys (must be checked before range checks to avoid conflicts)
     if (key_code == 10) return '\n';  // Enter key (0x0A)
+    if (key_code == BBQ20_KEY_ESCAPE) return 27;  // Escape key
     if (key_code == 40) return ' ';
     if (key_code == 41) return '\t';
     if (key_code == 42) return '\n';
@@ -206,17 +302,20 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
 
                     ESP_LOGI(TAG, "🎹 BBQ20: Raw key_code=0x%02X, key_state=0x%02X", key_code, key_state);
 
+                    // Update modifier key states first (before processing)
+                    update_modifier_state(key_code, key_state);
+
                     // Extract actual state and modifiers
                     uint8_t actual_state = key_state & BBQ10_STATE_MASK;
 
                     event->key_code = key_code;
-                    event->modifiers = key_state;
+                    event->modifiers = bbq20_get_modifiers();  // Use current modifier state
                     event->pressed = (actual_state == BBQ10_STATE_PRESS || actual_state == BBQ10_STATE_LONG_PRESS);
 
                     char ascii = bbq20_key_to_ascii(key_code, key_state);
                     if (ascii) {
-                        ESP_LOGI(TAG, "🎹 BBQ20 REAL key: %c (code:0x%02X state:0x%02X)",
-                                ascii, key_code, key_state);
+                        ESP_LOGI(TAG, "🎹 BBQ20 REAL key: %c (code:0x%02X state:0x%02X mods:0x%02X)",
+                                ascii, key_code, key_state, event->modifiers);
                         event->key_code = ascii;
                         return true;
                     } else {

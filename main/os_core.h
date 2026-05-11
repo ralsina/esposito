@@ -14,6 +14,15 @@ typedef enum {
     EVENT_KEY_COMBO = 1 << 4,
 } event_type_t;
 
+// Keyboard modifier flags
+typedef enum {
+    MODIFIER_SHIFT = 1 << 0,
+    MODIFIER_CTRL  = 1 << 1,
+    MODIFIER_ALT   = 1 << 2,
+    MODIFIER_FN    = 1 << 3,
+    MODIFIER_FN2   = 1 << 4,
+} key_modifier_t;
+
 // Event structure
 typedef struct {
     event_type_t type;
@@ -26,6 +35,7 @@ typedef struct {
         struct {
             char key;
             bool pressed;
+            uint8_t modifiers;  // Modifier key state (Ctrl, Alt, Shift, etc.)
         } keyboard;
         struct {
             char data[256];

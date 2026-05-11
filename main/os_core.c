@@ -21,11 +21,12 @@ static void app_launcher_show(void) {
     // Clear screen and show launcher
     display_clear(0x001F); // Blue background
     display_draw_text(5, 5, "App Launcher", 0xFFFF); // White title
-    display_draw_text(5, 25, "Use +/- to select", 0xFFE0); // Yellow instructions
-    display_draw_text(5, 45, "Enter to launch", 0xFFE0); // Yellow instructions
+    display_draw_text(5, 25, "W/S: up/down", 0xFFE0); // Yellow instructions
+    display_draw_text(5, 45, "Enter: launch", 0xFFE0); // Yellow instructions
+    display_draw_text(5, 65, "ESC: cancel", 0xFFE0); // Yellow instructions
 
     // Show available apps
-    int y = 75;
+    int y = 95;
     for (int i = 0; i < app_count; i++) {
         uint16_t color = (i == app_launcher_selected) ? 0x07E0 : 0xFFFF; // Green for selected, white otherwise
         char prefix[] = {(i == app_launcher_selected) ? '>' : ' ', '\0'};
@@ -43,15 +44,17 @@ static void app_launcher_handle_key(char key) {
     int app_count = app_loader_scan(app_names, 4);
 
     switch (key) {
-        case '+':
-        case '=':
-            app_launcher_selected = (app_launcher_selected + 1) % app_count;
+        case 'w':
+        case 'W':
+            // Move up (previous app)
+            app_launcher_selected = (app_launcher_selected - 1 + app_count) % app_count;
             app_launcher_show();
             break;
 
-        case '-':
-        case '_':
-            app_launcher_selected = (app_launcher_selected - 1 + app_count) % app_count;
+        case 's':
+        case 'S':
+            // Move down (next app)
+            app_launcher_selected = (app_launcher_selected + 1) % app_count;
             app_launcher_show();
             break;
 
@@ -229,10 +232,11 @@ void os_event_loop(void) {
 
         // Check if we have events in queue
         if (event_queue_pop(&event)) {
-            // Check for app launcher trigger (L key)
+            // Check for app launcher trigger (Ctrl+ESC)
             if (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
-                (event.keyboard.key == 'l' || event.keyboard.key == 'L')) {
-                ESP_LOGI(TAG, "Launcher activated (L key)");
+                event.keyboard.key == 27 &&  // ESC key
+                (event.keyboard.modifiers & 0x02)) {  // Ctrl modifier (bit 1)
+                ESP_LOGI(TAG, "Launcher activated (Ctrl+ESC)");
                 app_launcher_active = true;
                 app_launcher_selected = 0;
                 app_launcher_show();

@@ -132,6 +132,7 @@ bool keyboard_read_event(event_t *event) {
         event->type = EVENT_KEYBOARD;
         event->keyboard.key = (char)bbq20_event.key_code;
         event->keyboard.pressed = bbq20_event.pressed;
+        event->keyboard.modifiers = bbq20_event.modifiers;  // Include modifier state
 
         return true;
     }

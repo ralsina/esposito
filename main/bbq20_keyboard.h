@@ -27,6 +27,9 @@ bool bbq20_read_key_event(bbq20_key_event_t *event);
 // Convert BBQ20 key code to ASCII character
 char bbq20_key_to_ascii(uint8_t key_code, uint8_t state);
 
+// Get current modifier key state
+uint8_t bbq20_get_modifiers(void);
+
 #ifdef __cplusplus
 }
 #endif
