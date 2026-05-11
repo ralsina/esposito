@@ -22,7 +22,14 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(timeout 10 python -m esptool --chip esp32 -p /dev/ttyUSB0 -b 115200 run)",
       "Bash(timeout 8 picocom -b 115200 /dev/ttyUSB0 --imap lfcrlf)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git rm *)",
+      "Bash(git submodule *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)",
+      "Bash(git reset *)",
+      "Bash(timeout 5s cat /dev/ttyUSB0)",
+      "Bash(git clone *)"
     ]
   }
 }

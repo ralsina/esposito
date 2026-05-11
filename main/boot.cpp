@@ -6,6 +6,10 @@
 #include "lovgfx_config.h"
 #include <stdio.h>
 
+extern "C" {
+    #include "sd_card.h"
+}
+
 static const char *TAG = "boot";
 
 boot_status_t boot_status = {
@@ -139,6 +143,16 @@ void boot_sequence(void) {
         // Continue anyway - keyboard is optional for some apps
     }
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Keyboard subsystem ready");
+
+    // Stage 4.5: SD Card (testing in isolation with display disabled)
+    boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting SD card init");
+
+    if (sd_card_init()) {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "SD card ready");
+    } else {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "SD card not available");
+        // Continue anyway - SD card is optional
+    }
 
     // Stage 5: App loader
     boot_display_progress(BOOT_STAGE_APP_LOADER_INIT, true, "Starting app loader");

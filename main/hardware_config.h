@@ -23,6 +23,18 @@
 #define I2C_PORT I2C_NUM_0
 #define I2C_FREQ 100000  // 100kHz for BBQ20 compatibility
 
+// SD Card Configuration (from witnessmenow CYD2USB repository)
+// The SD card uses VSPI bus (separate from display's HSPI/SPI2_HOST)
+// These are the default VSPI pins for ESP32
+#define SD_MISO_PIN 19   // MISO pin (VSPI)
+#define SD_MOSI_PIN 23   // MOSI pin (VSPI)
+#define SD_CLK_PIN  18   // CLK/SCK pin (VSPI)
+#define SD_CS_PIN    5   // CS pin for SD card (VSPI SS)
+
+// Alternative SDMMC pin names (not used in SDSPI mode)
+#define SD_CMD_PIN  11   // CMD pin for SDMMC mode only
+#define SD_D0_PIN   13   // D0 pin for SDMMC mode only
+
 // Touch Configuration (if available)
 #define TOUCH_I2C_ADDR 0x14
 #define TOUCH_I2C_PORT I2C_NUM_1
