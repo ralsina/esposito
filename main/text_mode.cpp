@@ -116,11 +116,22 @@ void text_mode_print_at_color(int x, int y, const char *str, uint16_t color) {
     int len = strlen(str);
     int max_chars = TEXT_MODE_COLS - x;
 
+    // Clear the area first for the entire string (batch operation)
+    int pixel_x, pixel_y;
+    grid_to_pixel(x, y, &pixel_x, &pixel_y);
+    int string_width = len * get_font_width();
+    display_fill_rect(pixel_x, pixel_y, string_width, get_font_height(), tm_state.bg_color);
+
     // Print characters until end of line or string
     for (int i = 0; i < len && i < max_chars; i++) {
         tm_state.grid[y][x + i] = str[i];
         tm_state.colors[y][x + i] = color;
-        update_cell(x + i, y);
+
+        // Draw character directly without clearing again
+        if (str[i] != ' ') {
+            int char_x = pixel_x + (i * get_font_width());
+            display_draw_text(char_x, pixel_y, &str[i], color);
+        }
     }
 
     // Update cursor to end of printed text
