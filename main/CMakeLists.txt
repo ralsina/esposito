@@ -1,6 +1,8 @@
 idf_component_register(
     SRCS "main.c"
         "os_core.c"
+        "os_symtab.c"
+        "elf_loader.c"
         "app_loader.c"
         "app_launcher.c"
         "checkpoint.c"

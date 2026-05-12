@@ -27,10 +27,6 @@ void display_draw_text(int x, int y, const char *text, uint16_t color);
 void display_draw_pixel(int x, int y, uint16_t color);
 void display_fill_rect(int x, int y, int width, int height, uint16_t color);
 
-// Touch functions
-bool touch_init(void);
-bool touch_read(uint16_t *x, uint16_t *y, bool *pressed);
-
 // Keyboard functions
 bool keyboard_init(void);
 bool keyboard_read_event(event_t *event);

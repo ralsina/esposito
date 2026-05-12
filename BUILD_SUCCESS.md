@@ -88,20 +88,25 @@ I (xxx) esposito: Starting main event loop...
 - Checkpoint API foundation
 - Hardware abstraction layer
 - Graceful error handling
+- Display driver (ST7789 via LovyanGFX SPI)
+- Keyboard driver (BBQ20 I2C with modifier keys)
+- Touch driver (XPT2046 GPIO bit-banging with IRQ)
+- SD card (SDSPI on VSPI bus, FAT32)
+- Text mode subsystem (64x30 grid, 16 colors, attributes)
+- Key echo app
+- Text mode demo app
+- App launcher (Ctrl+ESC)
 
 ### ⚠️ Partial/TODO
-- **Display Driver**: SPI configured, needs ST7789 initialization
-- **Keyboard Driver**: Framework ready, needs BBQ20 I2C protocol
-- **Touch Driver**: Not implemented (optional)
 - **Dynamic Loading**: Framework exists, needs dlopen implementation
-- **Apps**: Example app structure, no working apps yet
+- **Checkpoint Serialization**: Needs actual file I/O
+- **App Switcher**: Key combo detection needs refinement
 
 ### 🔲 Future Development
-1. Complete display driver with ST7789 commands
-2. Implement BBQ20 keyboard I2C protocol
-3. Add basic drawing primitives
-4. Create working test apps
-5. Implement app switching mechanism
+1. Implement dynamic loading (dlopen/dlsym)
+2. Create more apps
+3. Implement checkpoint serialization
+4. Implement app switching mechanism
 
 ## 🧪 Testing
 

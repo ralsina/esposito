@@ -13,7 +13,7 @@
 - **App Lifecycle**: Load/unload/switch between apps
 - **Filesystem**: SPIFFS integration for state storage
 - **Checkpoint System**: Basic framework for app state persistence
-- **Hardware Abstraction**: Stubs for display, touch, keyboard, timer, serial
+- **Hardware Abstraction**: Display (LovyanGFX/ST7789), touch (XPT2046 GPIO bitbang), keyboard (BBQ20 I2C), SD card (SDSPI), timer, serial
 
 ### Example App
 - Hello World app demonstrating the interface
@@ -23,30 +23,30 @@
 
 ## 🔨 Current Status
 
-The project is in a **proof-of-concept** stage. All core structures are in place but most implementations are stubs.
+The project has all core hardware drivers implemented and working on real hardware.
 
 ### What Works
 - Project structure and build system
 - Event queue architecture
 - App lifecycle management
 - Basic checkpoint API
+- Touch driver (XPT2046 GPIO bit-banging with IRQ)
+- SD card (SDSPI on VSPI bus, FAT32)
+- BBQ20 keyboard (I2C with modifier keys)
+- Display (LovyanGFX/ST7789, text mode subsystem)
+- Text mode (64x30 grid, 16 colors, attributes)
 
 ### What Needs Implementation
-- **Display Driver**: Implement based on `terminado` project
-- **Touch Driver**: Raw coordinate reading
-- **Keyboard Driver**: BBQ20 integration from `terminado`
 - **Dynamic Loading**: dlopen/dlsym for app libraries (.so files)
-- **SD Card Support**: Filesystem operations and app scanning
 - **App Switcher**: Key combo detection and UI
 - **Checkpoint Serialization**: JSON or binary format for state storage
 
 ## 🚀 Next Steps
 
-1. **Integrate Hardware Drivers**: Copy/refer to `terminado` project for display and keyboard
-2. **Implement Dynamic Loading**: Add dlopen support for loading .so app libraries
-3. **SD Card Filesystem**: Enable SPIFFS and implement app scanning
+1. **Implement Dynamic Loading**: Add dlopen support for loading .so app libraries
+2. **Create More Apps**: Demonstrate app switching capabilities
+3. **App Switcher**: Key combo detection and UI
 4. **Build & Test**: Compile and flash to actual hardware
-5. **Create More Apps**: Demonstrate app switching capabilities
 
 ## 📋 Technical Notes
 

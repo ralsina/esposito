@@ -1,6 +1,8 @@
 #include "os_core.h"
 #include "app_loader.h"
 #include "app_launcher.h"
+#include "elf_loader.h"
+#include "checkpoint.h"
 #include "hardware.h"
 #include "touchscreen.h"
 #include "esp_log.h"
@@ -103,7 +105,7 @@ void os_unload_app(void) {
             current_app->close(current_app);
         }
         if (current_app->handle) {
-            // dlclose(current_app->handle); // TODO: implement when dlopen is ready
+            elf_loader_unload((elf_handle_t *)current_app->handle);
         }
         free(current_app);
         current_app = NULL;
@@ -116,6 +118,8 @@ bool os_load_app(const char *app_name) {
         if (current_app->checkpoint) {
             current_app->checkpoint(current_app);
         }
+        checkpoint_save();
+        checkpoint_close();
         os_unload_app();
     }
 

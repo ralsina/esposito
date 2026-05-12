@@ -1,7 +1,7 @@
 # Esposito OS - Makefile
 # Convenience targets for building, flashing, and monitoring
 
-.PHONY: all build flash monitor clean help size
+.PHONY: all build flash monitor clean help size test
 
 # Default target
 all: build
@@ -49,6 +49,13 @@ menuconfig:
 flash-ttyacm0: build
 	. /opt/esp-idf/export.sh && idf.py -p /dev/ttyACM0 flash
 
+# Build, copy to SD card, and flash a test app
+# Usage: make test             (builds and flashes example_app)
+#        make test APP=sd_test (builds and flashes a different app)
+test:
+	@echo "Building test app and flashing..."
+	. /opt/esp-idf/export.sh && scripts/build_test.sh $(APP)
+
 # Help target
 help:
 	@echo "Esposito OS - Available Targets:"
@@ -60,6 +67,7 @@ help:
 	@echo "make clean        - Clean build files"
 	@echo "make size         - Show binary size"
 	@echo "make menuconfig   - Open ESP-IDF configuration menu"
+	@echo "make test         - Build test app, copy to SD card, flash"
 	@echo "make help         - Show this help message"
 	@echo ""
 	@echo "Quick Start:"

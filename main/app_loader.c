@@ -1,5 +1,8 @@
 #include "app_loader.h"
 #include "os_core.h"
+#include "elf_loader.h"
+#include "sd_card.h"
+#include "checkpoint.h"
 #include "esp_log.h"
 #include <string.h>
 
@@ -69,6 +72,8 @@ bool app_loader_load(const char *app_name) {
         ctx->timer_interval_ms = 0;
         ctx->user_data = NULL;
 
+        checkpoint_open(ctx->name);
+
         ESP_LOGI(TAG, "🔧 App context configured, calling init function at %p", (void*)ctx->init);
 
         // Initialize the app
@@ -91,6 +96,8 @@ bool app_loader_load(const char *app_name) {
         ctx->timer_interval_ms = 0;
         ctx->user_data = NULL;
 
+        checkpoint_open(ctx->name);
+
         ESP_LOGI(TAG, "🔧 App context configured, calling init function at %p", (void*)ctx->init);
 
         // Initialize the app
@@ -99,8 +106,44 @@ bool app_loader_load(const char *app_name) {
         return true;
     }
 
-    ESP_LOGE(TAG, "❌ Unknown app: %s", app_name);
-    return false;
+    // Try loading from SD card as ELF
+    char elf_path[128];
+    snprintf(elf_path, sizeof(elf_path), "/sdcard/apps/%s/program.elf", app_name);
+    ESP_LOGI(TAG, "Trying ELF: %s", elf_path);
+
+    elf_handle_t *handle = elf_loader_load(elf_path);
+    if (!handle) {
+        // Check if SD card is even mounted
+        if (!sd_card_is_mounted()) {
+            ESP_LOGW(TAG, "SD card not mounted, cannot load ELF apps");
+        }
+        ESP_LOGE(TAG, "❌ Unknown app: %s", app_name);
+        return false;
+    }
+
+    ESP_LOGI(TAG, "ELF loaded successfully from SD card");
+
+    // Set up the app context from ELF symbols
+    strcpy(ctx->name, app_name);
+    ctx->init = (app_init_fn)elf_loader_symbol(handle, "app_init");
+    ctx->checkpoint = (app_checkpoint_fn)elf_loader_symbol(handle, "app_checkpoint");
+    ctx->close = (app_close_fn)elf_loader_symbol(handle, "app_close");
+    ctx->event_fn = (app_event_fn)elf_loader_symbol(handle, "app_event");
+    ctx->handle = handle;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
+    ctx->timer_interval_ms = 0;
+    ctx->user_data = NULL;
+
+    if (!ctx->init) {
+        ESP_LOGE(TAG, "ELF missing app_init entry point");
+        elf_loader_unload(handle);
+        return false;
+    }
+
+    checkpoint_open(ctx->name);
+    ctx->init(ctx);
+    ESP_LOGI(TAG, "✅ %s loaded from SD card and initialized", app_name);
+    return true;
 }
 
 int app_loader_get_count(void) {

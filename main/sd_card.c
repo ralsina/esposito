@@ -141,18 +141,66 @@ bool sd_card_is_mounted(void) {
 const char* sd_card_get_mount_point(void) { return "/sdcard"; }
 
 bool sd_card_list_files(const char *path) {
-    // TODO: Implement
-    return false;
+    char full_path[128];
+    if (path[0] == '/') {
+        strncpy(full_path, path, sizeof(full_path) - 1);
+    } else {
+        snprintf(full_path, sizeof(full_path), "%s/%s", "/sdcard", path);
+    }
+
+    DIR *dir = opendir(full_path);
+    if (!dir) {
+        ESP_LOGE(TAG, "Failed to open directory: %s", full_path);
+        return false;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        ESP_LOGI(TAG, "  %s", entry->d_name);
+    }
+    closedir(dir);
+    return true;
 }
 
 bool sd_card_read_file(const char *path, char *buffer, size_t max_len) {
-    // TODO: Implement
-    return false;
+    if (!buffer || max_len == 0) return false;
+
+    char full_path[128];
+    if (path[0] == '/') {
+        strncpy(full_path, path, sizeof(full_path) - 1);
+    } else {
+        snprintf(full_path, sizeof(full_path), "%s/%s", "/sdcard", path);
+    }
+
+    FILE *f = fopen(full_path, "r");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to open %s", full_path);
+        return false;
+    }
+
+    size_t bytes_read = fread(buffer, 1, max_len - 1, f);
+    buffer[bytes_read] = '\0';
+    fclose(f);
+    return true;
 }
 
 bool sd_card_write_file(const char *path, const char *data) {
-    // TODO: Implement
-    return false;
+    char full_path[128];
+    if (path[0] == '/') {
+        strncpy(full_path, path, sizeof(full_path) - 1);
+    } else {
+        snprintf(full_path, sizeof(full_path), "%s/%s", "/sdcard", path);
+    }
+
+    FILE *f = fopen(full_path, "w");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to open %s for writing", full_path);
+        return false;
+    }
+
+    fprintf(f, "%s", data);
+    fclose(f);
+    return true;
 }
 
 void sd_card_unmount(void) {

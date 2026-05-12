@@ -31,11 +31,6 @@ bool hardware_init(void) {
         return false;
     }
 
-    if (!touch_init()) {
-        ESP_LOGE(TAG, "Touch initialization failed");
-        return false;
-    }
-
     if (!keyboard_init()) {
         ESP_LOGE(TAG, "Keyboard initialization failed");
         return false;
@@ -94,17 +89,6 @@ void display_draw_pixel(int x, int y, uint16_t color) {
 void display_fill_rect(int x, int y, int width, int height, uint16_t color) {
     if (!display_initialized) return;
     tft.fillRect(x, y, width, height, color);
-}
-
-// Touch stubs
-bool touch_init(void) {
-    ESP_LOGI(TAG, "Touch init - TODO: implement");
-    return true;
-}
-
-bool touch_read(uint16_t *x, uint16_t *y, bool *pressed) {
-    // TODO: Implement
-    return false;
 }
 
 // Keyboard implementation for BBQ20 (based on terminado)

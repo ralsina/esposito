@@ -1,46 +1,32 @@
 # Hardware Integration Status
 
-## ✅ Completed
-
-### Project Structure
-- ESP-IDF compatible project structure
-- Hardware configuration based on terminado
-- Font files copied from terminado (font5x7.h, spleen-5x8.h)
-
-### I2C Configuration
-- BBQ20 Keyboard I2C pins configured (GPIO 22/27)
-- I2C driver initialization
-- Keyboard detection logic
-
-### SPI Configuration
-- ST7789 display SPI pins configured
-- SPI bus initialization
-- Basic display framework
-
-## 🔨 In Progress
+## ✅ Working
 
 ### Display Driver
-- **Status**: Framework in place, needs ST7789 initialization commands
-- **Reference**: `terminado/gfx_conf.h` for LovyanGFX library usage
-- **TODO**:
-  - Port LovyanGFX library to ESP-IDF or use SPI directly
-  - Implement ST7789 initialization sequence
-  - Add basic drawing primitives (pixels, text, rectangles)
+- LovyanGFX on ESP-IDF via SPI @ 80MHz
+- ST7789 panel with 320x240 resolution (landscape)
+- Font rendering using spleen-5x8
+- Text mode subsystem (64x30 grid, 16 colors, attributes)
 
-### Keyboard Driver
-- **Status**: I2C configured, needs BBQ20 protocol implementation
-- **Reference**: `terminado/terminado.ino` (key handling logic)
-- **TODO**:
-  - Implement BBQ20 keyboard I2C protocol
-  - Port key mapping logic from terminado
-  - Add modifier key handling (Fn, Ctrl, Alt)
+### Keyboard Driver (BBQ20)
+- I2C driver using ESP-IDF new I2C master API
+- Keyboard detection and scanning at 0x1F
+- Full key mapping with modifier keys (Fn, Ctrl, Alt, Fn2)
+- Arrow key combinations via Fn+WASD
+- FIFO-based key event reading
 
-### Touch Driver
-- **Status**: Not implemented (disabled in terminado due to I2C conflict)
-- **Reference**: `terminado/gfx_conf.h` (commented out touch code)
-- **TODO**:
-  - Implement if touch is available on hardware
-  - Otherwise focus on keyboard input
+### Touch Driver (XPT2046)
+- GPIO bit-banging SPI on separate pins (GPIO 32/39/25/33)
+- IRQ-based press detection (active low on GPIO 36)
+- Multi-sample averaging (30 samples, discard outliers)
+- Raw-to-screen coordinate mapping (200-3900 → 0-320/0-240)
+- Works alongside BBQ20 keyboard (no I2C conflict)
+
+### SD Card
+- SDSPI mode on SPI3/VSPI bus (separate from display)
+- FAT32 filesystem via ESP-VFS
+- Hot-plug detection and mount at `/sdcard`
+- File read/write/list operations
 
 ## 📋 Hardware Configuration
 
@@ -64,13 +50,30 @@ Pins:
   - SDA: GPIO 22
   - SCL: GPIO 27
 Address: 0x1F
+FIFO Registers: 0x01 (FW), 0x04 (Status), 0x09 (Key Data)
 ```
 
-### Touch: (Optional)
+### Touch: XPT2046
 ```
-Interface: I2C
-Address: 0x14
-Note: Conflicts with BBQ20 keyboard on same I2C bus
+Interface: GPIO bit-banging SPI
+Pins:
+  - MOSI: GPIO 32
+  - MISO: GPIO 39
+  - CLK:  GPIO 25
+  - CS:   GPIO 33
+  - IRQ:  GPIO 36
+Commands: 0x90 (X), 0xD0 (Y)
+```
+
+### SD Card
+```
+Interface: SDSPI on SPI3/VSPI bus
+Pins:
+  - MISO: GPIO 19
+  - MOSI: GPIO 23
+  - CLK:  GPIO 18
+  - CS:   GPIO 5
+Mount point: /sdcard
 ```
 
 ## 🔗 Key References from Terminado
@@ -78,16 +81,16 @@ Note: Conflicts with BBQ20 keyboard on same I2C bus
 ### Display Implementation
 - **File**: `terminado/gfx_conf.h`
 - **Library**: LovyanGFX (Arduino)
-- **Challenge**: Need ESP-IDF equivalent or direct SPI implementation
+- **Status**: Ported to ESP-IDF via LovyanGFX managed component
 
 ### Keyboard Implementation
 - **File**: `terminado/terminado.ino`
 - **Library**: BBQ10Keyboard (Arduino)
-- **Challenge**: Need to implement I2C protocol directly
+- **Status**: Reimplemented with ESP-IDF I2C master driver
 - **Key Features**:
   - Modifier keys (Fn, Ctrl, Alt)
-  - Autorepeat functionality
-  - Special key combinations
+  - Arrow key combinations
+  - Special key mappings
 
 ### Font System
 - **Files**: `font5x7.h`, `spleen-5x8.h`
@@ -96,19 +99,10 @@ Note: Conflicts with BBQ20 keyboard on same I2C bus
 
 ## 🚀 Next Steps
 
-1. **Display Driver**: Choose approach
-   - Option A: Port LovyanGFX to ESP-IDF (complex but feature-rich)
-   - Option B: Implement ST7789 SPI directly (simpler, basic features)
-
-2. **Keyboard Driver**: Implement BBQ20 I2C protocol
-   - Study BBQ10Keyboard Arduino library
-   - Implement I2C read/write functions
-   - Port key mapping logic
-
-3. **Test Hardware Integration**
-   - Verify display output
-   - Verify keyboard input
-   - Test app event system with real hardware
+1. **Dynamic App Loading**: Implement dlopen/dlsym for .so app libraries
+2. **App Switcher**: Key combo detection and UI
+3. **Checkpoint Serialization**: JSON or binary format for SPIFFS state storage
+4. **Create More Apps**: Demonstrate app switching capabilities
 
 ## 📝 Implementation Notes
 
@@ -116,7 +110,6 @@ Note: Conflicts with BBQ20 keyboard on same I2C bus
 - Arduino libraries not compatible with ESP-IDF
 - Need hardware-level control for event system
 - Better performance and memory management
-- Learn hardware-specific optimizations
 
 ### Terminado Differences
 - **Terminado**: Arduino-based VT100 emulator

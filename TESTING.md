@@ -1,8 +1,8 @@
 # Esposito OS - Testing Guide
 
-## ✅ Current State: Ready for ESP-IDF Build
+## ✅ Current State: All Hardware Working
 
-The boot sequence is now implemented and ready for testing once ESP-IDF is set up.
+All core hardware drivers (display, keyboard, touch, SD card) are implemented and working. Two built-in apps are available for testing.
 
 ## 🚀 Quick Start Commands
 
@@ -84,43 +84,49 @@ Watch real-time boot sequence and events.
 - **Missing components**: Run `idf.py fullclean` then `idf.py build`
 
 ### Boot Failures
-- **Display not available**: Normal for now - display driver needs completion
+- **Display not available**: Check LovyanGFX configuration and SPI pins
 - **Keyboard not detected**: Normal if BBQ20 not connected - non-fatal
 - **Filesystem failed**: Check SPIFFS partition in sdkconfig
+- **SD card not detected**: Check SD card insertion and formatting (FAT32)
 
 ### Expected Current Limitations
-- Display shows boot screen (needs completion)
-- Keyboard detected but no events yet (needs protocol implementation)
-- No apps available (dynamic loading needs implementation)
-- Event loop runs but no events generated yet
+- Dynamic app loading not yet implemented (built-in apps only)
+- Checkpoint serialization still stubbed
+- App switcher UI works but no app switching via key combos yet
 
 ## ✅ What Should Work Now
 
 1. **Build successfully** with ESP-IDF
 2. **Boot sequence** with detailed logging
-3. **Hardware detection** (display, keyboard, filesystem)
-4. **Graceful degradation** (continues without keyboard/display)
-5. **Serial monitoring** for debugging
+3. **Full hardware support** (display, keyboard, touch, SD card, filesystem)
+4. **Touch input** with coordinate mapping
+5. **Keyboard input** with modifier keys (Fn, Ctrl, Alt)
+6. **SD card** mounted at `/sdcard` with file operations
+7. **Text mode** display subsystem with colors and attributes
+8. **Two built-in apps**: key_echo and text_mode_demo
+9. **App launcher** (Ctrl+ESC) with keyboard navigation
+10. **Graceful degradation** (continues without keyboard/display)
+11. **Serial monitoring** for debugging
 
 ## 🔧 Next Development Steps
 
-Once boot is working:
-1. Complete display driver (ST7789 initialization)
-2. Implement keyboard I2C protocol
-3. Add basic app for testing
-4. Implement dynamic loading
+1. Implement dynamic app loading (dlopen)
+2. Create more apps
+3. Implement checkpoint serialization
 
 ## 📝 Boot Sequence Stages
 
 | Stage | Description | Current Status |
 |-------|-------------|----------------|
 | Power On | System start | ✅ Working |
-| Display Init | ST7789 SPI setup | ⚠️ Partial |
-| Hardware Init | GPIO/I2C/SPI drivers | ⚠️ Partial |
+| Display Init | ST7789 via LovyanGFX SPI | ✅ Working |
+| Hardware Init | GPIO/I2C/SPI drivers | ✅ Working |
 | Filesystem Init | SPIFFS mount | ✅ Working |
-| Keyboard Init | BBQ20 detection | ⚠️ Detection only |
-| App Loader Init | SD card scanning | 🔲 Stub |
-| Load Default App | Load first app | 🔲 Stub |
+| Keyboard Init | BBQ20 I2C detection | ✅ Working |
+| SD Card Init | SDSPI on VSPI bus | ✅ Working |
+| Touchscreen Init | XPT2046 GPIO bitbang | ✅ Working |
+| App Loader Init | Built-in apps loaded | ✅ Working |
+| Load Default App | key_echo app loaded | ✅ Working |
 | Complete | Enter event loop | ✅ Working |
 
 ## 🎯 Success Criteria
@@ -130,6 +136,9 @@ Current test passes if:
 - [x] Device boots and shows serial output
 - [x] Boot sequence completes with ✓ marks
 - [x] System enters main event loop
-- [ ] Display shows boot screen (pending)
-- [ ] Keyboard generates events (pending)
-- [ ] Apps can be loaded (pending)
+- [x] Display shows boot screen
+- [x] Keyboard generates events
+- [x] Touch generates events
+- [x] SD card mounts and reads/writes files
+- [x] Built-in apps load and run
+- [ ] Dynamic app loading (pending)
