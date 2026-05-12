@@ -248,6 +248,12 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
         return key_code;
     }
 
+    // Filter out modifier keys - they should not generate characters
+    if (key_code == BBQ20_KEY_FN || key_code == BBQ20_KEY_CTRL ||
+        key_code == BBQ20_KEY_ALT || key_code == BBQ20_KEY_FN2) {
+        return 0;  // Don't generate ASCII for modifier keys
+    }
+
     // BBQ20 keyboard sends ASCII directly (0x61 = 'a', 0x41 = 'A', etc.)
     // Check if it's a printable ASCII character
     if (key_code >= 32 && key_code <= 126) {
@@ -261,6 +267,12 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
     if (key_code == 41) return '\t';
     if (key_code == 42) return '\n';
     if (key_code == 43) return '\b';
+
+    // Filter out modifier keys first - they should never generate characters
+    if (key_code == BBQ20_KEY_FN || key_code == BBQ20_KEY_CTRL ||
+        key_code == BBQ20_KEY_ALT || key_code == BBQ20_KEY_FN2) {
+        return 0;
+    }
 
     // Fallback to BBQ10 key code mapping for non-ASCII keys
     // Key codes 4-29 are A-Z in BBQ10 protocol
@@ -314,8 +326,14 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
 
                     char ascii = bbq20_key_to_ascii(key_code, key_state);
                     if (ascii) {
-                        ESP_LOGI(TAG, "🎹 BBQ20 REAL key: %c (code:0x%02X state:0x%02X mods:0x%02X)",
-                                ascii, key_code, key_state, event->modifiers);
+                        // For control characters (0x00-0x1F), show them as '^X' format in logs
+                        if (ascii < 0x20) {
+                            ESP_LOGI(TAG, "🎹 BBQ20 REAL key: ^%c (code:0x%02X state:0x%02X mods:0x%02X)",
+                                    ascii + 0x40, key_code, key_state, event->modifiers);
+                        } else {
+                            ESP_LOGI(TAG, "🎹 BBQ20 REAL key: %c (code:0x%02X state:0x%02X mods:0x%02X)",
+                                    ascii, key_code, key_state, event->modifiers);
+                        }
                         event->key_code = ascii;
                         return true;
                     } else {

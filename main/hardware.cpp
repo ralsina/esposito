@@ -83,13 +83,17 @@ void display_draw_text(int x, int y, const char *text, uint16_t color) {
     tft.setCursor(x, y);
     tft.setTextColor(color, TFT_BLACK);  // Set background to black for better contrast
     tft.setFont(&spleen_5x8);  // Use spleen-5x8 font
-    tft.println(text);  // Use println to ensure text is rendered
-    tft.setFont(&fonts::Font0);  // Reset to default font
+    tft.print(text);  // Use print instead of println for better control
 }
 
 void display_draw_pixel(int x, int y, uint16_t color) {
     if (!display_initialized) return;
     tft.drawPixel(x, y, color);
+}
+
+void display_fill_rect(int x, int y, int width, int height, uint16_t color) {
+    if (!display_initialized) return;
+    tft.fillRect(x, y, width, height, color);
 }
 
 // Touch stubs

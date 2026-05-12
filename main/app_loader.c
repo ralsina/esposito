@@ -12,14 +12,11 @@ extern void app_checkpoint(app_context_t *ctx);
 extern void app_close(app_context_t *ctx);
 extern void app_event(app_context_t *ctx, event_t *event);
 
-// counter app
-extern void counter_app_init(app_context_t *ctx);
-extern void counter_app_checkpoint(app_context_t *ctx);
-extern void counter_app_close(app_context_t *ctx);
-extern void counter_app_event(app_context_t *ctx, event_t *event);
-
-// touch_probe app
-extern app_manifest_t app_manifest;
+// text_mode_demo app
+extern void text_mode_demo_app_init(app_context_t *ctx);
+extern void text_mode_demo_app_checkpoint(app_context_t *ctx);
+extern void text_mode_demo_app_close(app_context_t *ctx);
+extern void text_mode_demo_app_event(app_context_t *ctx, event_t *event);
 
 bool app_loader_init(void) {
     ESP_LOGI(TAG, "App loader initialized");
@@ -32,12 +29,9 @@ int app_loader_scan(char (*app_names)[64], int max_apps) {
         strcpy(app_names[0], "key_echo");
     }
     if (max_apps >= 2) {
-        strcpy(app_names[1], "counter");
+        strcpy(app_names[1], "text_mode_demo");
     }
-    if (max_apps >= 3) {
-        strcpy(app_names[2], "touch_probe");
-    }
-    return 3;
+    return 2;
 }
 
 bool app_loader_load(const char *app_name) {
@@ -83,16 +77,16 @@ bool app_loader_load(const char *app_name) {
         return true;
     }
 
-    // Load the built-in counter app
-    if (strcmp(app_name, "counter") == 0) {
-        ESP_LOGI(TAG, "🔧 Loading built-in counter app");
+    // Load the built-in text_mode_demo app
+    if (strcmp(app_name, "text_mode_demo") == 0) {
+        ESP_LOGI(TAG, "🔧 Loading built-in text_mode_demo app");
 
         // Set up the app context
-        strcpy(ctx->name, "counter");
-        ctx->init = counter_app_init;
-        ctx->checkpoint = counter_app_checkpoint;
-        ctx->close = counter_app_close;
-        ctx->event_fn = counter_app_event;
+        strcpy(ctx->name, "text_mode_demo");
+        ctx->init = text_mode_demo_app_init;
+        ctx->checkpoint = text_mode_demo_app_checkpoint;
+        ctx->close = text_mode_demo_app_close;
+        ctx->event_fn = text_mode_demo_app_event;
         ctx->subscriptions = EVENT_KEYBOARD;
         ctx->timer_interval_ms = 0;
         ctx->user_data = NULL;
@@ -101,29 +95,7 @@ bool app_loader_load(const char *app_name) {
 
         // Initialize the app
         ctx->init(ctx);
-        ESP_LOGI(TAG, "✅ counter app loaded and initialized");
-        return true;
-    }
-
-    // Load the built-in touch_probe app
-    if (strcmp(app_name, "touch_probe") == 0) {
-        ESP_LOGI(TAG, "🔧 Loading built-in touch_probe app");
-
-        // Set up the app context
-        strcpy(ctx->name, "touch_probe");
-        ctx->init = app_manifest.init;
-        ctx->checkpoint = app_manifest.checkpoint;
-        ctx->close = app_manifest.close;
-        ctx->event_fn = app_manifest.event_fn;
-        ctx->subscriptions = app_manifest.subscriptions;
-        ctx->timer_interval_ms = 0;
-        ctx->user_data = NULL;
-
-        ESP_LOGI(TAG, "🔧 App context configured, calling init function at %p", (void*)ctx->init);
-
-        // Initialize the app
-        ctx->init(ctx);
-        ESP_LOGI(TAG, "✅ touch_probe app loaded and initialized");
+        ESP_LOGI(TAG, "✅ text_mode_demo app loaded and initialized");
         return true;
     }
 
@@ -132,5 +104,5 @@ bool app_loader_load(const char *app_name) {
 }
 
 int app_loader_get_count(void) {
-    return 3; // Three built-in apps
+    return 2; // Two built-in apps
 }

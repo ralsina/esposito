@@ -29,7 +29,11 @@
       "Bash(git checkout *)",
       "Bash(git reset *)",
       "Bash(timeout 5s cat /dev/ttyUSB0)",
-      "Bash(git clone *)"
+      "Bash(git clone *)",
+      "Bash(./build.sh *)",
+      "Bash(xargs cat *)",
+      "Bash(xtensa-esp32-elf-size *)",
+      "Bash(python3 -m esptool --chip esp32 --before default_reset --after hard_reset write_flash)"
     ]
   }
 }

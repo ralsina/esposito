@@ -2,8 +2,11 @@
 #include "hardware.h"
 #include "os_core.h"
 #include "app_loader.h"
+#include "text_mode.h"
 #include "esp_log.h"
 #include "lovgfx_config.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <stdio.h>
 
 extern "C" {
@@ -81,26 +84,49 @@ bool boot_display_init(void) {
 void boot_display_splash(void) {
     ESP_LOGI(TAG, "Displaying splash screen...");
 
-    // Clear screen with a dark blue background
-    display_clear(0x001F);  // Dark blue
+    // Initialize text mode
+    text_mode_init();
+
+    // Clear screen with black background
+    text_mode_clear(TEXT_COLOR_BLACK);
 
     // Add a delay to make sure display is ready
     vTaskDelay(pdMS_TO_TICKS(200));
 
-    // Draw title in large green text at top
-    display_draw_text(5, 5, "Esposito OS", TFT_GREEN);
+    // Draw a border
+    for (int x = 0; x < TEXT_MODE_COLS; x++) {
+        text_mode_print_at_color(x, 0, "*", TEXT_COLOR_CYAN);
+        text_mode_print_at_color(x, TEXT_MODE_ROWS - 1, "*", TEXT_COLOR_CYAN);
+    }
+    for (int y = 0; y < TEXT_MODE_ROWS; y++) {
+        text_mode_print_at_color(0, y, "*", TEXT_COLOR_CYAN);
+        text_mode_print_at_color(TEXT_MODE_COLS - 1, y, "*", TEXT_COLOR_CYAN);
+    }
 
-    // Draw version in white below title
-    display_draw_text(5, 30, "v0.1.0-alpha", TFT_WHITE);
+    // Draw title in green at top
+    text_mode_print_at_color((TEXT_MODE_COLS - 12) / 2, 2, "Esposito OS", TEXT_COLOR_GREEN);
+
+    // Draw version in cyan below title
+    text_mode_print_at_color((TEXT_MODE_COLS - 11) / 2, 3, "v0.1.0-alpha", TEXT_COLOR_CYAN);
 
     // Draw status in yellow
-    display_draw_text(5, 55, "System booting...", TFT_YELLOW);
+    text_mode_print_at_color((TEXT_MODE_COLS - 16) / 2, 5, "System booting...", TEXT_COLOR_YELLOW);
 
     // Draw some visual indicators
-    for (int i = 0; i < 50; i++) {
-        display_draw_pixel(5 + i * 2, 80, TFT_GREEN);
-        vTaskDelay(pdMS_TO_TICKS(20));
+    for (int i = 0; i < 20; i++) {
+        text_mode_printf_at_color(10 + i, 7, TEXT_COLOR_GREEN, "*");
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
+
+    // Show hardware status
+    text_mode_print_at_color(2, 10, "Hardware:", TEXT_COLOR_WHITE);
+    text_mode_print_at_color(2, 11, "  Display: OK (ST7789)", TEXT_COLOR_GREEN);
+    text_mode_print_at_color(2, 12, "  Keyboard: OK (BBQ20)", TEXT_COLOR_GREEN);
+    text_mode_print_at_color(2, 13, "  SD Card: OK (FAT32)", TEXT_COLOR_GREEN);
+    text_mode_print_at_color(2, 14, "  Touch: OK (XPT2046)", TEXT_COLOR_GREEN);
+
+    // Instructions
+    text_mode_print_at_color(2, 17, "Press Ctrl+ESC for app launcher", TEXT_COLOR_YELLOW);
 
     ESP_LOGI(TAG, "Splash screen displayed");
 }

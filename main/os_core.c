@@ -1,5 +1,6 @@
 #include "os_core.h"
 #include "app_loader.h"
+#include "app_launcher.h"
 #include "hardware.h"
 #include "touchscreen.h"
 #include "esp_log.h"
@@ -10,74 +11,6 @@
 #include <stdlib.h>
 
 static const char *TAG = "os_core";
-
-// App launcher/switcher
-static bool app_launcher_active = false;
-static int app_launcher_selected = 0;
-
-static void app_launcher_show(void) {
-    char app_names[3][64];
-    int app_count = app_loader_scan(app_names, 3);
-
-    // Clear screen and show launcher
-    display_clear(0x001F); // Blue background
-    display_draw_text(5, 5, "App Launcher", 0xFFFF); // White title
-    display_draw_text(5, 25, "W/S: up/down", 0xFFE0); // Yellow instructions
-    display_draw_text(5, 45, "Enter: launch", 0xFFE0); // Yellow instructions
-    display_draw_text(5, 65, "ESC: cancel", 0xFFE0); // Yellow instructions
-
-    // Show available apps
-    int y = 95;
-    for (int i = 0; i < app_count; i++) {
-        uint16_t color = (i == app_launcher_selected) ? 0x07E0 : 0xFFFF; // Green for selected, white otherwise
-        char prefix[] = {(i == app_launcher_selected) ? '>' : ' ', '\0'};
-        char buf[80]; // Larger buffer to avoid truncation warning
-        snprintf(buf, sizeof(buf), "%s %s", prefix, app_names[i]);
-        display_draw_text(10, y, buf, color);
-        y += 20;
-    }
-
-    ESP_LOGI(TAG, "App launcher shown, %d apps available", app_count);
-}
-
-static void app_launcher_handle_key(char key) {
-    char app_names[3][64];
-    int app_count = app_loader_scan(app_names, 3);
-
-    switch (key) {
-        case 'w':
-        case 'W':
-            // Move up (previous app)
-            app_launcher_selected = (app_launcher_selected - 1 + app_count) % app_count;
-            app_launcher_show();
-            break;
-
-        case 's':
-        case 'S':
-            // Move down (next app)
-            app_launcher_selected = (app_launcher_selected + 1) % app_count;
-            app_launcher_show();
-            break;
-
-        case '\n':
-        case '\r':
-            // Launch selected app
-            ESP_LOGI(TAG, "Launching app: %s", app_names[app_launcher_selected]);
-            app_launcher_active = false;
-            os_load_app(app_names[app_launcher_selected]);
-            break;
-
-        case 27: // ESC
-            // Cancel launcher, return to current app
-            ESP_LOGI(TAG, "Launcher cancelled");
-            app_launcher_active = false;
-            break;
-
-        default:
-            // Ignore other keys
-            break;
-    }
-}
 
 #define MAX_EVENTS 32
 #define EVENT_QUEUE_SIZE 32
@@ -251,15 +184,13 @@ void os_event_loop(void) {
                 event.keyboard.key == 27 &&  // ESC key
                 (event.keyboard.modifiers & 0x02)) {  // Ctrl modifier (bit 1)
                 ESP_LOGI(TAG, "Launcher activated (Ctrl+ESC)");
-                app_launcher_active = true;
-                app_launcher_selected = 0;
-                app_launcher_show();
+                app_launcher_start();
                 continue;
             }
 
             // If launcher is active, handle keys there
-            if (app_launcher_active && event.type == EVENT_KEYBOARD && event.keyboard.pressed) {
-                app_launcher_handle_key(event.keyboard.key);
+            if (app_launcher_is_active()) {
+                app_launcher_handle_event(&event);
                 continue;
             }
 
