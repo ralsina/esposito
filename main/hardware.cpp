@@ -105,6 +105,11 @@ bool keyboard_init(void) {
     }
 }
 
+void keyboard_deinit(void) {
+    bbq20_keyboard_deinit();
+    keyboard_initialized = false;
+}
+
 bool keyboard_read_event(event_t *event) {
     static bool first_call = true;
 

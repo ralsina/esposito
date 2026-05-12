@@ -98,6 +98,22 @@ static esp_err_t bbq20_read_reg(uint8_t reg, uint8_t *data, size_t len) {
     return ret;
 }
 
+void bbq20_keyboard_deinit(void) {
+    if (i2c_device) {
+        i2c_master_bus_rm_device(i2c_device);
+        i2c_device = NULL;
+    }
+    if (i2c_bus) {
+        i2c_del_master_bus(i2c_bus);
+        i2c_bus = NULL;
+    }
+    fn_pressed = false;
+    fn2_pressed = false;
+    ctrl_pressed = false;
+    alt_pressed = false;
+    bbq20_initialized = false;
+}
+
 bool bbq20_keyboard_init(void) {
     // Already initialized, return success
     if (bbq20_initialized) {
@@ -172,6 +188,7 @@ bool bbq20_keyboard_init(void) {
                 ESP_LOGI(TAG, "✅ Found I2C device at 0x%02X! FW version: 0x%02X", test_addr, fw_version);
 
                 if (test_addr == BBQ20_I2C_ADDR) {
+                    i2c_master_bus_rm_device(test_device);
                     device_found = true;
                     bbq20_initialized = true;
                     break;

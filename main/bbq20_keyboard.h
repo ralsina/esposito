@@ -21,6 +21,9 @@ typedef struct {
 // Initialize BBQ20 keyboard (I2C or fallback to fake keyboard)
 bool bbq20_keyboard_init(void);
 
+// Deinitialize BBQ20 keyboard (tears down I2C bus)
+void bbq20_keyboard_deinit(void);
+
 // Read key events from BBQ20 keyboard (real or fake fallback)
 bool bbq20_read_key_event(bbq20_key_event_t *event);
 

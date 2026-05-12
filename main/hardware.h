@@ -29,6 +29,7 @@ void display_fill_rect(int x, int y, int width, int height, uint16_t color);
 
 // Keyboard functions
 bool keyboard_init(void);
+void keyboard_deinit(void);
 bool keyboard_read_event(event_t *event);
 
 // Timer functions

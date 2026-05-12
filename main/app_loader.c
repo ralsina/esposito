@@ -3,6 +3,7 @@
 #include "elf_loader.h"
 #include "sd_card.h"
 #include "checkpoint.h"
+#include "hardware.h"
 #include "esp_log.h"
 #include <string.h>
 #include <dirent.h>
@@ -92,6 +93,10 @@ bool app_loader_load(const char *app_name) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 0;
     ctx->user_data = NULL;
+
+    // Reset keyboard after flash operations to recover I2C bus
+    keyboard_deinit();
+    keyboard_init();
 
     if (!ctx->init) {
         ESP_LOGE(TAG, "ELF missing app_init entry point");
