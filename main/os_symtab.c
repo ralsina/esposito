@@ -3,6 +3,7 @@
 #include "hardware.h"
 #include "checkpoint.h"
 #include "text_mode.h"
+#include "wifi.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -59,6 +60,15 @@ static const os_symtab_entry_t symtab[] = {
     {"os_log",                  os_log},
     {"serial_init",             serial_init},
     {"serial_write",            serial_write},
+    {"wifi_init",               wifi_init},
+    {"wifi_is_connected",       wifi_is_connected},
+    {"wifi_get_ip",             wifi_get_ip},
+    {"wifi_scan",               wifi_scan},
+    {"wifi_scan_get_ssid",      wifi_scan_get_ssid},
+    {"wifi_scan_get_rssi",      wifi_scan_get_rssi},
+    {"wifi_connect",            wifi_connect},
+    {"wifi_disconnect",         wifi_disconnect},
+    {"wifi_save_config",        wifi_save_config},
     {NULL, NULL}
 };
 

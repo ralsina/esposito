@@ -67,6 +67,15 @@ SYMBOLS=(
     os_log
     serial_init
     serial_write
+    wifi_init
+    wifi_is_connected
+    wifi_get_ip
+    wifi_scan
+    wifi_scan_get_ssid
+    wifi_scan_get_rssi
+    wifi_connect
+    wifi_disconnect
+    wifi_save_config
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"

@@ -12,6 +12,7 @@ idf_component_register(
         "sd_card.c"
         "touchscreen.c"
         "text_mode.cpp"
+        "wifi.cpp"
     INCLUDE_DIRS "." ".."
-    REQUIRES driver esp_app_format esp_common esp_hw_support esp_system heap log pthread xtensa spiffs esp_driver_spi cxx esp_driver_i2c esp_driver_sdspi esp_driver_uart fatfs wear_levelling
+    REQUIRES driver esp_app_format esp_common esp_hw_support esp_system heap log pthread xtensa spiffs esp_driver_spi cxx esp_driver_i2c esp_driver_sdspi esp_driver_uart fatfs wear_levelling esp_wifi esp_netif nvs_flash esp_event
 )

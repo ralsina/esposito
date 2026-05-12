@@ -13,6 +13,7 @@
 extern "C" {
     #include "sd_card.h"
     #include "touchscreen.h"
+    #include "wifi.h"
 }
 
 static const char *TAG = "boot";
@@ -182,7 +183,17 @@ void boot_sequence(void) {
         // Continue anyway - SD card is optional
     }
 
-    // Stage 4.6: Touchscreen
+    // Stage 4.6: WiFi
+    boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting WiFi init");
+
+    if (wifi_init()) {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "WiFi ready");
+    } else {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "WiFi not available");
+        // Continue anyway - WiFi is optional
+    }
+
+    // Stage 4.7: Touchscreen
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting touchscreen init");
 
     if (touchscreen_init()) {
