@@ -15,17 +15,41 @@ extern "C" {
 #define TEXT_MODE_CHAR_WIDTH  5
 #define TEXT_MODE_CHAR_HEIGHT 8
 
-// Text mode colors (matching TFT colors)
+// Text mode colors (16 color palette - CGA/EGA style)
 typedef enum {
-    TEXT_COLOR_BLACK = 0x0000,
-    TEXT_COLOR_WHITE = 0xFFFF,
-    TEXT_COLOR_RED = 0xF800,
-    TEXT_COLOR_GREEN = 0x07E0,
-    TEXT_COLOR_BLUE = 0x001F,
-    TEXT_COLOR_YELLOW = 0xFFE0,
-    TEXT_COLOR_CYAN = 0x07FF,
-    TEXT_COLOR_MAGENTA = 0xF81F,
+    TEXT_COLOR_BLACK = 0,
+    TEXT_COLOR_BLUE = 1,
+    TEXT_COLOR_GREEN = 2,
+    TEXT_COLOR_CYAN = 3,
+    TEXT_COLOR_RED = 4,
+    TEXT_COLOR_MAGENTA = 5,
+    TEXT_COLOR_YELLOW = 6,
+    TEXT_COLOR_WHITE = 7,
+    TEXT_COLOR_BRIGHT_BLACK = 8,
+    TEXT_COLOR_BRIGHT_BLUE = 9,
+    TEXT_COLOR_BRIGHT_GREEN = 10,
+    TEXT_COLOR_BRIGHT_CYAN = 11,
+    TEXT_COLOR_BRIGHT_RED = 12,
+    TEXT_COLOR_BRIGHT_MAGENTA = 13,
+    TEXT_COLOR_BRIGHT_YELLOW = 14,
+    TEXT_COLOR_BRIGHT_WHITE = 15,
 } text_color_t;
+
+// Text attributes
+typedef enum {
+    TEXT_ATTR_NORMAL = 0,
+    TEXT_ATTR_BOLD = 1,
+    TEXT_ATTR_ITALIC = 2,
+    TEXT_ATTR_UNDERLINE = 4,
+    TEXT_ATTR_INVERSE = 8,
+} text_attribute_t;
+
+// Cell data structure (combines char, color, and attributes)
+typedef struct {
+    char character;
+    uint8_t color;       // 4 bits for color (0-15)
+    uint8_t attributes;  // 4 bits for attributes (bold, italic, etc.)
+} text_cell_t;
 
 // Initialize text mode
 bool text_mode_init(void);
@@ -45,6 +69,10 @@ void text_mode_printf_at(int x, int y, const char *fmt, ...);
 
 // Print formatted string at grid position with color
 void text_mode_printf_at_color(int x, int y, uint16_t color, const char *fmt, ...);
+
+// Print with attributes
+void text_mode_print_at_attr(int x, int y, const char *str, uint8_t color, uint8_t attributes);
+void text_mode_printf_at_attr(int x, int y, uint8_t color, uint8_t attributes, const char *fmt, ...);
 
 // Get current cursor position
 void text_mode_get_cursor(int *x, int *y);
