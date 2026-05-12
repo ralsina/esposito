@@ -63,6 +63,7 @@ SYMBOLS=(
     atoi
     atol
     abs
+    os_log
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"

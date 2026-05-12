@@ -1,8 +1,9 @@
 # Esposito OS - Testing Guide
 
-## ✅ Current State: All Hardware Working
+## ✅ Current State: All Hardware + Dynamic Loading Working
 
-All core hardware drivers (display, keyboard, touch, SD card) are implemented and working. Two built-in apps are available for testing.
+All core hardware drivers (display, keyboard, touch, SD card) are implemented and working.
+Apps are dynamically loaded from SD card as standalone ELF binaries.
 
 ## 🚀 Quick Start Commands
 
@@ -53,7 +54,8 @@ I (xxx) boot: ║     BOOT SEQUENCE COMPLETE            ║
 I (xxx) boot: ╚═══════════════════════════════════════╝
 
 I (xxx) boot: ✓ System ready
-I (xxx) boot: Available apps: 0
+I (xxx) boot: Available apps: 2  (or however many are on SD)
+I (xxx) app_loader: Found 2 app(s) on SD card
 I (xxx) esposito: Starting main event loop...
 ```
 
@@ -83,16 +85,19 @@ Watch real-time boot sequence and events.
 - **ESP-IDF not found**: Make sure you sourced the export.sh script
 - **Missing components**: Run `idf.py fullclean` then `idf.py build`
 
+### App ELF Not on SD Card
+- If the launcher shows "No apps available!", the SD card may not have apps copied yet
+- Run `make test` or manually copy `build/apps/*/*.elf` to the SD card
+
 ### Boot Failures
 - **Display not available**: Check LovyanGFX configuration and SPI pins
 - **Keyboard not detected**: Normal if BBQ20 not connected - non-fatal
 - **Filesystem failed**: Check SPIFFS partition in sdkconfig
 - **SD card not detected**: Check SD card insertion and formatting (FAT32)
 
-### Expected Current Limitations
-- Dynamic app loading not yet implemented (built-in apps only)
+### Known Limitations
 - Checkpoint serialization still stubbed
-- App switcher UI works but no app switching via key combos yet
+- App launcher doesn't refresh if SD card is hot-swapped
 
 ## ✅ What Should Work Now
 
@@ -103,16 +108,15 @@ Watch real-time boot sequence and events.
 5. **Keyboard input** with modifier keys (Fn, Ctrl, Alt)
 6. **SD card** mounted at `/sdcard` with file operations
 7. **Text mode** display subsystem with colors and attributes
-8. **Two built-in apps**: key_echo and text_mode_demo
+8. **Dynamic app loading**: ELF apps loaded from SD card
 9. **App launcher** (Ctrl+ESC) with keyboard navigation
 10. **Graceful degradation** (continues without keyboard/display)
 11. **Serial monitoring** for debugging
 
 ## 🔧 Next Development Steps
 
-1. Implement dynamic app loading (dlopen)
-2. Create more apps
-3. Implement checkpoint serialization
+1. Create more apps
+2. Implement checkpoint serialization
 
 ## 📝 Boot Sequence Stages
 
@@ -125,8 +129,8 @@ Watch real-time boot sequence and events.
 | Keyboard Init | BBQ20 I2C detection | ✅ Working |
 | SD Card Init | SDSPI on VSPI bus | ✅ Working |
 | Touchscreen Init | XPT2046 GPIO bitbang | ✅ Working |
-| App Loader Init | Built-in apps loaded | ✅ Working |
-| Load Default App | key_echo app loaded | ✅ Working |
+| App Loader Init | SD card app scanning | ✅ Working |
+| Load Default App | key_echo from SD card | ✅ Working |
 | Complete | Enter event loop | ✅ Working |
 
 ## 🎯 Success Criteria
@@ -140,5 +144,4 @@ Current test passes if:
 - [x] Keyboard generates events
 - [x] Touch generates events
 - [x] SD card mounts and reads/writes files
-- [x] Built-in apps load and run
-- [ ] Dynamic app loading (pending)
+- [x] Dynamic app loading from SD card

@@ -3,8 +3,6 @@
 
 #include "os_core.h"
 #include "text_mode.h"
-#include "hardware.h"
-#include "esp_log.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -13,12 +11,12 @@ static const char *TAG = "text_mode_demo";
 // App state
 static int counter = 0;
 
-void text_mode_demo_app_init(app_context_t *ctx) {
-    ESP_LOGI(TAG, "Text Mode Demo initializing");
+void app_init(app_context_t *ctx) {
+    os_log(TAG, "Text Mode Demo initializing");
 
     // Initialize text mode
     if (!text_mode_init()) {
-        ESP_LOGE(TAG, "Failed to initialize text mode");
+        os_log(TAG, "Failed to initialize text mode");
         return;
     }
 
@@ -68,25 +66,25 @@ void text_mode_demo_app_init(app_context_t *ctx) {
     text_mode_print_at_attr(5, 28, "Bold+Under+Inverse!", TEXT_COLOR_BRIGHT_RED, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE | TEXT_ATTR_INVERSE);
 
     counter = 0;
-    ESP_LOGI(TAG, "Text Mode Demo initialized with rich text attributes");
+    os_log(TAG, "Text Mode Demo initialized with rich text attributes");
 }
 
-void text_mode_demo_app_checkpoint(app_context_t *ctx) {
+void app_checkpoint(app_context_t *ctx) {
     // Save counter state
     checkpoint_save_int("counter", counter);
 
     // Let text mode save its state
     text_mode_save();
 
-    ESP_LOGI(TAG, "Text Mode Demo state saved");
+    os_log(TAG, "Text Mode Demo state saved");
 }
 
-void text_mode_demo_app_close(app_context_t *ctx) {
-    ESP_LOGI(TAG, "Text Mode Demo cleanup");
+void app_close(app_context_t *ctx) {
+    os_log(TAG, "Text Mode Demo cleanup");
     text_mode_clear(TEXT_COLOR_BLACK);
 }
 
-void text_mode_demo_app_event(app_context_t *ctx, event_t *event) {
+void app_event(app_context_t *ctx, event_t *event) {
     if (event->type == EVENT_KEYBOARD) {
         if (event->keyboard.pressed) {
             char key = event->keyboard.key;
@@ -121,7 +119,7 @@ void text_mode_demo_app_event(app_context_t *ctx, event_t *event) {
                                         key > 32 && key < 127 ? key : '?', key);
             }
 
-            ESP_LOGI(TAG, "Key pressed: %c (0x%02X), counter: %d, mods: 0x%02X",
+            os_log(TAG, "Key pressed: %c (0x%02X), counter: %d, mods: 0x%02X",
                      key > 32 && key < 127 ? key : '?', key, counter, event->keyboard.modifiers);
         }
     }

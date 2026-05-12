@@ -205,7 +205,7 @@ void boot_sequence(void) {
     boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, "Loading default app");
 
     // Load the default app
-    if (os_load_app("example_app")) {
+    if (os_load_app("key_echo")) {
         ESP_LOGI(TAG, "key_echo app loaded successfully");
         boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, "key_echo app loaded");
     } else {

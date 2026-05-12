@@ -14,12 +14,7 @@
 - **Filesystem**: SPIFFS integration for state storage
 - **Checkpoint System**: Basic framework for app state persistence
 - **Hardware Abstraction**: Display (LovyanGFX/ST7789), touch (XPT2046 GPIO bitbang), keyboard (BBQ20 I2C), SD card (SDSPI), timer, serial
-
-### Example App
-- Hello World app demonstrating the interface
-- Touch event handling
-- Timer events
-- State checkpoint functionality
+- **Dynamic App Loading**: ELF loader with symbol table resolution, apps loaded from SD card as standalone ELF binaries
 
 ## 🔨 Current Status
 
@@ -35,18 +30,17 @@ The project has all core hardware drivers implemented and working on real hardwa
 - BBQ20 keyboard (I2C with modifier keys)
 - Display (LovyanGFX/ST7789, text mode subsystem)
 - Text mode (64x30 grid, 16 colors, attributes)
+- Dynamic ELF app loading from SD card
+- SD card file operations (list, read, write)
 
 ### What Needs Implementation
-- **Dynamic Loading**: dlopen/dlsym for app libraries (.so files)
 - **App Switcher**: Key combo detection and UI
 - **Checkpoint Serialization**: JSON or binary format for state storage
 
 ## 🚀 Next Steps
 
-1. **Implement Dynamic Loading**: Add dlopen support for loading .so app libraries
-2. **Create More Apps**: Demonstrate app switching capabilities
-3. **App Switcher**: Key combo detection and UI
-4. **Build & Test**: Compile and flash to actual hardware
+1. **Create More Apps**: Demonstrate app switching capabilities
+2. **App Switcher**: Key combo detection and UI
 
 ## 📋 Technical Notes
 

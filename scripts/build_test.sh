@@ -1,15 +1,10 @@
 #!/bin/bash
-# Build firmware + test app, copy to SD card, flash
-# Usage: build_test.sh [app_name] [app_source]
+# Build firmware + all app ELFs, copy to SD card, flash
+# Usage: build_test.sh
 
 set -e
 
-APP_NAME="${1:-example_app}"
-APP_SRC="${2:-apps/$APP_NAME/app.c}"
 SD_MOUNT="${SD_MOUNT:-/run/media/ralsina/ESPRESSIF}"
-BOOT_CPP="main/boot.cpp"
-FIRMWARE_ELF="build/esposito.elf"
-BOOT_CPP_BAK="build/boot.cpp.bak"
 
 if [ ! -d "$SD_MOUNT" ]; then
     echo "SD card mount point $SD_MOUNT not found."
@@ -18,56 +13,49 @@ if [ ! -d "$SD_MOUNT" ]; then
     exit 1
 fi
 
-if [ ! -f "$APP_SRC" ]; then
-    echo "Source not found: $APP_SRC"
-    echo "Usage: $0 [app_name] [app_source]"
-    echo "  app_name  - directory under apps/ (default: example_app)"
-    echo "  app_source - path to app.c (default: apps/<app_name>/app.c)"
-    exit 1
-fi
-
-# --- Step 1: Back up and patch boot.cpp ---
-echo "=== Patching boot.cpp to load '$APP_NAME' ==="
-cp "$BOOT_CPP" "$BOOT_CPP_BAK"
-sed -i "s/os_load_app(\"[^\"]*\")/os_load_app(\"$APP_NAME\")/" "$BOOT_CPP"
-
-# --- Step 2: Build firmware ---
+# Step 1: Build firmware
 echo "=== Building firmware ==="
+. /opt/esp-idf/export.sh
 idf.py build
 
-# --- Step 3: Generate OS symbol table ---
+# Step 2: Generate OS symbol table
 echo "=== Generating OS symbol table ==="
-scripts/gen_symtab.sh "$FIRMWARE_ELF" build/os_symbols.ld
+scripts/gen_symtab.sh build/esposito.elf build/os_symbols.ld
 
-# --- Step 4: Build app ELF (output named after directory) ---
-echo "=== Building app ELF ==="
-scripts/build_app.sh "$APP_SRC"
+# Step 3: Build all app ELFs
+echo "=== Building app ELFs ==="
+mkdir -p build/apps
+for app_dir in apps/*/; do
+    app_name=$(basename "$app_dir")
+    app_src="${app_dir}app.c"
+    if [ -f "$app_src" ]; then
+        echo "  Building $app_name..."
+        scripts/build_app.sh "$app_src" build/apps
+    fi
+done
 
-# --- Step 5: Copy to SD card ---
-echo "=== Copying to SD card ==="
-APP_ELF="build/apps/${APP_NAME}.elf"
-mkdir -p "$SD_MOUNT/apps/${APP_NAME}"
-cp "$APP_ELF" "$SD_MOUNT/apps/${APP_NAME}/program.elf"
+# Step 4: Copy all apps to SD card
+echo "=== Copying apps to SD card ==="
+for app_elf in build/apps/*.elf; do
+    app_name=$(basename "$app_elf" .elf)
+    mkdir -p "$SD_MOUNT/apps/${app_name}"
+    cp "$app_elf" "$SD_MOUNT/apps/${app_name}/program.elf"
+    echo "  Copied $app_name"
+done
 sync
-echo "Copied $APP_ELF -> $SD_MOUNT/apps/${APP_NAME}/program.elf"
-
-# --- Step 6: Restore boot.cpp ---
-echo "=== Restoring boot.cpp ==="
-cp "$BOOT_CPP_BAK" "$BOOT_CPP"
-rm -f "$BOOT_CPP_BAK"
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
-echo "║  SD card ready at: $SD_MOUNT  ║"
+echo "║  Apps copied to SD card at: $SD_MOUNT  ║"
 echo "║                                                  ║"
 echo "║  Remove the SD card, insert it into the device.  ║"
 echo "║  Press ENTER when ready to flash the firmware.   ║"
 echo "╚══════════════════════════════════════════════════╝"
 read -r
 
-# --- Step 7: Flash ---
+# Step 5: Flash
 echo "=== Flashing firmware ==="
 idf.py flash
 
 echo ""
-echo "Done! The device will boot and load '$APP_NAME' from SD card."
+echo "Done! All apps on SD card will be available in the launcher."

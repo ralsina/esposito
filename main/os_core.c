@@ -11,8 +11,16 @@
 #include "freertos/task.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 static const char *TAG = "os_core";
+
+void os_log(const char *tag, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    esp_log_writev(ESP_LOG_INFO, tag, fmt, args);
+    va_end(args);
+}
 
 #define MAX_EVENTS 32
 #define EVENT_QUEUE_SIZE 32

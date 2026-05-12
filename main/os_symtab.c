@@ -55,6 +55,7 @@ static const os_symtab_entry_t symtab[] = {
     {"atoi",                    atoi},
     {"atol",                    atol},
     {"abs",                     abs},
+    {"os_log",                  os_log},
     {NULL, NULL}
 };
 
