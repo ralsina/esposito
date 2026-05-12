@@ -143,8 +143,17 @@ void app_launcher_start(void) {
         return;
     }
 
-    // Reset selection
+    // Start with current app selected, if found
+    app_context_t *current = os_get_current_app();
     app_launcher_selected = 0;
+    if (current) {
+        for (int i = 0; i < app_count; i++) {
+            if (strcmp(app_names[i], current->name) == 0) {
+                app_launcher_selected = i;
+                break;
+            }
+        }
+    }
     previous_selected = -1; // Force first render
     app_launcher_active = true;
 

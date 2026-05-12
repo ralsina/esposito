@@ -25,20 +25,38 @@ static const char *find_key(const char *key) {
     return NULL;
 }
 
+// Return the total used bytes in checkpoint_data (including final double-null)
+static size_t used_size(void) {
+    char *p = checkpoint_data;
+    size_t total = 0;
+    while (*p) {
+        total += strlen(p) + 1;
+        p += strlen(p) + 1;
+    }
+    return total + 1;
+}
+
 // Replace or append a key=value entry
 static void set_key(const char *key, const char *value) {
     size_t klen = strlen(key);
     size_t vlen = strlen(value);
-    size_t entry_len = klen + 1 + vlen;  // key=value (no null)
+    size_t entry_len = klen + 1 + vlen;
 
-    // Try to replace existing entry
     char *p = checkpoint_data;
     while (*p) {
         if (strncmp(p, key, klen) == 0 && p[klen] == '=') {
             size_t old_len = strlen(p);
-            if (entry_len <= old_len) {
-                memmove(p + entry_len + 1, p + old_len + 1,
-                        (checkpoint_data + MAX_CHECKPOINT_SIZE) - (p + old_len + 1));
+            long delta = (long)entry_len - (long)old_len;
+            char *next = p + old_len + 1;
+            size_t tail_bytes = used_size() - (next - checkpoint_data);
+
+            if (delta > 0 && used_size() + delta > MAX_CHECKPOINT_SIZE) {
+                ESP_LOGW(TAG, "Checkpoint buffer full");
+                return;
+            }
+
+            if (delta != 0) {
+                memmove(p + entry_len + 1, next, tail_bytes);
             }
             memcpy(p, key, klen);
             p[klen] = '=';
@@ -49,7 +67,6 @@ static void set_key(const char *key, const char *value) {
         p += strlen(p) + 1;
     }
 
-    // Append at end
     size_t used = p - checkpoint_data;
     if (used + entry_len + 2 > MAX_CHECKPOINT_SIZE) {
         ESP_LOGW(TAG, "Checkpoint buffer full");
