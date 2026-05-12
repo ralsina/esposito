@@ -2,6 +2,7 @@
 #include "hardware.h"
 #include "os_core.h"
 #include "app_loader.h"
+#include "app_launcher.h"
 #include "text_mode.h"
 #include "esp_log.h"
 #include "lovgfx_config.h"
@@ -201,17 +202,10 @@ void boot_sequence(void) {
     }
     boot_display_progress(BOOT_STAGE_APP_LOADER_INIT, true, "App loader ready");
 
-    // Stage 6: Load default app
-    boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, "Loading default app");
+    // Stage 6: Show launcher
+    boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, "Starting app launcher");
 
-    // Load the default app
-    if (os_load_app("key_echo")) {
-        ESP_LOGI(TAG, "key_echo app loaded successfully");
-        boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, "key_echo app loaded");
-    } else {
-        ESP_LOGW(TAG, "Failed to load key_echo app");
-        boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, false, "App load failed");
-    }
+    app_launcher_start();
 
     // For now, just say we're ready
     ESP_LOGI(TAG, "");

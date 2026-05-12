@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+static const char *TAG = "key_echo";
+
 // Display position for echo
 static int display_x = 0;
 static int display_y = 0;
@@ -14,8 +16,7 @@ static int current_line = 0;
 static int current_col = 0;
 
 void app_init(app_context_t *ctx) {
-    printf("🎹 KEY_ECHO APP_INIT called\n");
-    printf("🎹 Initial subscriptions: 0x%lX\n", (unsigned long)ctx->subscriptions);
+    os_log(TAG, "Key Echo init, subscriptions: 0x%lX", (unsigned long)ctx->subscriptions);
 
     // Initialize display buffer
     memset(display_buffer, 0, sizeof(display_buffer));
@@ -23,12 +24,6 @@ void app_init(app_context_t *ctx) {
     // Subscribe to keyboard AND touch events
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 0; // No timer needed
-
-    printf("🎹 Set subscriptions to 0x%lX (KEYBOARD=0x%lX, TOUCH=0x%lX)\n",
-           (unsigned long)ctx->subscriptions, (unsigned long)EVENT_KEYBOARD, (unsigned long)EVENT_TOUCH);
-
-    printf("Key Echo app initialized\n");
-    printf("Keyboard and touch events will be echoed to screen and serial\n");
 
     // Display startup message
     display_x = 0;
@@ -43,8 +38,6 @@ void app_init(app_context_t *ctx) {
 
     display_x = 5;
     display_y = 45; // Start below the header
-
-    printf("🎹 Display initialized, ready for keyboard and touch input\n");
 }
 
 void app_checkpoint(app_context_t *ctx) {
@@ -61,19 +54,18 @@ void app_checkpoint(app_context_t *ctx) {
         checkpoint_save_string(key, display_buffer[i]);
     }
 
-    printf("Key Echo state saved\n");
+    os_log(TAG, "State saved");
 }
 
 void app_close(app_context_t *ctx) {
-    printf("Key Echo app closing\n");
+    os_log(TAG, "Closing");
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         char key = event->keyboard.key;
 
-        // Echo to serial
-        printf("Key: %c (0x%02X)\n", key, (unsigned char)key);
+        os_log(TAG, "Key: %c (0x%02X)", key, (unsigned char)key);
 
         // Handle special keys
         if (key == '\n' || key == '\r') {
@@ -143,7 +135,7 @@ void app_event(app_context_t *ctx, event_t *event) {
         // Show touch position on screen
         if (pressed) {
             snprintf(msg, sizeof(msg), "T:%d,%d", x, y);
-            printf("Touch: x=%d, y=%d\n", x, y);
+            os_log(TAG, "Touch: x=%d, y=%d", x, y);
 
             // Draw a small circle at touch position
             for (int dy = -3; dy <= 3; dy++) {

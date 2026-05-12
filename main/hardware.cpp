@@ -160,6 +160,13 @@ void timer_set_interval(uint32_t interval_ms) {
 
 // Serial
 static bool serial_initialized = false;
+static vprintf_like_t saved_vprintf = NULL;
+
+static int noop_vprintf(const char *fmt, va_list args) {
+    (void)fmt;
+    (void)args;
+    return 0;
+}
 
 static uart_word_length_t serial_data_bits_map(int data_bits) {
     switch (data_bits) {
@@ -186,13 +193,15 @@ static uart_stop_bits_t serial_stop_bits_map(int stop_bits) {
 }
 
 bool serial_init(int baud, int data_bits, char parity, int stop_bits) {
-    ESP_LOGI(TAG, "Serial init: %d baud, %d%c%d", baud, data_bits, parity, stop_bits);
+    // Redirect logging away from UART to prevent log spam on the terminal line
+    saved_vprintf = esp_log_set_vprintf(noop_vprintf);
 
     esp_err_t ret = uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
     if (ret == ESP_ERR_INVALID_STATE) {
-        ESP_LOGD(TAG, "UART driver already installed");
+        // Driver already installed, still fine
     } else if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to install UART driver: %s", esp_err_to_name(ret));
+        esp_log_set_vprintf(saved_vprintf);
+        saved_vprintf = NULL;
         return false;
     }
 
@@ -206,7 +215,8 @@ bool serial_init(int baud, int data_bits, char parity, int stop_bits) {
     uart_config.source_clk = UART_SCLK_DEFAULT;
     ret = uart_param_config(UART_NUM_0, &uart_config);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to configure UART: %s", esp_err_to_name(ret));
+        esp_log_set_vprintf(saved_vprintf);
+        saved_vprintf = NULL;
         return false;
     }
     uart_set_pin(UART_NUM_0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE,
@@ -222,8 +232,12 @@ bool serial_init(int baud, int data_bits, char parity, int stop_bits) {
 
 void serial_deinit(void) {
     if (serial_initialized) {
-        uart_driver_delete(UART_NUM_0);
         serial_initialized = false;
+        uart_driver_delete(UART_NUM_0);
+    }
+    if (saved_vprintf) {
+        esp_log_set_vprintf(saved_vprintf);
+        saved_vprintf = NULL;
     }
 }
 

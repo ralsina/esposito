@@ -226,7 +226,7 @@ void app_init(app_context_t *ctx) {
     ctx->timer_interval_ms = 50;  // 20Hz refresh
 
     // Configure serial port
-    serial_init(115200, 8, 'N', 1);
+    serial_init(19200, 8, 'N', 1);
 
     // Initialize VT100 terminal
     vt100_init(&vt, write_to_serial);

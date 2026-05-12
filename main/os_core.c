@@ -201,8 +201,8 @@ void os_event_loop(void) {
                      current_app ? current_app->subscriptions : 0);
         }
 
-        // Poll for keyboard events if current app is subscribed
-        if (current_app && (current_app->subscriptions & EVENT_KEYBOARD)) {
+        // Poll for keyboard events if current app is subscribed or launcher is active
+        if ((current_app && (current_app->subscriptions & EVENT_KEYBOARD)) || app_launcher_is_active()) {
             if (keyboard_read_event(&event)) {
                 // Add the keyboard event to the queue
                 event_queue_push(&event);
