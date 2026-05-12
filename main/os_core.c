@@ -1,6 +1,7 @@
 #include "os_core.h"
 #include "app_loader.h"
 #include "hardware.h"
+#include "touchscreen.h"
 #include "esp_log.h"
 #include "esp_spiffs.h"
 #include "freertos/FreeRTOS.h"
@@ -15,8 +16,8 @@ static bool app_launcher_active = false;
 static int app_launcher_selected = 0;
 
 static void app_launcher_show(void) {
-    char app_names[4][64];
-    int app_count = app_loader_scan(app_names, 4);
+    char app_names[3][64];
+    int app_count = app_loader_scan(app_names, 3);
 
     // Clear screen and show launcher
     display_clear(0x001F); // Blue background
@@ -40,8 +41,8 @@ static void app_launcher_show(void) {
 }
 
 static void app_launcher_handle_key(char key) {
-    char app_names[4][64];
-    int app_count = app_loader_scan(app_names, 4);
+    char app_names[3][64];
+    int app_count = app_loader_scan(app_names, 3);
 
     switch (key) {
         case 'w':
@@ -227,6 +228,19 @@ void os_event_loop(void) {
                 // Add the keyboard event to the queue
                 event_queue_push(&event);
                 ESP_LOGI(TAG, "Keyboard event added to queue");
+            }
+        }
+
+        // Poll for touchscreen events if current app is subscribed
+        if (current_app && (current_app->subscriptions & EVENT_TOUCH)) {
+            uint16_t x, y;
+            bool pressed;
+            if (touchscreen_get_position(&x, &y, &pressed)) {
+                event.type = EVENT_TOUCH;
+                event.touch.x = x;
+                event.touch.y = y;
+                event.touch.pressed = pressed;
+                event_queue_push(&event);
             }
         }
 

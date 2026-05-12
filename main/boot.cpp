@@ -8,6 +8,7 @@
 
 extern "C" {
     #include "sd_card.h"
+    #include "touchscreen.h"
 }
 
 static const char *TAG = "boot";
@@ -144,7 +145,7 @@ void boot_sequence(void) {
     }
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Keyboard subsystem ready");
 
-    // Stage 4.5: SD Card (testing in isolation with display disabled)
+    // Stage 4.5: SD Card
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting SD card init");
 
     if (sd_card_init()) {
@@ -152,6 +153,16 @@ void boot_sequence(void) {
     } else {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "SD card not available");
         // Continue anyway - SD card is optional
+    }
+
+    // Stage 4.6: Touchscreen
+    boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting touchscreen init");
+
+    if (touchscreen_init()) {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Touchscreen ready");
+    } else {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "Touchscreen not available");
+        // Continue anyway - touchscreen is optional
     }
 
     // Stage 5: App loader

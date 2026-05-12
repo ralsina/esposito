@@ -69,6 +69,16 @@ struct app_context {
     void *user_data;
 };
 
+// App manifest structure for built-in apps
+typedef struct {
+    const char *name;
+    app_init_fn init;
+    app_event_fn event_fn;
+    app_close_fn close;
+    app_checkpoint_fn checkpoint;
+    uint32_t subscriptions;
+} app_manifest_t;
+
 // OS core functions
 #ifdef __cplusplus
 extern "C" {

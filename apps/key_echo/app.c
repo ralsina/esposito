@@ -20,15 +20,15 @@ void app_init(app_context_t *ctx) {
     // Initialize display buffer
     memset(display_buffer, 0, sizeof(display_buffer));
 
-    // Subscribe to keyboard events
-    ctx->subscriptions = EVENT_KEYBOARD;
+    // Subscribe to keyboard AND touch events
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 0; // No timer needed
 
-    printf("🎹 Set subscriptions to 0x%lX (EVENT_KEYBOARD=0x%lX)\n",
-           (unsigned long)ctx->subscriptions, (unsigned long)EVENT_KEYBOARD);
+    printf("🎹 Set subscriptions to 0x%lX (KEYBOARD=0x%lX, TOUCH=0x%lX)\n",
+           (unsigned long)ctx->subscriptions, (unsigned long)EVENT_KEYBOARD, (unsigned long)EVENT_TOUCH);
 
     printf("Key Echo app initialized\n");
-    printf("Keyboard events will be echoed to screen and serial\n");
+    printf("Keyboard and touch events will be echoed to screen and serial\n");
 
     // Display startup message
     display_x = 0;
@@ -38,13 +38,13 @@ void app_init(app_context_t *ctx) {
 
     // Show welcome message on display
     display_clear(0x0000); // Black background
-    display_draw_text(5, 5, "Key Echo v1.0", 0x07E0); // Green
-    display_draw_text(5, 25, "Type on keyboard:", 0xFFFF); // White
+    display_draw_text(5, 5, "Key Echo v1.1", 0x07E0); // Green
+    display_draw_text(5, 25, "Keyboard+Touch:", 0xFFFF); // White
 
     display_x = 5;
     display_y = 45; // Start below the header
 
-    printf("🎹 Display initialized, ready for keyboard input\n");
+    printf("🎹 Display initialized, ready for keyboard and touch input\n");
 }
 
 void app_checkpoint(app_context_t *ctx) {
@@ -69,11 +69,7 @@ void app_close(app_context_t *ctx) {
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
-    if (event->type != EVENT_KEYBOARD) {
-        return;
-    }
-
-    if (event->keyboard.pressed) {
+    if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         char key = event->keyboard.key;
 
         // Echo to serial
@@ -90,8 +86,8 @@ void app_event(app_context_t *ctx, event_t *event) {
             if (display_y > 300) {
                 // Scroll - clear screen and restart
                 display_clear(0x0000);
-                display_draw_text(5, 5, "Key Echo v1.0", 0x07E0);
-                display_draw_text(5, 25, "Type on keyboard:", 0xFFFF);
+                display_draw_text(5, 5, "Key Echo v1.1", 0x07E0);
+                display_draw_text(5, 25, "Keyboard+Touch:", 0xFFFF);
                 display_y = 45;
                 display_x = 5;
                 current_line = 0;
@@ -128,14 +124,42 @@ void app_event(app_context_t *ctx, event_t *event) {
                     if (display_y > 300) {
                         // Scroll
                         display_clear(0x0000);
-                        display_draw_text(5, 5, "Key Echo v1.0", 0x07E0);
-                        display_draw_text(5, 25, "Type on keyboard:", 0xFFFF);
+                        display_draw_text(5, 5, "Key Echo v1.1", 0x07E0);
+                        display_draw_text(5, 25, "Keyboard+Touch:", 0xFFFF);
                         display_y = 45;
                         display_x = 5;
                         current_line = 0;
                     }
                 }
             }
+        }
+    } else if (event->type == EVENT_TOUCH) {
+        // Handle touch events
+        char msg[64];
+        uint16_t x = event->touch.x;
+        uint16_t y = event->touch.y;
+        bool pressed = event->touch.pressed;
+
+        // Show touch position on screen
+        if (pressed) {
+            snprintf(msg, sizeof(msg), "T:%d,%d", x, y);
+            printf("Touch: x=%d, y=%d\n", x, y);
+
+            // Draw a small circle at touch position
+            for (int dy = -3; dy <= 3; dy++) {
+                for (int dx = -3; dx <= 3; dx++) {
+                    if (dx*dx + dy*dy <= 9) {
+                        int px = x + dx;
+                        int py = y + dy;
+                        if (px >= 0 && px < 320 && py >= 0 && py < 240) {
+                            display_draw_pixel(px, py, 0xF800); // Red circle
+                        }
+                    }
+                }
+            }
+
+            // Show coordinates text
+            display_draw_text(x + 5, y + 5, msg, 0x07E0); // Green text
         }
     }
 }
