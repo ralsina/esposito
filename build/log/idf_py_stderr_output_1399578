@@ -1,2 +1,0 @@
-Command: ninja all
-ninja: error: '/home/ralsina/code/esposito/main/hardware.c', needed by 'esp-idf/main/CMakeFiles/__idf_main.dir/hardware.c.obj', missing and no known rule to make it

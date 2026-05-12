@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <soc/rtc_cntl_reg.h>
+#include "spleen-5x8.h"
 
 static const char *TAG = "hardware";
 
@@ -81,9 +82,9 @@ void display_draw_text(int x, int y, const char *text, uint16_t color) {
     if (!display_initialized) return;
     tft.setCursor(x, y);
     tft.setTextColor(color, TFT_BLACK);  // Set background to black for better contrast
-    tft.setTextSize(2);  // Make text 2x larger
-    tft.print(text);
-    tft.setTextSize(1);  // Reset to default size
+    tft.setFont(&spleen_5x8);  // Use spleen-5x8 font
+    tft.println(text);  // Use println to ensure text is rendered
+    tft.setFont(&fonts::Font0);  // Reset to default font
 }
 
 void display_draw_pixel(int x, int y, uint16_t color) {
