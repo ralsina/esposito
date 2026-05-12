@@ -6,17 +6,21 @@ set -e
 
 APP_SRC="${1}"
 if [ -z "$APP_SRC" ]; then
-    echo "Usage: $0 <app.c> [output_dir]"
-    echo "Builds an app .c file into a relocatable ELF for SD card loading"
+    echo "Usage: $0 <app.c|app_dir> [output_dir]"
+    echo "Builds an app .c file(s) into a relocatable ELF for SD card loading"
     echo ""
-    echo "  The output ELF is named after the parent directory of the source."
+    echo "  If a .c file is given, the app directory is its parent."
+    echo "  All .c files in the app directory are compiled together."
     echo "  Example: $0 apps/my_app/app.c  ->  build/apps/my_app.elf"
     exit 1
 fi
 
-# Name the output after the app's directory, not the .c filename.
-# This way apps/example_app/app.c produces example_app.elf.
-APP_DIR="$(cd "$(dirname "$APP_SRC")" && pwd)"
+# Determine app directory: if argument is a .c file, use its parent; otherwise use as-is
+if [ -f "$APP_SRC" ] && [[ "$APP_SRC" == *.c ]]; then
+    APP_DIR="$(cd "$(dirname "$APP_SRC")" && pwd)"
+else
+    APP_DIR="$(cd "$APP_SRC" && pwd)"
+fi
 APP_NAME="$(basename "$APP_DIR")"
 OUTPUT_DIR="${2:-build/apps}"
 TOOLCHAIN_PREFIX="${TOOLCHAIN_PREFIX:-xtensa-esp32-elf}"
@@ -78,11 +82,17 @@ if [ -d "$IDF_PATH" ]; then
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/soc/esp32/include"
 fi
 
+# Collect all .c source files in the app directory
+APP_SOURCES=()
+while IFS= read -r -d '' f; do
+    APP_SOURCES+=("$f")
+done < <(find "$APP_DIR" -maxdepth 1 -name '*.c' -print0)
+
 echo "Building app: $APP_NAME"
-echo "Source: $APP_SRC"
+echo "Sources: ${APP_SOURCES[*]}"
 echo "Output: $OUTPUT_DIR/${APP_NAME}.elf"
 
-# Compile to object file
+# Compile and link all source files together
 echo "  Compiling..."
 "${TOOLCHAIN_PREFIX}-gcc" \
     -nostdlib -nostartfiles \
@@ -94,7 +104,7 @@ echo "  Compiling..."
     -T "$OS_SYMBOLS_LD" \
     $INCLUDE_FLAGS \
     -o "$OUTPUT_DIR/${APP_NAME}.elf" \
-    "$APP_SRC"
+    "${APP_SOURCES[@]}"
 
 echo "  Done: $OUTPUT_DIR/${APP_NAME}.elf"
 echo ""

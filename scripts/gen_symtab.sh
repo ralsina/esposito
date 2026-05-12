@@ -20,6 +20,7 @@ SYMBOLS=(
     display_draw_text
     display_draw_pixel
     display_fill_rect
+    display_draw_char_at
     keyboard_read_event
     checkpoint_save_string
     checkpoint_load_string
@@ -64,6 +65,8 @@ SYMBOLS=(
     atol
     abs
     os_log
+    serial_init
+    serial_write
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"

@@ -30,6 +30,37 @@ static size_t event_queue_head = 0;
 static size_t event_queue_tail = 0;
 static app_context_t *current_app = NULL;
 
+// Serial ring buffer: decouples UART reads from event dispatch
+#define SERIAL_RING_SIZE 2048
+static char serial_ring[SERIAL_RING_SIZE];
+static size_t serial_ring_head = 0;
+static size_t serial_ring_tail = 0;
+
+static void serial_ring_push(const char *data, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        size_t next = (serial_ring_head + 1) % SERIAL_RING_SIZE;
+        if (next == serial_ring_tail) {
+            serial_ring_tail = (serial_ring_tail + 1) % SERIAL_RING_SIZE;
+        }
+        serial_ring[serial_ring_head] = data[i];
+        serial_ring_head = next;
+    }
+}
+
+static size_t serial_ring_pop(char *buf, size_t max_len) {
+    size_t taken = 0;
+    while (taken < max_len && serial_ring_tail != serial_ring_head) {
+        buf[taken++] = serial_ring[serial_ring_tail];
+        serial_ring_tail = (serial_ring_tail + 1) % SERIAL_RING_SIZE;
+    }
+    return taken;
+}
+
+static void serial_ring_clear(void) {
+    serial_ring_head = 0;
+    serial_ring_tail = 0;
+}
+
 // Event queue management
 static bool event_queue_push(event_t *event) {
     size_t next = (event_queue_head + 1) % EVENT_QUEUE_SIZE;
@@ -118,6 +149,9 @@ void os_unload_app(void) {
         free(current_app);
         current_app = NULL;
     }
+    // Deinit serial (teardown driver, clear ring buffer)
+    serial_deinit();
+    serial_ring_clear();
 }
 
 bool os_load_app(const char *app_name) {
@@ -185,6 +219,23 @@ void os_event_loop(void) {
                 event.touch.x = x;
                 event.touch.y = y;
                 event.touch.pressed = pressed;
+                event_queue_push(&event);
+            }
+        }
+
+        // Poll serial and dispatch events if current app is subscribed
+        if (current_app && (current_app->subscriptions & EVENT_SERIAL)) {
+            char buf[64];
+            size_t n = serial_read(buf, sizeof(buf));
+            if (n > 0) {
+                serial_ring_push(buf, n);
+            }
+            char ev_buf[256];
+            size_t taken = serial_ring_pop(ev_buf, sizeof(ev_buf));
+            if (taken > 0) {
+                event.type = EVENT_SERIAL;
+                memcpy(event.serial.data, ev_buf, taken);
+                event.serial.len = taken;
                 event_queue_push(&event);
             }
         }

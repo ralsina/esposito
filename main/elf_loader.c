@@ -124,7 +124,7 @@ struct elf_handle {
 };
 
 static uint32_t elf_resolve_local_symbol(elf_handle_t *handle, const elf32_sym_t *sym) {
-    if (sym->st_shndx == 0 || sym->st_value == 0) return sym->st_value;
+    if (sym->st_shndx == 0 || sym->st_shndx == 0xFFF1 /* SHN_ABS */ || sym->st_value == 0) return sym->st_value;
     for (int i = 0; i < handle->section_count; i++) {
         uint32_t sec_end = handle->sections[i].vma + handle->sections[i].size;
         if (sym->st_value >= handle->sections[i].vma && sym->st_value < sec_end) {
@@ -369,7 +369,9 @@ elf_handle_t *elf_loader_load(const char *path) {
         }
     }
 
-    // Step 3: mmap erased partition (empty — just reserves virtual address space)
+    // Step 3: mmap code into IROM (for execution) and rodata into DROM (for data access)
+    // .text goes to IROM (instruction cache), .rodata goes to DROM (data cache).
+    // This is required because on ESP32, data loads from IROM cause LoadStoreError.
     ret = esp_partition_mmap(handle->flash_part, 0, code_size,
                               ESP_PARTITION_MMAP_INST,
                               (const void **)&handle->inst_base,
@@ -381,21 +383,26 @@ elf_handle_t *elf_loader_load(const char *path) {
         return NULL;
     }
 
-    ret = esp_partition_mmap(handle->flash_part, code_size, rodata_size,
-                              ESP_PARTITION_MMAP_DATA,
-                              (const void **)&handle->data_base_flash,
-                              &handle->data_mmap_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to mmap rodata: %s", esp_err_to_name(ret));
-        free(elf_data);
-        elf_loader_unload(handle);
-        return NULL;
+    if (rodata_size > 0) {
+        ret = esp_partition_mmap(handle->flash_part, code_size, rodata_size,
+                                  ESP_PARTITION_MMAP_DATA,
+                                  (const void **)&handle->data_base_flash,
+                                  &handle->data_mmap_handle);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to mmap rodata: %s", esp_err_to_name(ret));
+            free(elf_data);
+            elf_loader_unload(handle);
+            return NULL;
+        }
+    } else {
+        handle->data_base_flash = NULL;
+        handle->data_mmap_handle = 0;
     }
 
-    ESP_LOGI(TAG, "Code IROM: %p, Rodata DROM: %p, total %d bytes",
-             handle->inst_base, handle->data_base_flash, code_size + rodata_size);
+    ESP_LOGI(TAG, "IROM base: %p, DROM base: %p, code=%d rodata=%d",
+             handle->inst_base, handle->data_base_flash, code_size, rodata_size);
 
-    // Step 4: Build runtime section table for code/rodata (now we know runtime addresses)
+    // Step 4: Build runtime section table for code/rodata
     {
         uint32_t co_off = 0, ro_off = 0;
         for (int i = 0; i < ehdr->e_shnum; i++) {
@@ -420,6 +427,7 @@ elf_handle_t *elf_loader_load(const char *path) {
                      handle->section_count-1, ls->vma, ls->size, (unsigned long)ls->load_addr, ls->flags);
         }
     }
+
 
     // Step 5: Allocate DRAM for data/bss NOW, so relocations can resolve their addresses
     if (!elf_alloc_data_bss(handle, elf_data, ehdr, shdrs)) {
@@ -516,7 +524,7 @@ elf_handle_t *elf_loader_load(const char *path) {
                     uint32_t old_val = *(uint32_t *)((uint8_t *)patch_base + (r_offset - target_sh->sh_addr));
                     uint32_t new_val;
 
-                    if (sym->st_shndx == 0) {
+                    if (sym->st_shndx == 0 || sym->st_shndx == 0xFFF1 /* SHN_ABS */) {
                         const char *sym_name = rel_strtab ? rel_strtab + sym->st_name : "?";
                         const os_symtab_entry_t *entry = os_symtab_lookup(sym_name);
                         if (!entry) {
@@ -526,7 +534,12 @@ elf_handle_t *elf_loader_load(const char *path) {
                         new_val = (uint32_t)(uintptr_t)entry->addr + r_addend;
                     } else {
                         uint32_t runtime_addr = elf_resolve_local_symbol(handle, sym);
-                        new_val = runtime_addr + r_addend;
+                        // R_XTENSA_32: new = old + (runtime_addr - st_value)
+                        // This correctly handles both section symbols (.text, .rodata, .bss)
+                        // and regular symbols. For section symbols, the linker may place
+                        // the target VMA (not section_base+addend) in the old value,
+                        // so computing runtime_addr + r_addend would be wrong.
+                        new_val = old_val + (runtime_addr - sym->st_value);
                     }
 
                     uint32_t *patch_addr = (uint32_t *)((uint8_t *)patch_base + (r_offset - target_sh->sh_addr));
@@ -545,7 +558,7 @@ elf_handle_t *elf_loader_load(const char *path) {
     }
     ESP_LOGI(TAG, "Patched %d relocations", total_patched);
 
-    // Step 7: Write patched code/rodata from buffer to flash (first write, erased — always works)
+    // Step 7: Write patched code/rodata to flash — code at offset 0, rodata at code_size
     {
         size_t w_off = 0;
         for (int pass = 0; pass < 2; pass++) {
@@ -572,8 +585,11 @@ elf_handle_t *elf_loader_load(const char *path) {
         }
     }
 
-    // Step 8: Invalidate cache so CPU reads fresh data from flash
-    esp_cache_msync(handle->inst_base, handle->flash_part->size, ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+    // Step 8: Invalidate cache for both IROM and DROM mappings
+    esp_cache_msync(handle->inst_base, code_size, ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+    if (handle->data_base_flash && rodata_size > 0) {
+        esp_cache_msync(handle->data_base_flash, rodata_size, ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+    }
 
     // Step 9: Resolve entry points
     if (!elf_resolve_entry_points(handle, ehdr, shdrs, symtab, strtab)) {
@@ -596,6 +612,7 @@ void elf_loader_unload(elf_handle_t *handle) {
     }
     if (handle->data_mmap_handle) {
         esp_partition_munmap(handle->data_mmap_handle);
+        handle->data_mmap_handle = 0;
     }
     if (handle->data_base) {
         free(handle->data_base);

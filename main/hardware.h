@@ -27,6 +27,9 @@ void display_draw_text(int x, int y, const char *text, uint16_t color);
 void display_draw_pixel(int x, int y, uint16_t color);
 void display_fill_rect(int x, int y, int width, int height, uint16_t color);
 
+// Display character with specific foreground and background at pixel position
+void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color);
+
 // Keyboard functions
 bool keyboard_init(void);
 void keyboard_deinit(void);
@@ -37,8 +40,10 @@ bool timer_init(void);
 void timer_set_interval(uint32_t interval_ms);
 
 // Serial functions
-bool serial_init(void);
+bool serial_init(int baud, int data_bits, char parity, int stop_bits);
+void serial_deinit(void);
 size_t serial_read(char *buffer, size_t max_len);
+size_t serial_write(const char *data, size_t len);
 
 #ifdef __cplusplus
 }

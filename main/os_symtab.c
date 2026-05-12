@@ -12,6 +12,7 @@ static const os_symtab_entry_t symtab[] = {
     {"display_draw_text",       display_draw_text},
     {"display_draw_pixel",      display_draw_pixel},
     {"display_fill_rect",       display_fill_rect},
+    {"display_draw_char_at",    display_draw_char_at},
     {"keyboard_read_event",     keyboard_read_event},
     {"checkpoint_save_string",  checkpoint_save_string},
     {"checkpoint_load_string",  checkpoint_load_string},
@@ -56,6 +57,8 @@ static const os_symtab_entry_t symtab[] = {
     {"atol",                    atol},
     {"abs",                     abs},
     {"os_log",                  os_log},
+    {"serial_init",             serial_init},
+    {"serial_write",            serial_write},
     {NULL, NULL}
 };
 
