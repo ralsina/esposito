@@ -6,7 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <soc/rtc_cntl_reg.h>
-#include "spleen-5x8.h"
+#include "fonts.h"
 #include "driver/uart.h"
 #include <string.h>
 
@@ -16,6 +16,9 @@ static const char *TAG = "hardware";
 LGFX tft;
 LGFX* display_tft = &tft;
 static bool display_initialized = false;
+static const lgfx::IFont *current_display_font = NULL;
+static int disp_font_width = 5;
+static int disp_font_height = 8;
 
 // I2C state
 static bool i2c_initialized = false;
@@ -67,6 +70,17 @@ bool display_init(void) {
     return true;
 }
 
+void display_set_font(const void *font) {
+    current_display_font = (const lgfx::IFont *)font;
+    for (int i = 0; i < FONT_COUNT; i++) {
+        if (font_table[i].font_ptr == font) {
+            disp_font_width = font_table[i].char_width;
+            disp_font_height = font_table[i].char_height;
+            return;
+        }
+    }
+}
+
 void display_clear(uint16_t color) {
     if (!display_initialized) return;
     tft.fillScreen(color);
@@ -75,9 +89,25 @@ void display_clear(uint16_t color) {
 void display_draw_text(int x, int y, const char *text, uint16_t color) {
     if (!display_initialized) return;
     tft.setCursor(x, y);
-    tft.setTextColor(color, TFT_BLACK);  // Set background to black for better contrast
-    tft.setFont(&spleen_5x8);  // Use spleen-5x8 font
-    tft.print(text);  // Use print instead of println for better control
+    tft.setTextColor(color, TFT_BLACK);
+    if (current_display_font) tft.setFont(current_display_font);
+    tft.print(text);
+}
+
+void display_draw_text_transparent(int x, int y, const char *text, uint16_t color) {
+    if (!display_initialized) return;
+    tft.setCursor(x, y);
+    tft.setTextColor(color);
+    if (current_display_font) tft.setFont(current_display_font);
+    tft.print(text);
+}
+
+void display_draw_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg) {
+    if (!display_initialized) return;
+    tft.setCursor(x, y);
+    tft.setTextColor(fg, bg);
+    if (current_display_font) tft.setFont(current_display_font);
+    tft.print(text);
 }
 
 void display_draw_pixel(int x, int y, uint16_t color) {
@@ -96,11 +126,11 @@ void display_fill_rect(int x, int y, int width, int height, uint16_t color) {
 
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color) {
     if (!display_initialized) return;
-    tft.fillRect(x, y, DISPLAY_FONT_WIDTH, DISPLAY_FONT_HEIGHT, bg_color);
+    tft.fillRect(x, y, disp_font_width, disp_font_height, bg_color);
     if (ch != ' ') {
         tft.setCursor(x, y);
-        tft.setTextColor(fg_color, bg_color);  // opaque bg matches fill
-        tft.setFont(&spleen_5x8);
+        tft.setTextColor(fg_color, bg_color);
+        if (current_display_font) tft.setFont(current_display_font);
         tft.print(ch);
     }
 }

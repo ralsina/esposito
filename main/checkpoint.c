@@ -7,7 +7,7 @@
 
 static const char *TAG = "checkpoint";
 
-#define MAX_CHECKPOINT_SIZE 4096
+#define MAX_CHECKPOINT_SIZE 32768
 static char checkpoint_data[MAX_CHECKPOINT_SIZE];
 static bool checkpoint_opened = false;
 static char checkpoint_path[64];

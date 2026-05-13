@@ -74,6 +74,10 @@ void app_event(app_context_t *ctx, event_t *event);
 - **SD card storage**: Apps loaded from `/apps` directory
 - **No compositor**: Full screen per app, no window management
 
+## 📋 TODO
+
+- **Rethink checkpoint system**: Current key-value store with fixed buffer is fragile for dense grid saves; consider binary blob with proper serialization, or variable-length file-based approach
+
 ## 🔗 References
 
 - `terminado` project: Keyboard and display implementation for BBQ20 + CYD

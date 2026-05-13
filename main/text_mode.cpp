@@ -1,7 +1,7 @@
 #include "text_mode.h"
 #include "hardware.h"
 #include "lovgfx_config.h"
-#include "spleen-5x8.h"
+#include "fonts.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,145 +9,136 @@
 #include <stdarg.h>
 
 extern "C" {
-    // Checkpoint functions are C
     #include "checkpoint.h"
 }
 
 static const char *TAG = "text_mode";
 
-// 16-color palette (RGB565 format)
 static const uint16_t color_palette[16] = {
-    0x0000,  // Black
-    0x001F,  // Blue
-    0x07E0,  // Green
-    0x07FF,  // Cyan
-    0xF800,  // Red
-    0xF81F,  // Magenta
-    0xFFE0,  // Yellow
-    0xFFFF,  // White
-    0x0841,  // Bright Black (Dark Gray)
-    0x001F,  // Bright Blue
-    0x07FF,  // Bright Green
-    0x07FF,  // Bright Cyan
-    0xF800,  // Bright Red
-    0xF81F,  // Bright Magenta
-    0xFFE0,  // Bright Yellow
-    0xFFFF,  // Bright White
+    0x0000, 0x0010, 0x0400, 0x0410, 0x8000, 0x8010, 0x8400, 0x8410,
+    0x4208, 0x001F, 0x07E0, 0x07FF, 0xF800, 0xF81F, 0xFFE0, 0xFFFF,
 };
 
-// Text mode state
-typedef struct {
-    text_cell_t grid[TEXT_MODE_ROWS][TEXT_MODE_COLS];  // Screen cell grid
-    int cursor_x;
-    int cursor_y;
-    uint8_t bg_color;
-    bool initialized;
-} text_mode_state_t;
+static text_cell_t *grid = NULL;
+static int grid_cols = TEXT_MODE_COLS;
+static int grid_rows = TEXT_MODE_ROWS;
+static int font_width = TEXT_MODE_CHAR_WIDTH;
+static int font_height = TEXT_MODE_CHAR_HEIGHT;
+static font_id_t current_font = FONT_SPLEEN_5X8;
 
-static text_mode_state_t tm_state = {};
-static bool graphics_mode = false;
+static int cursor_x = 0;
+static int cursor_y = 0;
+static uint8_t bg_color = 0;
+static bool initialized = false;
+static bool graphics = false;
 
-// Screen info
-static int get_font_width(void) {
-    return TEXT_MODE_CHAR_WIDTH;
+int text_mode_get_cols(void) { return grid_cols; }
+int text_mode_get_rows(void) { return grid_rows; }
+int text_mode_get_char_width(void) { return font_width; }
+int text_mode_get_char_height(void) { return font_height; }
+font_id_t text_mode_get_font(void) { return current_font; }
+
+static void grid_to_pixel(int gx, int gy, int *px, int *py) {
+    *px = gx * font_width;
+    *py = gy * font_height;
 }
 
-static int get_font_height(void) {
-    return TEXT_MODE_CHAR_HEIGHT;
-}
-
-// Convert grid position to pixel position
-static void grid_to_pixel(int grid_x, int grid_y, int *pixel_x, int *pixel_y) {
-    *pixel_x = grid_x * get_font_width();
-    *pixel_y = grid_y * get_font_height();
-}
-
-// Update a single cell on the display with attribute support
 static void update_cell(int x, int y) {
-    if (x < 0 || x >= TEXT_MODE_COLS || y < 0 || y >= TEXT_MODE_ROWS) {
-        return;
-    }
+    if (!grid || x < 0 || x >= grid_cols || y < 0 || y >= grid_rows) return;
 
-    text_cell_t *cell = &tm_state.grid[y][x];
-    int pixel_x, pixel_y;
-    grid_to_pixel(x, y, &pixel_x, &pixel_y);
+    text_cell_t *cell = &grid[y * grid_cols + x];
+    int px, py;
+    grid_to_pixel(x, y, &px, &py);
 
-    // Get base colors
-    uint16_t fg_color = color_palette[cell->color & 0x0F];
-    uint16_t bg_color = color_palette[tm_state.bg_color & 0x0F];
+    uint16_t fg = color_palette[cell->color & 0x0F];
+    uint16_t bg = color_palette[cell->bg_color & 0x0F];
 
-    // Handle inverse attribute
     if (cell->attributes & TEXT_ATTR_INVERSE) {
-        uint16_t temp = fg_color;
-        fg_color = bg_color;
-        bg_color = temp;
+        uint16_t tmp = fg; fg = bg; bg = tmp;
     }
 
-    // Clear cell area with background color
-    display_fill_rect(pixel_x, pixel_y, get_font_width(), get_font_height(), bg_color);
+    display_fill_rect(px, py, font_width, font_height, bg);
 
-    // Draw character if not space
     if (cell->character != ' ') {
-        // Handle underline attribute
-        if (cell->attributes & TEXT_ATTR_UNDERLINE) {
-            // Draw underline (bottom pixel row)
-            int underline_y = pixel_y + get_font_height() - 1;
-            display_fill_rect(pixel_x, underline_y, get_font_width(), 1, fg_color);
-        }
-
-        // Handle bold attribute (simulate by drawing twice with slight offset)
+        display_draw_text_bg(px, py, &cell->character, fg, bg);
         if (cell->attributes & TEXT_ATTR_BOLD) {
-            // Draw character slightly offset for bold effect
-            display_draw_text(pixel_x + 1, pixel_y, &cell->character, fg_color);
+            display_draw_text_transparent(px + 1, py, &cell->character, fg);
         }
-
-        // Draw main character
-        display_draw_text(pixel_x, pixel_y, &cell->character, fg_color);
+        if (cell->attributes & TEXT_ATTR_UNDERLINE) {
+            display_fill_rect(px, py + font_height - 1, font_width, 1, fg);
+        }
     }
 }
 
-bool text_mode_init(void) {
-    ESP_LOGI(TAG, "Initializing text mode: %dx%d grid", TEXT_MODE_COLS, TEXT_MODE_ROWS);
-
-    // Initialize state
-    memset(&tm_state, 0, sizeof(tm_state));
-    tm_state.cursor_x = 0;
-    tm_state.cursor_y = 0;
-    tm_state.bg_color = TEXT_COLOR_BLACK;
-    tm_state.initialized = true;
-    graphics_mode = false;
-
-    // Initialize grid with spaces
-    for (int y = 0; y < TEXT_MODE_ROWS; y++) {
-        for (int x = 0; x < TEXT_MODE_COLS; x++) {
-            tm_state.grid[y][x].character = ' ';
-            tm_state.grid[y][x].color = TEXT_COLOR_WHITE;
-            tm_state.grid[y][x].attributes = TEXT_ATTR_NORMAL;
-        }
+static bool init_grid(font_id_t font) {
+    if (grid) {
+        free(grid);
+        grid = NULL;
     }
 
-    // Clear screen
-    display_clear(color_palette[TEXT_COLOR_BLACK]);
+    current_font = font;
+    font_width = font_table[font].char_width;
+    font_height = font_table[font].char_height;
+    grid_cols = 320 / font_width;
+    grid_rows = 240 / font_height;
 
-    ESP_LOGI(TAG, "Text mode ready with 16 colors and attributes");
+    grid = (text_cell_t *)calloc(grid_cols * grid_rows, sizeof(text_cell_t));
+    if (!grid) {
+        ESP_LOGE(TAG, "Failed to allocate grid: %dx%d", grid_cols, grid_rows);
+        grid_cols = TEXT_MODE_COLS;
+        grid_rows = TEXT_MODE_ROWS;
+        font_width = TEXT_MODE_CHAR_WIDTH;
+        font_height = TEXT_MODE_CHAR_HEIGHT;
+        current_font = FONT_SPLEEN_5X8;
+        return false;
+    }
+
+    display_set_font(font_table[font].font_ptr);
     return true;
 }
 
-void text_mode_clear(uint16_t bg_color) {
-    if (!tm_state.initialized) return;
+bool text_mode_init_ex(font_id_t font) {
+    if ((int)font < 0 || (int)font >= FONT_COUNT) font = FONT_SPLEEN_5X8;
 
-    // Update background color
-    tm_state.bg_color = bg_color;
+    if (!init_grid(font)) return false;
 
-    // Clear display and reset grid
-    display_clear(color_palette[bg_color & 0x0F]);  // Use only lower 4 bits
+    cursor_x = 0;
+    cursor_y = 0;
+    bg_color = TEXT_COLOR_BLACK;
+    initialized = true;
+    graphics = false;
 
-    // Reset grid to spaces
-    for (int y = 0; y < TEXT_MODE_ROWS; y++) {
-        for (int x = 0; x < TEXT_MODE_COLS; x++) {
-            tm_state.grid[y][x].character = ' ';
-            tm_state.grid[y][x].color = TEXT_COLOR_WHITE;
-            tm_state.grid[y][x].attributes = TEXT_ATTR_NORMAL;
+    for (int y = 0; y < grid_rows; y++) {
+        for (int x = 0; x < grid_cols; x++) {
+            int idx = y * grid_cols + x;
+            grid[idx].character = ' ';
+            grid[idx].color = TEXT_COLOR_WHITE;
+            grid[idx].bg_color = TEXT_COLOR_BLACK;
+            grid[idx].attributes = TEXT_ATTR_NORMAL;
+        }
+    }
+
+    display_clear(color_palette[TEXT_COLOR_BLACK]);
+    ESP_LOGI(TAG, "Text mode: %s (%dx%d grid)", font_table[font].name, grid_cols, grid_rows);
+    return true;
+}
+
+bool text_mode_init(void) {
+    return text_mode_init_ex(FONT_SPLEEN_5X8);
+}
+
+void text_mode_clear(uint16_t color_idx) {
+    if (!initialized) return;
+    bg_color = color_idx;
+    display_clear(color_palette[color_idx & 0x0F]);
+
+    for (int y = 0; y < grid_rows; y++) {
+        for (int x = 0; x < grid_cols; x++) {
+            int idx = y * grid_cols + x;
+            grid[idx].character = ' ';
+            grid[idx].color = TEXT_COLOR_WHITE;
+            grid[idx].bg_color = (uint8_t)color_idx;
+            grid[idx].attributes = TEXT_ATTR_NORMAL;
         }
     }
 }
@@ -157,168 +148,209 @@ void text_mode_print_at(int x, int y, const char *str) {
 }
 
 void text_mode_print_at_color(int x, int y, const char *str, uint16_t color) {
-    // Convert old color format to new palette index
-    uint8_t palette_color = color & 0x0F;  // Use lower 4 bits
-    text_mode_print_at_attr(x, y, str, palette_color, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr(x, y, str, color & 0x0F, TEXT_ATTR_NORMAL);
 }
 
-void text_mode_print_at_attr(int x, int y, const char *str, uint8_t color, uint8_t attributes) {
-    if (!tm_state.initialized) return;
-    if (x < 0 || x >= TEXT_MODE_COLS || y < 0 || y >= TEXT_MODE_ROWS) return;
+void text_mode_print_at_attr(int x, int y, const char *str, uint8_t color, uint8_t attr) {
+    if (!initialized || !grid) return;
+    if (x < 0 || x >= grid_cols || y < 0 || y >= grid_rows) return;
 
     int len = strlen(str);
-    int max_chars = TEXT_MODE_COLS - x;
+    int max_chars = grid_cols - x;
 
-    // Clear the area first for the entire string (batch operation)
-    int pixel_x, pixel_y;
-    grid_to_pixel(x, y, &pixel_x, &pixel_y);
-    int string_width = len * get_font_width();
-    display_fill_rect(pixel_x, pixel_y, string_width, get_font_height(), color_palette[tm_state.bg_color & 0x0F]);
+    int px, py;
+    grid_to_pixel(x, y, &px, &py);
+    int sw = len * font_width;
+    display_fill_rect(px, py, sw, font_height, color_palette[bg_color & 0x0F]);
 
-    // Print characters until end of line or string
     for (int i = 0; i < len && i < max_chars; i++) {
-        tm_state.grid[y][x + i].character = str[i];
-        tm_state.grid[y][x + i].color = color;
-        tm_state.grid[y][x + i].attributes = attributes;
+        int idx = y * grid_cols + x + i;
+        grid[idx].character = str[i];
+        grid[idx].color = color;
+        grid[idx].bg_color = bg_color;
+        grid[idx].attributes = attr;
 
-        // Draw character directly with attributes
         if (str[i] != ' ') {
             update_cell(x + i, y);
         }
     }
 
-    // Update cursor to end of printed text
-    tm_state.cursor_x = x + len - 1;
-    if (tm_state.cursor_x >= TEXT_MODE_COLS) {
-        tm_state.cursor_x = 0;
-        tm_state.cursor_y = (tm_state.cursor_y + 1) % TEXT_MODE_ROWS;
+    cursor_x = x + len - 1;
+    if (cursor_x >= grid_cols) {
+        cursor_x = 0;
+        cursor_y = (cursor_y + 1) % grid_rows;
+    }
+}
+
+void text_mode_print_at_attr_bg(int x, int y, const char *str, uint8_t fg_color, uint8_t bg, uint8_t attr) {
+    if (!initialized || !grid) return;
+    if (x < 0 || x >= grid_cols || y < 0 || y >= grid_rows) return;
+
+    int len = strlen(str);
+    int max_chars = grid_cols - x;
+
+    int px, py;
+    grid_to_pixel(x, y, &px, &py);
+    int sw = len * font_width;
+    display_fill_rect(px, py, sw, font_height, color_palette[bg & 0x0F]);
+
+    for (int i = 0; i < len && i < max_chars; i++) {
+        int idx = y * grid_cols + x + i;
+        grid[idx].character = str[i];
+        grid[idx].color = fg_color;
+        grid[idx].bg_color = bg;
+        grid[idx].attributes = attr;
+
+        if (str[i] != ' ') {
+            update_cell(x + i, y);
+        }
+    }
+
+    cursor_x = x + len - 1;
+    if (cursor_x >= grid_cols) {
+        cursor_x = 0;
+        cursor_y = (cursor_y + 1) % grid_rows;
     }
 }
 
 void text_mode_printf_at(int x, int y, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-
-    char buffer[128];
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    text_mode_print_at(x, y, buffer);
-
+    char buf[128];
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    text_mode_print_at(x, y, buf);
     va_end(args);
 }
 
 void text_mode_printf_at_color(int x, int y, uint16_t color, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-
-    char buffer[128];
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    text_mode_print_at_color(x, y, buffer, color);
-
+    char buf[128];
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    text_mode_print_at_color(x, y, buf, color);
     va_end(args);
 }
 
-void text_mode_printf_at_attr(int x, int y, uint8_t color, uint8_t attributes, const char *fmt, ...) {
+void text_mode_printf_at_attr(int x, int y, uint8_t color, uint8_t attr, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
+    char buf[128];
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    text_mode_print_at_attr(x, y, buf, color, attr);
+    va_end(args);
+}
 
-    char buffer[128];
-    vsnprintf(buffer, sizeof(buffer), fmt, args);
-    text_mode_print_at_attr(x, y, buffer, color, attributes);
-
+void text_mode_printf_at_attr_bg(int x, int y, uint8_t fg_color, uint8_t bg, uint8_t attr, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    char buf[128];
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    text_mode_print_at_attr_bg(x, y, buf, fg_color, bg, attr);
     va_end(args);
 }
 
 void text_mode_get_cursor(int *x, int *y) {
-    if (x) *x = tm_state.cursor_x;
-    if (y) *y = tm_state.cursor_y;
+    if (x) *x = cursor_x;
+    if (y) *y = cursor_y;
 }
 
 void text_mode_set_cursor(int x, int y) {
-    if (x >= 0 && x < TEXT_MODE_COLS) {
-        tm_state.cursor_x = x;
-    }
-    if (y >= 0 && y < TEXT_MODE_ROWS) {
-        tm_state.cursor_y = y;
-    }
+    if (x >= 0 && x < grid_cols) cursor_x = x;
+    if (y >= 0 && y < grid_rows) cursor_y = y;
 }
 
 void text_mode_save(void) {
-    checkpoint_save_int("tm_cursor_x", tm_state.cursor_x);
-    checkpoint_save_int("tm_cursor_y", tm_state.cursor_y);
-    checkpoint_save_int("tm_bg_color", tm_state.bg_color);
+    checkpoint_save_int("tm_cursor_x", cursor_x);
+    checkpoint_save_int("tm_cursor_y", cursor_y);
+    checkpoint_save_int("tm_bg_color", bg_color);
+    checkpoint_save_int("tm_font", current_font);
 
-    // Save grid cells
-    for (int y = 0; y < TEXT_MODE_ROWS; y++) {
-        for (int x = 0; x < TEXT_MODE_COLS; x++) {
-            char key[32];
-            snprintf(key, sizeof(key), "tm_grid_%d_%d", y, x);
-            char char_str[2] = {tm_state.grid[y][x].character, '\0'};
-            checkpoint_save_string(key, char_str);
+    for (int y = 0; y < grid_rows; y++) {
+        char key[32];
+        char chars[256], attrs[1280];
+        int cp = 0, ap = 0;
 
-            snprintf(key, sizeof(key), "tm_color_%d_%d", y, x);
-            checkpoint_save_int(key, tm_state.grid[y][x].color);
-
-            snprintf(key, sizeof(key), "tm_attr_%d_%d", y, x);
-            checkpoint_save_int(key, tm_state.grid[y][x].attributes);
+        for (int x = 0; x < grid_cols; x++) {
+            text_cell_t *cell = &grid[y * grid_cols + x];
+            if (cp < (int)sizeof(chars) - 1) {
+                chars[cp++] = cell->character ? cell->character : ' ';
+            }
+            if (ap < (int)sizeof(attrs) - 10) {
+                ap += snprintf(attrs + ap, sizeof(attrs) - ap,
+                    "%d,%d,%d;", cell->color, cell->bg_color, cell->attributes);
+            }
         }
-    }
+        chars[cp] = '\0';
+        attrs[ap] = '\0';
 
-    ESP_LOGI(TAG, "Text mode state saved");
+        snprintf(key, sizeof(key), "tm_rc_%d", y);
+        checkpoint_save_string(key, chars);
+        snprintf(key, sizeof(key), "tm_ra_%d", y);
+        checkpoint_save_string(key, attrs);
+    }
 }
 
 void text_mode_restore(void) {
-    tm_state.cursor_x = checkpoint_load_int("tm_cursor_x");
-    tm_state.cursor_y = checkpoint_load_int("tm_cursor_y");
-    tm_state.bg_color = checkpoint_load_int("tm_bg_color");
+    cursor_x = checkpoint_load_int("tm_cursor_x");
+    cursor_y = checkpoint_load_int("tm_cursor_y");
+    bg_color = checkpoint_load_int("tm_bg_color");
+    font_id_t saved_font = (font_id_t)checkpoint_load_int("tm_font");
+    if ((int)saved_font < 0 || (int)saved_font >= FONT_COUNT) saved_font = FONT_SPLEEN_5X8;
 
-    // Restore grid and colors
-    for (int y = 0; y < TEXT_MODE_ROWS; y++) {
-        for (int x = 0; x < TEXT_MODE_COLS; x++) {
-            char key[32];
-            const char *value;
+    init_grid(saved_font);
 
-            snprintf(key, sizeof(key), "tm_grid_%d_%d", y, x);
-            value = checkpoint_load_string(key);
-            if (value != NULL && strlen(value) > 0) {
-                tm_state.grid[y][x].character = value[0];
+    for (int y = 0; y < grid_rows; y++) {
+        char key[32];
+        snprintf(key, sizeof(key), "tm_rc_%d", y);
+        const char *chars = checkpoint_load_string(key);
+        snprintf(key, sizeof(key), "tm_ra_%d", y);
+        const char *attrs = checkpoint_load_string(key);
+
+        int x = 0;
+        if (chars) {
+            for (; x < grid_cols && chars[x]; x++) {
+                grid[y * grid_cols + x].character = chars[x];
             }
-
-            snprintf(key, sizeof(key), "tm_color_%d_%d", y, x);
-            tm_state.grid[y][x].color = checkpoint_load_int(key);
-
-            snprintf(key, sizeof(key), "tm_attr_%d_%d", y, x);
-            tm_state.grid[y][x].attributes = checkpoint_load_int(key);
+        }
+        if (attrs) {
+            const char *p = attrs;
+            x = 0;
+            while (*p && x < grid_cols) {
+                int c = 0, b = 0, a = 0;
+                int n = sscanf(p, "%d,%d,%d;", &c, &b, &a);
+                if (n >= 3) {
+                    grid[y * grid_cols + x].color = (uint8_t)c;
+                    grid[y * grid_cols + x].bg_color = (uint8_t)b;
+                    grid[y * grid_cols + x].attributes = (uint8_t)a;
+                } else if (n >= 2) {
+                    grid[y * grid_cols + x].color = (uint8_t)c;
+                    grid[y * grid_cols + x].attributes = (uint8_t)a;
+                }
+                while (*p && *p != ';') p++;
+                if (*p == ';') p++;
+                x++;
+            }
         }
     }
 
-    // Re-render entire screen
-    for (int y = 0; y < TEXT_MODE_ROWS; y++) {
-        for (int x = 0; x < TEXT_MODE_COLS; x++) {
+    for (int y = 0; y < grid_rows; y++) {
+        for (int x = 0; x < grid_cols; x++) {
             update_cell(x, y);
         }
     }
-
-    ESP_LOGI(TAG, "Text mode state restored");
 }
 
 void text_mode_switch_graphics(void) {
-    graphics_mode = true;
-    ESP_LOGI(TAG, "Switched to graphics mode (direct LovyanGFX access)");
+    graphics = true;
 }
 
-void text_mode_flush(void) {
-    // No-op in single buffer mode
-}
+void text_mode_flush(void) {}
 
 void text_mode_switch_text(void) {
-    graphics_mode = false;
-
-    // Re-render text mode screen
-    for (int y = 0; y < TEXT_MODE_ROWS; y++) {
-        for (int x = 0; x < TEXT_MODE_COLS; x++) {
+    graphics = false;
+    for (int y = 0; y < grid_rows; y++) {
+        for (int x = 0; x < grid_cols; x++) {
             update_cell(x, y);
         }
     }
-
-    ESP_LOGI(TAG, "Switched to text mode");
 }

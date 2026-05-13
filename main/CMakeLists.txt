@@ -14,6 +14,7 @@ idf_component_register(
         "text_mode.cpp"
         "wifi.cpp"
         "../libs/ui/ui.c"
-    INCLUDE_DIRS "." ".." "../libs/ui"
+        "../fonts/fonts.cpp"
+    INCLUDE_DIRS "." ".." "../libs/ui" "../fonts"
     REQUIRES driver esp_app_format esp_common esp_hw_support esp_system heap log pthread xtensa spiffs esp_driver_spi cxx esp_driver_i2c esp_driver_sdspi esp_driver_uart fatfs wear_levelling esp_wifi esp_netif nvs_flash esp_event
 )

@@ -32,7 +32,8 @@ void ui_window(int x, int y, int w, int h, const char *title) {
 }
 
 void ui_separator(int y) {
-    for (int x = 0; x < TEXT_MODE_COLS; x++) {
+    int cols = text_mode_get_cols();
+    for (int x = 0; x < cols; x++) {
         text_mode_print_at_color(x, y, "-", TEXT_COLOR_BLUE);
     }
 }
@@ -56,10 +57,11 @@ int ui_menu_draw(int x, int y, int max_rows, const char **items, int count, int 
 }
 
 void ui_status_bar(int y, const char *left, const char *right) {
+    int cols = text_mode_get_cols();
     text_mode_print_at_color(2, y, left ? left : "", TEXT_COLOR_WHITE);
     if (right && right[0]) {
         int rlen = (int)strlen(right);
-        int rx = TEXT_MODE_COLS - 2 - rlen;
+        int rx = cols - 2 - rlen;
         if (rx > 0) {
             text_mode_print_at_color(rx, y, right, TEXT_COLOR_WHITE);
         }

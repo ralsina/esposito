@@ -29,6 +29,12 @@ SYMBOLS=(
     checkpoint_save
     os_get_current_app
     text_mode_init
+    text_mode_init_ex
+    text_mode_get_cols
+    text_mode_get_rows
+    text_mode_get_char_width
+    text_mode_get_char_height
+    text_mode_get_font
     text_mode_clear
     text_mode_print_at
     text_mode_print_at_color
@@ -36,6 +42,8 @@ SYMBOLS=(
     text_mode_printf_at_color
     text_mode_print_at_attr
     text_mode_printf_at_attr
+    text_mode_print_at_attr_bg
+    text_mode_printf_at_attr_bg
     text_mode_get_cursor
     text_mode_set_cursor
     text_mode_save
@@ -76,6 +84,8 @@ SYMBOLS=(
     wifi_connect
     wifi_disconnect
     wifi_save_config
+    font_table
+    font_lookup_by_name
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"

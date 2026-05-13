@@ -3,6 +3,7 @@
 #include "hardware.h"
 #include "checkpoint.h"
 #include "text_mode.h"
+#include "fonts.h"
 #include "wifi.h"
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,12 @@ static const os_symtab_entry_t symtab[] = {
     {"checkpoint_save",         checkpoint_save},
     {"os_get_current_app",      os_get_current_app},
     {"text_mode_init",          text_mode_init},
+    {"text_mode_init_ex",       text_mode_init_ex},
+    {"text_mode_get_cols",      text_mode_get_cols},
+    {"text_mode_get_rows",      text_mode_get_rows},
+    {"text_mode_get_char_width", text_mode_get_char_width},
+    {"text_mode_get_char_height",text_mode_get_char_height},
+    {"text_mode_get_font",      text_mode_get_font},
     {"text_mode_clear",         text_mode_clear},
     {"text_mode_print_at",      text_mode_print_at},
     {"text_mode_print_at_color",text_mode_print_at_color},
@@ -29,6 +36,8 @@ static const os_symtab_entry_t symtab[] = {
     {"text_mode_printf_at_color",text_mode_printf_at_color},
     {"text_mode_print_at_attr", text_mode_print_at_attr},
     {"text_mode_printf_at_attr",text_mode_printf_at_attr},
+    {"text_mode_print_at_attr_bg", text_mode_print_at_attr_bg},
+    {"text_mode_printf_at_attr_bg",text_mode_printf_at_attr_bg},
     {"text_mode_get_cursor",    text_mode_get_cursor},
     {"text_mode_set_cursor",    text_mode_set_cursor},
     {"text_mode_save",          text_mode_save},
@@ -68,6 +77,8 @@ static const os_symtab_entry_t symtab[] = {
     {"wifi_scan_get_rssi",      wifi_scan_get_rssi},
     {"wifi_connect",            wifi_connect},
     {"wifi_disconnect",         wifi_disconnect},
+    {"font_table",              (void*)font_table},
+    {"font_lookup_by_name",     font_lookup_by_name},
     {"wifi_save_config",        wifi_save_config},
     {NULL, NULL}
 };

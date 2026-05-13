@@ -24,8 +24,11 @@ bool hardware_init(void);
 bool display_init(void);
 void display_clear(uint16_t color);
 void display_draw_text(int x, int y, const char *text, uint16_t color);
+void display_draw_text_transparent(int x, int y, const char *text, uint16_t color);
+void display_draw_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg);
 void display_draw_pixel(int x, int y, uint16_t color);
 void display_fill_rect(int x, int y, int width, int height, uint16_t color);
+void display_set_font(const void *font);
 
 // Display character with specific foreground and background at pixel position
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color);

@@ -73,7 +73,7 @@ fi
 
 # Build include flags
 IDF_PATH="${IDF_PATH:-/opt/esp-idf}"
-INCLUDE_FLAGS="-I main -I . -I build/config"
+INCLUDE_FLAGS="-I main -I . -I fonts -I build/config"
 if [ -d "$IDF_PATH" ]; then
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_common/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_system/include"

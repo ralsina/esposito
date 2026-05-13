@@ -4,14 +4,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include "fonts.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Text mode configuration
-#define TEXT_MODE_COLS 64      // Number of characters across (320px / 5px per char)
-#define TEXT_MODE_ROWS 30      // Number of characters down (240px / 8px per char)
+// Default grid constants (for default spleen-5x8 font)
+#define TEXT_MODE_COLS 64
+#define TEXT_MODE_ROWS 30
 #define TEXT_MODE_CHAR_WIDTH  5
 #define TEXT_MODE_CHAR_HEIGHT 8
 
@@ -44,15 +45,26 @@ typedef enum {
     TEXT_ATTR_INVERSE = 8,
 } text_attribute_t;
 
-// Cell data structure (combines char, color, and attributes)
+// Cell data structure
 typedef struct {
     char character;
-    uint8_t color;       // 4 bits for color (0-15)
-    uint8_t attributes;  // 4 bits for attributes (bold, italic, etc.)
+    uint8_t color;      // foreground color (0-15)
+    uint8_t bg_color;   // background color (0-15)
+    uint8_t attributes;
 } text_cell_t;
 
-// Initialize text mode
+// Initialize text mode with default font (spleen-5x8)
 bool text_mode_init(void);
+
+// Initialize text mode with a specific font
+bool text_mode_init_ex(font_id_t font);
+
+// Runtime grid queries (use these instead of TEXT_MODE_COLS/ROWS for font-aware code)
+int text_mode_get_cols(void);
+int text_mode_get_rows(void);
+int text_mode_get_char_width(void);
+int text_mode_get_char_height(void);
+font_id_t text_mode_get_font(void);
 
 // Clear text mode screen (fills with background color)
 void text_mode_clear(uint16_t bg_color);
@@ -73,6 +85,10 @@ void text_mode_printf_at_color(int x, int y, uint16_t color, const char *fmt, ..
 // Print with attributes
 void text_mode_print_at_attr(int x, int y, const char *str, uint8_t color, uint8_t attributes);
 void text_mode_printf_at_attr(int x, int y, uint8_t color, uint8_t attributes, const char *fmt, ...);
+
+// Print with foreground color, background color, and attributes
+void text_mode_print_at_attr_bg(int x, int y, const char *str, uint8_t fg_color, uint8_t bg_color, uint8_t attributes);
+void text_mode_printf_at_attr_bg(int x, int y, uint8_t fg_color, uint8_t bg_color, uint8_t attributes, const char *fmt, ...);
 
 // Get current cursor position
 void text_mode_get_cursor(int *x, int *y);
