@@ -11,6 +11,8 @@ static char md_line[MD_LINE_BUF];
 static rendered_line_t md_temp_lines[MAX_RENDERED_LINES];
 static char para_remainder[PARA_BUF_SIZE];
 static int has_remainder = 0;
+static int remainder_para_type = 0;
+static int remainder_heading_level = 0;
 static int carry_spacer = 0;
 static int in_tag = 0;
 
@@ -192,13 +194,20 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
     // Process any paragraph remainder from a previous mid-paragraph break
     if (has_remainder) {
         const char *src = para_remainder;
+        uint8_t rem_color = TEXT_COLOR_WHITE;
+        uint8_t rem_attr = TEXT_ATTR_NORMAL;
+
+        if (remainder_para_type == 1) {
+            rem_color = (remainder_heading_level == 1) ? TEXT_COLOR_BRIGHT_WHITE : TEXT_COLOR_BRIGHT_CYAN;
+            rem_attr = TEXT_ATTR_BOLD;
+        }
 
         while (count < max_lines) {
             int consumed = wrap_line(src, screen_width, md_temp_lines[0].text, MAX_LINE_TEXT);
             if (consumed <= 0) break;
 
-            md_temp_lines[0].color = TEXT_COLOR_WHITE;
-            md_temp_lines[0].attr = TEXT_ATTR_NORMAL;
+            md_temp_lines[0].color = rem_color;
+            md_temp_lines[0].attr = rem_attr;
             lines[count++] = md_temp_lines[0];
             src += consumed;
         }
@@ -210,6 +219,8 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
         }
 
         has_remainder = 0;
+        remainder_para_type = 0;
+        remainder_heading_level = 0;
         carry_spacer = 1;
     }
 
@@ -291,20 +302,7 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
         // Word-wrap the paragraph one line at a time
         const char *src = md_para;
 
-        if (para_type == 1) {
-            strncpy(md_temp_lines[0].text, md_para, MAX_LINE_TEXT - 1);
-            md_temp_lines[0].text[MAX_LINE_TEXT - 1] = '\0';
-            md_temp_lines[0].color = (heading_level == 1) ? TEXT_COLOR_BRIGHT_WHITE : TEXT_COLOR_BRIGHT_CYAN;
-            md_temp_lines[0].attr = TEXT_ATTR_BOLD;
-
-            if (count + 1 > max_lines) {
-                fseek(f, para_start_pos, SEEK_SET);
-                carry_spacer = 0;
-                break;
-            }
-            lines[count++] = md_temp_lines[0];
-            carry_spacer = 1;
-        } else if (para_type == 3) {
+        if (para_type == 3) {
             if (count + 1 >= max_lines) {
                 fseek(f, para_start_pos, SEEK_SET);
                 carry_spacer = 0;
@@ -319,12 +317,19 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
             lines[count++] = md_temp_lines[0];
             carry_spacer = 1;
         } else {
+            uint8_t line_color = TEXT_COLOR_WHITE;
+            uint8_t line_attr = TEXT_ATTR_NORMAL;
+            if (para_type == 1) {
+                line_color = (heading_level == 1) ? TEXT_COLOR_BRIGHT_WHITE : TEXT_COLOR_BRIGHT_CYAN;
+                line_attr = TEXT_ATTR_BOLD;
+            }
+
             while (count < max_lines) {
                 int consumed = wrap_line(src, screen_width, md_temp_lines[0].text, MAX_LINE_TEXT);
                 if (consumed <= 0) break;
 
-                md_temp_lines[0].color = TEXT_COLOR_WHITE;
-                md_temp_lines[0].attr = TEXT_ATTR_NORMAL;
+                md_temp_lines[0].color = line_color;
+                md_temp_lines[0].attr = line_attr;
                 lines[count++] = md_temp_lines[0];
                 src += consumed;
             }
@@ -332,6 +337,8 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
             if (*src) {
                 strcpy(para_remainder, src);
                 has_remainder = 1;
+                remainder_para_type = para_type;
+                remainder_heading_level = heading_level;
                 carry_spacer = 0;
             } else {
                 carry_spacer = 1;
@@ -344,6 +351,8 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
 
 void md_clear_remainder(void) {
     has_remainder = 0;
+    remainder_para_type = 0;
+    remainder_heading_level = 0;
     carry_spacer = 0;
     in_tag = 0;
 }
