@@ -2,7 +2,13 @@
 
 A markdown ebook reader for the Esposito terminal OS on ESP32/CYD2USB.
 
-Reads `.md` files from `/sdcard/books/` and displays them with paragraph reflow, page navigation, and checkpoint resume.
+![Reader in Action](reader.png)
+
+## Features
+
+* Reads `.md` files from `/sdcard/books/` and displays them with paragraph reflow, page navigation, and checkpoint resume.
+* Opens instantly, pages flip instantly
+* Remembers open book/position
 
 ## Controls
 
