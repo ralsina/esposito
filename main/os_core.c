@@ -245,9 +245,18 @@ void os_event_loop(void) {
             // Check for app launcher trigger (Ctrl+ESC)
             if (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
                 event.keyboard.key == 27 &&  // ESC key
-                (event.keyboard.modifiers & 0x02)) {  // Ctrl modifier (bit 1)
+                (event.keyboard.modifiers & MODIFIER_CTRL)) {
                 ESP_LOGI(TAG, "Launcher activated (Ctrl+ESC)");
                 app_launcher_start();
+                continue;
+            }
+
+            // Check for screenshot trigger (Fn+ESC)
+            if (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
+                event.keyboard.key == 27 &&  // ESC key
+                (event.keyboard.modifiers & MODIFIER_FN)) {
+                ESP_LOGI(TAG, "Screenshot triggered (Fn+ESC)");
+                display_save_screenshot();
                 continue;
             }
 

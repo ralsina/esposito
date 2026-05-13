@@ -2,6 +2,7 @@
 #include "hardware_config.h"
 #include "lovgfx_config.h"
 #include "bbq20_keyboard.h"
+#include "sd_card.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -9,6 +10,7 @@
 #include "fonts.h"
 #include "driver/uart.h"
 #include <string.h>
+#include <sys/stat.h>
 
 static const char *TAG = "hardware";
 
@@ -133,6 +135,50 @@ void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_
         if (current_display_font) tft.setFont(current_display_font);
         tft.print(ch);
     }
+}
+
+bool display_save_screenshot(void) {
+    if (!sd_card_is_mounted()) return false;
+
+    mkdir("/sdcard/screenshots", 0777);
+
+    char path[64];
+    int num = 0;
+    FILE *existing;
+    do {
+        snprintf(path, sizeof(path), "/sdcard/screenshots/shot_%03d.ppm", num);
+        existing = fopen(path, "r");
+        if (existing) {
+            fclose(existing);
+            num++;
+        }
+    } while (existing && num < 1000);
+    if (num >= 1000) return false;
+
+    FILE *f = fopen(path, "wb");
+    if (!f) return false;
+
+    fprintf(f, "P6\n%d %d\n255\n", SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    uint16_t *row = (uint16_t *)malloc(SCREEN_WIDTH * sizeof(uint16_t));
+    if (!row) { fclose(f); return false; }
+
+    for (int y = 0; y < SCREEN_HEIGHT; y++) {
+        tft.readRect(0, y, SCREEN_WIDTH, 1, row);
+        for (int x = 0; x < SCREEN_WIDTH; x++) {
+            uint16_t rgb565 = row[x];
+            uint8_t r = (rgb565 >> 8) & 0xF8; r |= r >> 5;
+            uint8_t g = (rgb565 >> 3) & 0xFC; g |= g >> 6;
+            uint8_t b = (rgb565 << 3) & 0xF8; b |= b >> 5;
+            uint8_t rgb[3] = {r, g, b};
+            fwrite(rgb, 1, 3, f);
+        }
+    }
+
+    free(row);
+    fclose(f);
+    ESP_LOGI(TAG, "Screenshot saved: %s", path);
+    return true;
 }
 
 // Keyboard implementation for BBQ20 (based on terminado)
