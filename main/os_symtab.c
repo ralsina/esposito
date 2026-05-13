@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 static const os_symtab_entry_t symtab[] = {
     {"display_clear",           display_clear},
@@ -66,6 +68,10 @@ static const os_symtab_entry_t symtab[] = {
     {"atoi",                    atoi},
     {"atol",                    atol},
     {"abs",                     abs},
+    {"opendir",                 opendir},
+    {"readdir",                 readdir},
+    {"closedir",                closedir},
+    {"stat",                    stat},
     {"os_log",                  os_log},
     {"serial_init",             serial_init},
     {"serial_write",            serial_write},

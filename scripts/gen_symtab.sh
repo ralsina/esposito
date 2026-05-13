@@ -72,6 +72,10 @@ SYMBOLS=(
     atoi
     atol
     abs
+    opendir
+    readdir
+    closedir
+    stat
     os_log
     serial_init
     serial_write
