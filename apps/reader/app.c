@@ -15,6 +15,11 @@ extern void app_launcher_start(void);
 #define MAX_FILES 64
 #define MAX_PATH 256
 
+#define KEY_LAST_FILE "reader_last_file"
+#define KEY_LEGACY_LAST_FILE "reader_file"
+#define KEY_BOOK_OFFSET_PREFIX "reader_off"
+#define KEY_BOOK_PAGE_PREFIX "reader_page"
+
 typedef enum {
     MODE_FILE_LIST,
     MODE_READING,
@@ -58,6 +63,25 @@ static reader_state_t state;
 static int bold_pending = 0;
 static int underline_pending = 0;
 
+static void build_book_key(char *out, size_t out_size, const char *prefix, const char *path) {
+    snprintf(out, out_size, "%s:%s", prefix, path);
+}
+
+static void save_current_book_progress(void) {
+    if (!state.file || !state.current_file[0] || state.page_cache.current < 0) {
+        return;
+    }
+
+    char offset_key[320];
+    char page_key[320];
+    build_book_key(offset_key, sizeof(offset_key), KEY_BOOK_OFFSET_PREFIX, state.current_file);
+    build_book_key(page_key, sizeof(page_key), KEY_BOOK_PAGE_PREFIX, state.current_file);
+
+    checkpoint_save_int(offset_key, (int)page_cache_current_offset(&state.page_cache));
+    checkpoint_save_int(page_key, state.page_number);
+    checkpoint_save_string(KEY_LAST_FILE, state.current_file);
+}
+
 static void scan_md_files(void) {
     state.file_count = 0;
     DIR *dir = opendir("/sdcard/books");
@@ -80,6 +104,7 @@ static void scan_md_files(void) {
 
 static void close_current_file(void) {
     if (state.file) {
+        save_current_book_progress();
         fclose(state.file);
         state.file = NULL;
     }
@@ -98,6 +123,23 @@ static int open_file(const char *path) {
     page_cache_init(&state.page_cache);
     page_cache_set_start(&state.page_cache, 0);
     state.page_number = 1;
+
+    // Restore per-book progress if we have it.
+    char offset_key[320];
+    char page_key[320];
+    build_book_key(offset_key, sizeof(offset_key), KEY_BOOK_OFFSET_PREFIX, path);
+    build_book_key(page_key, sizeof(page_key), KEY_BOOK_PAGE_PREFIX, path);
+
+    int saved_offset = checkpoint_load_int(offset_key);
+    int saved_page = checkpoint_load_int(page_key);
+
+    if (saved_offset > 0) {
+        page_cache_set_start(&state.page_cache, (uint32_t)saved_offset);
+    }
+    if (saved_page > 0) {
+        state.page_number = saved_page;
+    }
+
     return 1;
 }
 
@@ -357,9 +399,7 @@ static void exit_to_file_list(void) {
     close_current_file();
     scan_md_files();
     state.file_selected = 0;
-    checkpoint_save_string("reader_file", "");
-    checkpoint_save_int("reader_offset", 0);
-    checkpoint_save_int("reader_page", 0);
+    checkpoint_save_string(KEY_LAST_FILE, "");
     draw_file_list();
 }
 
@@ -426,20 +466,19 @@ void app_init(app_context_t *ctx) {
     text_mode_init();
     checkpoint_open("reader");
 
-    // Try checkpoint restore
-    const char *saved_file = checkpoint_load_string("reader_file");
-    int saved_offset = checkpoint_load_int("reader_offset");
-    int saved_page = checkpoint_load_int("reader_page");
+    // Try last-opened file restore (legacy fallback included).
+    const char *saved_file = checkpoint_load_string(KEY_LAST_FILE);
+    if (!saved_file || !saved_file[0]) {
+        saved_file = checkpoint_load_string(KEY_LEGACY_LAST_FILE);
+    }
 
-    if (saved_file && saved_file[0] && saved_offset >= 0) {
+    if (saved_file && saved_file[0]) {
         struct stat st;
         if (stat(saved_file, &st) == 0 && S_ISREG(st.st_mode)) {
             if (open_file(saved_file)) {
-                state.page_number = saved_page > 0 ? saved_page : 1;
                 state.mode = MODE_READING;
                 state.screen_width = text_mode_get_cols() - MARGIN * 2;
                 state.content_rows = text_mode_get_rows() - 2;
-                page_cache_set_start(&state.page_cache, (uint32_t)saved_offset);
                 load_current_page();
                 draw_reading_page();
                 return;
@@ -497,9 +536,7 @@ void app_event(app_context_t *ctx, event_t *event) {
                     }
                 } else if (x_col >= state.btn_exit_x && x_col < state.btn_exit_x + state.btn_w) {
                     close_current_file();
-                    checkpoint_save_string("reader_file", "");
-                    checkpoint_save_int("reader_offset", 0);
-                    checkpoint_save_int("reader_page", 0);
+                    checkpoint_save_string(KEY_LAST_FILE, "");
                     app_launcher_start();
                 }
             }
@@ -508,11 +545,7 @@ void app_event(app_context_t *ctx, event_t *event) {
 }
 
 void app_checkpoint(app_context_t *ctx) {
-    if (state.mode == MODE_READING && state.current_file[0]) {
-        checkpoint_save_string("reader_file", state.current_file);
-        checkpoint_save_int("reader_offset", (int)page_cache_current_offset(&state.page_cache));
-        checkpoint_save_int("reader_page", state.page_number);
-    }
+    save_current_book_progress();
 }
 
 void app_close(app_context_t *ctx) {
