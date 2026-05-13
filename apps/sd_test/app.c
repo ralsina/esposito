@@ -7,34 +7,48 @@
 
 static const char *TAG = "sd_test";
 
-#define MAX_ENTRIES 128
+#define MAX_ENTRIES 256
+#define NAME_LEN 128
 
 static int entry_count = 0;
-static char entries[MAX_ENTRIES][64];
+static char entries[MAX_ENTRIES][NAME_LEN];
 static int entry_is_dir[MAX_ENTRIES];
 static int scroll_offset = 0;
 
-static void load_directory(void) {
-    entry_count = 0;
-    DIR *dir = opendir("/sdcard");
-    if (!dir) {
-        os_log(TAG, "Failed to open /sdcard");
-        return;
-    }
+static void scan_dir(const char *full_base, const char *rel_prefix) {
+    DIR *dir = opendir(full_base);
+    if (!dir) return;
 
     struct dirent *dent;
     while ((dent = readdir(dir)) != NULL && entry_count < MAX_ENTRIES) {
         if (strcmp(dent->d_name, ".") == 0 || strcmp(dent->d_name, "..") == 0) continue;
-        strncpy(entries[entry_count], dent->d_name, 63);
-        entries[entry_count][63] = '\0';
-        char full_path[128];
-        snprintf(full_path, sizeof(full_path), "/sdcard/%s", dent->d_name);
+
+        char child_full[256];
+        snprintf(child_full, sizeof(child_full), "%s/%s", full_base, dent->d_name);
+
         struct stat st;
-        entry_is_dir[entry_count] = (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode));
+        int is_dir = (stat(child_full, &st) == 0 && S_ISDIR(st.st_mode));
+
+        if (rel_prefix[0]) {
+            snprintf(entries[entry_count], NAME_LEN, "%s/%s", rel_prefix, dent->d_name);
+        } else {
+            strncpy(entries[entry_count], dent->d_name, NAME_LEN - 1);
+            entries[entry_count][NAME_LEN - 1] = '\0';
+        }
+        entry_is_dir[entry_count] = is_dir;
         entry_count++;
+
+        if (is_dir) {
+            scan_dir(child_full, entries[entry_count - 1]);
+        }
     }
     closedir(dir);
-    os_log(TAG, "Found %d entries in /sdcard", entry_count);
+}
+
+static void load_directory(void) {
+    entry_count = 0;
+    scan_dir("/sdcard", "");
+    os_log(TAG, "Found %d entries on SD card", entry_count);
 }
 
 static void draw_screen(void) {
@@ -52,18 +66,14 @@ static void draw_screen(void) {
     for (int i = 0; i < list_rows && (scroll_offset + i) < entry_count; i++) {
         int idx = scroll_offset + i;
         uint8_t color = entry_is_dir[idx] ? TEXT_COLOR_YELLOW : TEXT_COLOR_WHITE;
-        int name_len = strlen(entries[idx]);
-        int max_name = cols - 3;
-        if (name_len > max_name) name_len = max_name;
-
-        char line[128];
-        snprintf(line, sizeof(line), "%c %.*s", entry_is_dir[idx] ? 'D' : ' ', max_name, entries[idx]);
+        int max_name = cols - 1;
+        char line[256];
+        snprintf(line, sizeof(line), "%.*s", max_name, entries[idx]);
         text_mode_print_at_attr(0, i + 1, line, color, TEXT_ATTR_NORMAL);
     }
 
-    char footer[128];
-    snprintf(footer, sizeof(footer), "W/S: scroll  (%d/%d)", scroll_offset + 1, entry_count);
-    text_mode_print_at_attr(0, rows - 1, footer, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+    text_mode_printf_at_attr(0, rows - 1, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL,
+                             "W/S: scroll  (%d items)", entry_count);
 }
 
 void app_init(app_context_t *ctx) {
