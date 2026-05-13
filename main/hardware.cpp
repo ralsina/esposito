@@ -8,6 +8,7 @@
 #include <soc/rtc_cntl_reg.h>
 #include "fonts.h"
 #include "driver/uart.h"
+#include "driver/gpio.h"
 #include <string.h>
 
 static const char *TAG = "hardware";
@@ -40,6 +41,17 @@ bool hardware_init(void) {
         ESP_LOGE(TAG, "Keyboard initialization failed");
         return false;
     }
+
+    // Configure BOOT button (GPIO 0) as input with pull-up
+    gpio_config_t boot_btn = {
+        .pin_bit_mask = (1ULL << GPIO_NUM_0),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&boot_btn);
+    ESP_LOGI(TAG, "BOOT button (GPIO 0) configured");
 
     if (!timer_init()) {
         ESP_LOGE(TAG, "Timer initialization failed");

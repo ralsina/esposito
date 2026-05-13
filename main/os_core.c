@@ -10,6 +10,7 @@
 #include "esp_spiffs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/gpio.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -208,6 +209,25 @@ void os_event_loop(void) {
                 // Add the keyboard event to the queue
                 event_queue_push(&event);
                 ESP_LOGI(TAG, "Keyboard event added to queue");
+            }
+        }
+
+        // Poll for BOOT button (GPIO 0) to trigger launcher
+        {
+            static int boot_debounce = 0;
+            if (gpio_get_level(GPIO_NUM_0) == 0) {
+                if (boot_debounce < 3) boot_debounce++;
+                if (boot_debounce == 3) {
+                    boot_debounce = 4;
+                    ESP_LOGI(TAG, "BOOT button pressed, triggering launcher");
+                    event.type = EVENT_KEYBOARD;
+                    event.keyboard.key = 27;
+                    event.keyboard.pressed = true;
+                    event.keyboard.modifiers = MODIFIER_CTRL;
+                    event_queue_push(&event);
+                }
+            } else {
+                boot_debounce = 0;
             }
         }
 
