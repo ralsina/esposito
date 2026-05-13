@@ -1,21 +1,32 @@
 #!/bin/bash
 # Build a standalone app ELF for dynamic loading
-# Usage: build_app.sh <app.c> [output_dir]
+# Usage: build_app.sh [-l <lib>...] <app.c|app_dir> [output_dir]
 
 set -e
 
+LIBS=()
+
+while getopts "l:" opt; do
+    case $opt in
+        l) LIBS+=("$OPTARG") ;;
+        ?) exit 1 ;;
+    esac
+done
+shift $((OPTIND-1))
+
 APP_SRC="${1}"
 if [ -z "$APP_SRC" ]; then
-    echo "Usage: $0 <app.c|app_dir> [output_dir]"
+    echo "Usage: $0 [-l <lib>...] <app.c|app_dir> [output_dir]"
     echo "Builds an app .c file(s) into a relocatable ELF for SD card loading"
     echo ""
+    echo "  -l <lib>    Link against a library from libs/<lib>/ (repeatable)"
     echo "  If a .c file is given, the app directory is its parent."
     echo "  All .c files in the app directory are compiled together."
-    echo "  Example: $0 apps/my_app/app.c  ->  build/apps/my_app.elf"
+    echo "  Example: $0 -l ui apps/my_app/app.c  ->  build/apps/my_app.elf"
     exit 1
 fi
 
-# Determine app directory: if argument is a .c file, use its parent; otherwise use as-is
+# Determine app directory: if argument is a .c file, use its parent; otherwise use as-if
 if [ -f "$APP_SRC" ] && [[ "$APP_SRC" == *.c ]]; then
     APP_DIR="$(cd "$(dirname "$APP_SRC")" && pwd)"
 else
@@ -88,8 +99,25 @@ while IFS= read -r -d '' f; do
     APP_SOURCES+=("$f")
 done < <(find "$APP_DIR" -maxdepth 1 -name '*.c' -print0)
 
+# Collect library sources and include paths
+LIB_SOURCES=()
+for lib in "${LIBS[@]}"; do
+    LIB_DIR="libs/$lib"
+    if [ ! -d "$LIB_DIR" ]; then
+        echo "Error: library not found: $LIB_DIR"
+        exit 1
+    fi
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $LIB_DIR"
+    while IFS= read -r -d '' f; do
+        LIB_SOURCES+=("$f")
+    done < <(find "$LIB_DIR" -maxdepth 1 -name '*.c' -print0)
+done
+
 echo "Building app: $APP_NAME"
 echo "Sources: ${APP_SOURCES[*]}"
+for lib in "${LIBS[@]}"; do
+    echo "  Library: $lib"
+done
 echo "Output: $OUTPUT_DIR/${APP_NAME}.elf"
 
 # Compile and link all source files together
@@ -104,7 +132,7 @@ echo "  Compiling..."
     -T "$OS_SYMBOLS_LD" \
     $INCLUDE_FLAGS \
     -o "$OUTPUT_DIR/${APP_NAME}.elf" \
-    "${APP_SOURCES[@]}"
+    "${APP_SOURCES[@]}" "${LIB_SOURCES[@]}"
 
 echo "  Done: $OUTPUT_DIR/${APP_NAME}.elf"
 echo ""

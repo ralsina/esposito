@@ -1,14 +1,11 @@
 #include "os_core.h"
 #include "text_mode.h"
+#include "ui.h"
 #include "wifi.h"
 #include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "settings";
-
-#define KEY_ESC 27
-#define KEY_BS  8
-#define KEY_DEL 127
 
 typedef enum {
     STATE_MAIN,
@@ -26,7 +23,6 @@ static int msg_timer = 0;
 static int selected = 0;
 static int scan_count = 0;
 static int scan_selected = 0;
-static int prev_selected = -1;
 
 static void set_status(const char *msg) {
     strncpy(status_msg, msg, sizeof(status_msg) - 1);
@@ -43,56 +39,41 @@ static const char *menu_labels[MENU_ITEMS] = {
 };
 
 static void draw_main(void) {
-    text_mode_clear(TEXT_COLOR_BLACK);
+    ui_clear();
 
     int y = 0;
-    text_mode_printf_at_attr((TEXT_MODE_COLS - 13) / 2, y++, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD, "  WiFi Setup  ");
-
-    for (int x = 0; x < TEXT_MODE_COLS; x++) {
-        text_mode_print_at_color(x, y, "-", TEXT_COLOR_BLUE);
-    }
-    y++;
+    ui_label_attr((TEXT_MODE_COLS - 13) / 2, y++, "  WiFi Setup  ", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_separator(y++);
 
     if (wifi_is_connected()) {
-        text_mode_printf_at_attr(3, y++, TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL, "Status: Connected");
-        text_mode_printf_at_attr(3, y++, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL, "IP: %s", wifi_get_ip());
+        ui_label_attr(3, y++, "Status: Connected", TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL);
+        char ip_str[48];
+        snprintf(ip_str, sizeof(ip_str), "IP: %s", wifi_get_ip());
+        ui_label(3, y++, ip_str, TEXT_COLOR_WHITE);
     } else {
-        text_mode_print_at_attr(3, y++, "Status: Disconnected", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
-    }
-    y++;
-
-    for (int x = 0; x < TEXT_MODE_COLS; x++) {
-        text_mode_print_at_color(x, y, "-", TEXT_COLOR_BLUE);
-    }
-    y++;
-
-    for (int i = 0; i < MENU_ITEMS; i++) {
-        uint16_t color = (i == selected) ? TEXT_COLOR_GREEN : TEXT_COLOR_WHITE;
-        char marker = (i == selected) ? '>' : ' ';
-        text_mode_printf_at_color(5, y + i, color, "%c  %s", marker, menu_labels[i]);
+        ui_label_attr(3, y++, "Status: Disconnected", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
     }
 
+    ui_separator(y++);
+    ui_menu_draw(5, y, MENU_ITEMS, menu_labels, MENU_ITEMS, selected);
     y += MENU_ITEMS + 1;
+
     if (status_msg[0]) {
-        text_mode_printf_at_attr(3, y, TEXT_COLOR_BRIGHT_YELLOW, TEXT_ATTR_BOLD, "%s", status_msg);
+        ui_label_attr(3, y, status_msg, TEXT_COLOR_BRIGHT_YELLOW, TEXT_ATTR_BOLD);
     }
 
-    text_mode_print_at_color(3, TEXT_MODE_ROWS - 2, "W/S Navigate  Enter Select  ESC Exit", TEXT_COLOR_WHITE);
+    ui_status_bar(TEXT_MODE_ROWS - 2, "W/S Navigate  Enter Select", "ESC Exit");
 }
 
 static void draw_scan_results(void) {
-    text_mode_clear(TEXT_COLOR_BLACK);
+    ui_clear();
 
     int y = 0;
-    text_mode_printf_at_attr((TEXT_MODE_COLS - 19) / 2, y++, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD, "Available Networks");
-
-    for (int x = 0; x < TEXT_MODE_COLS; x++) {
-        text_mode_print_at_color(x, y, "-", TEXT_COLOR_BLUE);
-    }
-    y++;
+    ui_label_attr((TEXT_MODE_COLS - 19) / 2, y++, "Available Networks", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_separator(y++);
 
     if (scan_count <= 0) {
-        text_mode_print_at_attr(3, y, "No networks found", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+        ui_label_attr(3, y, "No networks found", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
     } else {
         y++;
         if (scan_selected >= scan_count) scan_selected = 0;
@@ -109,46 +90,43 @@ static void draw_scan_results(void) {
             else if (quality < 70) color = TEXT_COLOR_YELLOW;
 
             char marker = (i == scan_selected) ? '>' : ' ';
-            text_mode_printf_at_attr(3, y + i, color, TEXT_ATTR_NORMAL,
-                "%c %-24s %3d dBm", marker, ssid, rssi);
+            char line[48];
+            snprintf(line, sizeof(line), "%c %-24s %3d dBm", marker, ssid, rssi);
+            ui_label(3, y + i, line, color);
         }
     }
 
-    text_mode_print_at_color(3, TEXT_MODE_ROWS - 3,
-        "W/S Navigate  Enter Select  ESC Back", TEXT_COLOR_WHITE);
+    ui_status_bar(TEXT_MODE_ROWS - 3, "W/S Navigate  Enter Select", "ESC Back");
 }
 
 static void draw_text_entry(const char *title, const char *label, const char *value) {
-    text_mode_clear(TEXT_COLOR_BLACK);
+    ui_clear();
 
     int y = 0;
-    text_mode_printf_at_attr((TEXT_MODE_COLS - strlen(title) - 4) / 2, y++, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD, "  %s  ", title);
+    int tlen = (int)strlen(title);
+    ui_label_attr((TEXT_MODE_COLS - tlen - 4) / 2, y++, title, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_separator(y++);
+    y++;
 
-    for (int x = 0; x < TEXT_MODE_COLS; x++) {
-        text_mode_print_at_color(x, y, "-", TEXT_COLOR_BLUE);
-    }
-    y += 2;
+    ui_label_attr(3, y++, label, TEXT_COLOR_WHITE, TEXT_ATTR_BOLD);
 
-    text_mode_printf_at_attr(3, y++, TEXT_COLOR_WHITE, TEXT_ATTR_BOLD, "%s:", label);
-    text_mode_printf_at_color(3, y++, TEXT_COLOR_BRIGHT_GREEN, "%s_", value);
+    char display[64];
+    snprintf(display, sizeof(display), "%s_", value);
+    ui_label(3, y, display, TEXT_COLOR_BRIGHT_GREEN);
 
-    text_mode_print_at_color(3, TEXT_MODE_ROWS - 3,
-        "Type to enter  Enter Confirm  ESC Cancel", TEXT_COLOR_WHITE);
+    ui_status_bar(TEXT_MODE_ROWS - 3, "Type to enter  Enter Confirm", "ESC Cancel");
 }
 
 static void draw_message(void) {
-    text_mode_clear(TEXT_COLOR_BLACK);
+    ui_clear();
 
     int y = 0;
-    text_mode_printf_at_attr((TEXT_MODE_COLS - 10) / 2, y++, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD, "  Message  ");
+    ui_label_attr((TEXT_MODE_COLS - 10) / 2, y++, "  Message  ", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_separator(y++);
+    y++;
 
-    for (int x = 0; x < TEXT_MODE_COLS; x++) {
-        text_mode_print_at_color(x, y, "-", TEXT_COLOR_BLUE);
-    }
-    y += 2;
-
-    text_mode_printf_at_attr(3, y, TEXT_COLOR_BRIGHT_YELLOW, TEXT_ATTR_BOLD, "%s", status_msg);
-    text_mode_print_at_color(3, TEXT_MODE_ROWS - 3, "Press any key", TEXT_COLOR_WHITE);
+    ui_label_attr(3, y, status_msg, TEXT_COLOR_BRIGHT_YELLOW, TEXT_ATTR_BOLD);
+    ui_status_bar(TEXT_MODE_ROWS - 3, "Press any key", "");
 }
 
 static void render(void) {
@@ -160,10 +138,10 @@ static void render(void) {
             draw_scan_results();
             break;
         case STATE_ENTER_SSID:
-            draw_text_entry("Enter SSID", "SSID", input_ssid);
+            draw_text_entry("Enter SSID", "SSID:", input_ssid);
             break;
         case STATE_ENTER_PASSWORD:
-            draw_text_entry("Enter Password", "Password", input_password);
+            draw_text_entry("Enter Password", "Password:", input_password);
             break;
         case STATE_MESSAGE:
             draw_message();
@@ -190,7 +168,6 @@ void app_init(app_context_t *ctx) {
     input_password[0] = '\0';
     selected = 0;
     scan_selected = 0;
-    prev_selected = -1;
 
     render();
     os_log(TAG, "Settings app initialized");
@@ -228,12 +205,10 @@ static void handle_main_key(char key) {
             case 1:
                 state = STATE_ENTER_SSID;
                 input_ssid[0] = '\0';
-                render();
                 break;
             case 2:
                 state = STATE_ENTER_PASSWORD;
                 input_password[0] = '\0';
-                render();
                 break;
             case 3:
                 if (input_ssid[0] == '\0') {
@@ -250,10 +225,9 @@ static void handle_main_key(char key) {
             case 4:
                 wifi_disconnect();
                 set_status("Disconnected");
-                render();
                 break;
         }
-    } else if (key == KEY_ESC) {
+    } else if (key == 27) {
         return;
     }
 
@@ -263,7 +237,7 @@ static void handle_main_key(char key) {
 }
 
 static void handle_scan_key(char key) {
-    if (key == KEY_ESC) {
+    if (key == 27) {
         state = STATE_MAIN;
         render();
         return;
@@ -306,30 +280,11 @@ static void handle_text_entry(char key) {
         max_len = sizeof(input_password) - 1;
     }
 
-    if (key == KEY_ESC) {
+    int result = ui_text_input_handle(key, buf, max_len);
+    if (result != 0) {
         state = STATE_MAIN;
-        render();
-        return;
     }
-    if (key == '\n' || key == '\r') {
-        state = STATE_MAIN;
-        render();
-        return;
-    }
-    if (key == KEY_BS || key == KEY_DEL) {
-        size_t len = strlen(buf);
-        if (len > 0) buf[len - 1] = '\0';
-        render();
-        return;
-    }
-    if (key >= 32 && key <= 126) {
-        size_t len = strlen(buf);
-        if (len < (size_t)max_len) {
-            buf[len] = key;
-            buf[len + 1] = '\0';
-        }
-        render();
-    }
+    render();
 }
 
 static void handle_message_key(char key) {

@@ -29,8 +29,13 @@ for app_dir in apps/*/; do
     app_name=$(basename "$app_dir")
     app_src="${app_dir}app.c"
     if [ -f "$app_src" ]; then
-        echo "  Building $app_name..."
-        scripts/build_app.sh "$app_src" build/apps
+        DEPS=""
+        if [ -f "${app_dir}deps" ]; then
+            DEPS=$(while read -r lib; do echo -n "-l $lib "; done < "${app_dir}deps")
+        fi
+        echo "  Building $app_name... $DEPS"
+        # shellcheck disable=SC2086
+        scripts/build_app.sh $DEPS "$app_src" build/apps
     fi
 done
 
