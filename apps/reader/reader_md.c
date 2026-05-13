@@ -126,6 +126,23 @@ static void asciify(char *line) {
     *dst = '\0';
 }
 
+static void strip_markdown_images(char *line) {
+    char *cursor = line;
+    while (*cursor) {
+        if (cursor[0] == '!' && cursor[1] == '[') {
+            char *alt_end = strchr(cursor + 2, ']');
+            if (alt_end && alt_end[1] == '(') {
+                char *url_end = strchr(alt_end + 2, ')');
+                if (url_end) {
+                    memmove(cursor, url_end + 1, strlen(url_end + 1) + 1);
+                    continue;
+                }
+            }
+        }
+        cursor++;
+    }
+}
+
 static int wrap_line(const char *text, int width, char *out, int max_out) {
     while (*text == ' ') text++;
     if (!*text) return 0;
@@ -283,6 +300,7 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
 
         strip_html(md_para);
         asciify(md_para);
+        strip_markdown_images(md_para);
         if (!md_para[0]) {
             carry_spacer = 0;
             continue;
