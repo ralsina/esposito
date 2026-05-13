@@ -38,7 +38,7 @@ static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t b
             bold_active = (attr & TEXT_ATTR_BOLD) ? 1 : 0;
             continue;
         }
-        if (*text == MD_LINK_TOGGLE) {
+        if (*text == MD_FORMAT_TOGGLE) {
             if (attr & TEXT_ATTR_UNDERLINE) {
                 attr &= ~TEXT_ATTR_UNDERLINE;
                 underline_active = 0;

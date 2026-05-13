@@ -157,11 +157,11 @@ static void convert_markdown_links(char *line) {
                         }
                         if (text >= text_end) break;
 
-                        *dst++ = MD_LINK_TOGGLE;
+                        *dst++ = MD_FORMAT_TOGGLE;
                         while (text < text_end && !is_space((unsigned char)*text)) {
                             *dst++ = *text++;
                         }
-                        *dst++ = MD_LINK_TOGGLE;
+                        *dst++ = MD_FORMAT_TOGGLE;
                     }
 
                     src = url_end + 1;
@@ -199,11 +199,11 @@ static void convert_markdown_emphasis(char *line) {
             const char *close = find_emphasis_close(src + 1);
             if (close) {
                 const char *inner = src + 1;
-                *dst++ = MD_LINK_TOGGLE;
+                *dst++ = MD_FORMAT_TOGGLE;
                 while (inner < close) {
                     *dst++ = *inner++;
                 }
-                *dst++ = MD_LINK_TOGGLE;
+                *dst++ = MD_FORMAT_TOGGLE;
                 src = (char *)close + 1;
                 continue;
             }
@@ -238,7 +238,7 @@ static int wrap_line(const char *text, int width, char *out, int max_out) {
         int word_chars = 0;
         const char *probe = word_start;
         while (probe < text) {
-            if (*probe != MD_LINK_TOGGLE) word_chars++;
+            if (*probe != MD_FORMAT_TOGGLE) word_chars++;
             probe++;
         }
 
@@ -253,7 +253,7 @@ static int wrap_line(const char *text, int width, char *out, int max_out) {
             int visible = 0;
             const char *split = word_start;
             while (*split && *split != ' ' && visible < width) {
-                if (*split != MD_LINK_TOGGLE) visible++;
+                if (*split != MD_FORMAT_TOGGLE) visible++;
                 split++;
             }
             text = split;
@@ -271,7 +271,7 @@ static int wrap_line(const char *text, int width, char *out, int max_out) {
             char current = *copy_ptr++;
             *out++ = current;
             written++;
-            if (current != MD_LINK_TOGGLE) remaining--;
+            if (current != MD_FORMAT_TOGGLE) remaining--;
         }
 
         while (*text == ' ') text++;

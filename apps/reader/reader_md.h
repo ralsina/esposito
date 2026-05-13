@@ -9,7 +9,7 @@
 
 // Inline formatting control marker used inside rendered_line_t.text.
 // The renderer treats it as a zero-width toggle for underline.
-#define MD_LINK_TOGGLE ((char)0x1D)
+#define MD_FORMAT_TOGGLE ((char)0x1D)
 
 typedef struct {
     char text[MAX_LINE_TEXT];
