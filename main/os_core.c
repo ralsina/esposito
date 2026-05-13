@@ -211,16 +211,24 @@ void os_event_loop(void) {
             }
         }
 
-        // Poll for touchscreen events if current app is subscribed
-        if (current_app && (current_app->subscriptions & EVENT_TOUCH)) {
-            uint16_t x, y;
-            bool pressed;
-            if (touchscreen_get_position(&x, &y, &pressed)) {
-                event.type = EVENT_TOUCH;
-                event.touch.x = x;
-                event.touch.y = y;
-                event.touch.pressed = pressed;
-                event_queue_push(&event);
+        // Poll for touchscreen events if current app is subscribed or launcher is active
+        {
+            static bool touch_was_pressed = false;
+            if ((current_app && (current_app->subscriptions & EVENT_TOUCH)) || app_launcher_is_active()) {
+                uint16_t x, y;
+                bool pressed;
+                if (touchscreen_get_position(&x, &y, &pressed)) {
+                    if (pressed && !touch_was_pressed) {
+                        event.type = EVENT_TOUCH;
+                        event.touch.x = x;
+                        event.touch.y = y;
+                        event.touch.pressed = true;
+                        event_queue_push(&event);
+                    }
+                    touch_was_pressed = pressed;
+                } else {
+                    touch_was_pressed = false;
+                }
             }
         }
 

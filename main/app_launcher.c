@@ -23,7 +23,13 @@ static char app_names[10][64]; // Support up to 10 apps
 // App launcher UI layout
 #define HEADER_ROW 1
 #define APPS_START_ROW 4
-#define INSTRUCTIONS_START_ROW 15
+
+// Button positions (set on first render)
+static int btn_up_x = 0;
+static int btn_open_x = 0;
+static int btn_down_x = 0;
+static int btn_row = 0;
+static int btn_w = 0;
 
 static int previous_selected = -1;
 
@@ -41,14 +47,31 @@ static void sort_app_names(void) {
 }
 
 static void app_launcher_show_static(void) {
-    ui_label_attr((TEXT_MODE_COLS - 20) / 2, HEADER_ROW, "Esposito OS App Launcher", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    ui_separator(HEADER_ROW + 1);
-    ui_separator(INSTRUCTIONS_START_ROW - 1);
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
 
-    ui_label_attr(5, INSTRUCTIONS_START_ROW, "Controls:", TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
-    ui_label(5, INSTRUCTIONS_START_ROW + 1, "W/S or Up/Down: Navigate", TEXT_COLOR_WHITE);
-    ui_label(5, INSTRUCTIONS_START_ROW + 2, "Enter: Launch app", TEXT_COLOR_WHITE);
-    ui_label(5, INSTRUCTIONS_START_ROW + 3, "Ctrl+ESC: Return to launcher", TEXT_COLOR_WHITE);
+    ui_label_attr((cols - 20) / 2, HEADER_ROW, "Esposito OS App Launcher", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    ui_separator(HEADER_ROW + 1);
+
+    btn_w = 13;
+    int gap = 2;
+    btn_row = rows - 3;
+    btn_up_x = 2;
+    btn_open_x = btn_up_x + btn_w + gap;
+    btn_down_x = btn_open_x + btn_w + gap;
+
+    char spacer[64];
+    memset(spacer, ' ', btn_w);
+    spacer[btn_w] = '\0';
+
+    text_mode_print_at_attr_bg(btn_up_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(btn_up_x + (btn_w - 6) / 2, btn_row, "  UP  ", TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+
+    text_mode_print_at_attr_bg(btn_open_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(btn_open_x + (btn_w - 6) / 2, btn_row, " OPEN ", TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
+
+    text_mode_print_at_attr_bg(btn_down_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(btn_down_x + (btn_w - 6) / 2, btn_row, " DOWN ", TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
 }
 
 static void app_launcher_show(void) {
@@ -69,12 +92,6 @@ static void app_launcher_show(void) {
             ui_label(5, y, line, color);
         }
         y++;
-    }
-
-    if (first_render || previous_selected != app_launcher_selected) {
-        char status[96];
-        snprintf(status, sizeof(status), "Apps: %d | Selected: %.63s", app_count, app_names[app_launcher_selected]);
-        ui_status_bar(TEXT_MODE_ROWS - 2, status, "");
     }
 
     previous_selected = app_launcher_selected;
@@ -172,5 +189,27 @@ void app_launcher_handle_event(event_t *event) {
 
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         app_launcher_handle_key(event->keyboard.key);
+    } else if (event->type == EVENT_TOUCH && event->touch.pressed && btn_w > 0) {
+        int cw = text_mode_get_char_width();
+        int ch = text_mode_get_char_height();
+        if (event->touch.y >= btn_row * ch && event->touch.y < (btn_row + 1) * ch) {
+            int x_col = event->touch.x / cw;
+            if (x_col >= btn_up_x && x_col < btn_up_x + btn_w) {
+                int old = app_launcher_selected;
+                app_launcher_selected = (app_launcher_selected - 1 + app_count) % app_count;
+                if (old != app_launcher_selected) app_launcher_show();
+            } else if (x_col >= btn_open_x && x_col < btn_open_x + btn_w) {
+                if (app_count > 0) {
+                    ESP_LOGI(TAG, "Launching app: %s", app_names[app_launcher_selected]);
+                    app_launcher_active = false;
+                    previous_selected = -1;
+                    os_load_app(app_names[app_launcher_selected]);
+                }
+            } else if (x_col >= btn_down_x && x_col < btn_down_x + btn_w) {
+                int old = app_launcher_selected;
+                app_launcher_selected = (app_launcher_selected + 1) % app_count;
+                if (old != app_launcher_selected) app_launcher_show();
+            }
+        }
     }
 }
