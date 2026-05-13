@@ -176,10 +176,50 @@ static void convert_markdown_links(char *line) {
     *dst = '\0';
 }
 
+static const char *find_emphasis_close(const char *text) {
+    while (*text) {
+        if (text[0] == '*' && text[1] == '*') {
+            text += 2;
+            continue;
+        }
+        if (*text == '*') {
+            return text;
+        }
+        text++;
+    }
+    return NULL;
+}
+
+static void convert_markdown_emphasis(char *line) {
+    char *src = line;
+    char *dst = line;
+
+    while (*src) {
+        if (src[0] == '*' && src[1] != '*') {
+            const char *close = find_emphasis_close(src + 1);
+            if (close) {
+                const char *inner = src + 1;
+                *dst++ = MD_LINK_TOGGLE;
+                while (inner < close) {
+                    *dst++ = *inner++;
+                }
+                *dst++ = MD_LINK_TOGGLE;
+                src = (char *)close + 1;
+                continue;
+            }
+        }
+
+        *dst++ = *src++;
+    }
+
+    *dst = '\0';
+}
+
 static void normalize_markdown_text(char *line) {
     strip_html(line);
     asciify(line);
     strip_markdown_images(line);
+    convert_markdown_emphasis(line);
     convert_markdown_links(line);
 }
 
