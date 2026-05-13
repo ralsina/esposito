@@ -8,7 +8,6 @@
 
 static char md_para[PARA_BUF_SIZE];
 static char md_line[MD_LINE_BUF];
-static rendered_line_t md_temp_lines[MAX_RENDERED_LINES];
 static char para_remainder[PARA_BUF_SIZE];
 static int has_remainder = 0;
 static int remainder_para_type = 0;
@@ -180,6 +179,13 @@ static void convert_markdown_links(char *line) {
     *dst = '\0';
 }
 
+static void normalize_markdown_text(char *line) {
+    strip_html(line);
+    asciify(line);
+    strip_markdown_images(line);
+    convert_markdown_links(line);
+}
+
 static int wrap_line(const char *text, int width, char *out, int max_out) {
     const char *original = text;
     while (*text == ' ') text++;
@@ -246,6 +252,31 @@ static void add_spacer(rendered_line_t *lines, int *count, int max_lines) {
     }
 }
 
+static const char *append_wrapped_lines(rendered_line_t *lines, int *count, int max_lines, const char *src, int width, uint8_t color, uint8_t attr, char *remainder, size_t remainder_size) {
+    while (*count < max_lines) {
+        rendered_line_t line;
+        int consumed = wrap_line(src, width, line.text, MAX_LINE_TEXT);
+        if (consumed <= 0) {
+            break;
+        }
+
+        line.color = color;
+        line.attr = attr;
+        lines[*count] = line;
+        (*count)++;
+        src += consumed;
+    }
+
+    if (*src) {
+        strncpy(remainder, src, remainder_size - 1);
+        remainder[remainder_size - 1] = '\0';
+        return src;
+    }
+
+    remainder[0] = '\0';
+    return NULL;
+}
+
 int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_width) {
     int count = 0;
 
@@ -271,18 +302,7 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
             rem_attr = TEXT_ATTR_BOLD;
         }
 
-        while (count < max_lines) {
-            int consumed = wrap_line(src, screen_width, md_temp_lines[0].text, MAX_LINE_TEXT);
-            if (consumed <= 0) break;
-
-            md_temp_lines[0].color = rem_color;
-            md_temp_lines[0].attr = rem_attr;
-            lines[count++] = md_temp_lines[0];
-            src += consumed;
-        }
-
-        if (*src) {
-            memmove(para_remainder, src, strlen(src) + 1);
+        if (append_wrapped_lines(lines, &count, max_lines, src, screen_width, rem_color, rem_attr, para_remainder, sizeof(para_remainder))) {
             carry_spacer = 0;
             return count;
         }
@@ -350,10 +370,7 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
 
         if (!md_para[0]) break;
 
-        strip_html(md_para);
-        asciify(md_para);
-        strip_markdown_images(md_para);
-        convert_markdown_links(md_para);
+        normalize_markdown_text(md_para);
         if (!md_para[0]) {
             carry_spacer = 0;
             continue;
@@ -381,11 +398,12 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
             }
             int w = screen_width;
             if (w > MAX_LINE_TEXT - 1) w = MAX_LINE_TEXT - 1;
-            memset(md_temp_lines[0].text, '-', w);
-            md_temp_lines[0].text[w] = '\0';
-            md_temp_lines[0].color = TEXT_COLOR_CYAN;
-            md_temp_lines[0].attr = TEXT_ATTR_NORMAL;
-            lines[count++] = md_temp_lines[0];
+            rendered_line_t line;
+            memset(line.text, '-', w);
+            line.text[w] = '\0';
+            line.color = TEXT_COLOR_CYAN;
+            line.attr = TEXT_ATTR_NORMAL;
+            lines[count++] = line;
             carry_spacer = 1;
         } else {
             uint8_t line_color = TEXT_COLOR_WHITE;
@@ -395,18 +413,7 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
                 line_attr = TEXT_ATTR_BOLD;
             }
 
-            while (count < max_lines) {
-                int consumed = wrap_line(src, screen_width, md_temp_lines[0].text, MAX_LINE_TEXT);
-                if (consumed <= 0) break;
-
-                md_temp_lines[0].color = line_color;
-                md_temp_lines[0].attr = line_attr;
-                lines[count++] = md_temp_lines[0];
-                src += consumed;
-            }
-
-            if (*src) {
-                strcpy(para_remainder, src);
+            if (append_wrapped_lines(lines, &count, max_lines, src, screen_width, line_color, line_attr, para_remainder, sizeof(para_remainder))) {
                 has_remainder = 1;
                 remainder_para_type = para_type;
                 remainder_heading_level = heading_level;
