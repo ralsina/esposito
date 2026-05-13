@@ -69,9 +69,10 @@ static void update_cell(int x, int y) {
         if (cell->attributes & TEXT_ATTR_BOLD) {
             display_draw_text_transparent(px + 1, py, &cell->character, fg);
         }
-        if (cell->attributes & TEXT_ATTR_UNDERLINE) {
-            display_fill_rect(px, py + font_height - 1, font_width, 1, fg);
-        }
+    }
+
+    if (cell->attributes & TEXT_ATTR_UNDERLINE) {
+        display_fill_rect(px, py + font_height - 1, font_width, 1, fg);
     }
 }
 
@@ -175,7 +176,7 @@ void text_mode_print_at_attr(int x, int y, const char *str, uint8_t color, uint8
         grid[idx].bg_color = bg_color;
         grid[idx].attributes = attr;
 
-        if (str[i] != ' ') {
+        if (str[i] != ' ' || (attr & TEXT_ATTR_UNDERLINE)) {
             update_cell(x + i, y);
         }
     }
@@ -206,7 +207,7 @@ void text_mode_print_at_attr_bg(int x, int y, const char *str, uint8_t fg_color,
         grid[idx].bg_color = bg;
         grid[idx].attributes = attr;
 
-        if (str[i] != ' ') {
+        if (str[i] != ' ' || (attr & TEXT_ATTR_UNDERLINE)) {
             update_cell(x + i, y);
         }
     }
