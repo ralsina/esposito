@@ -5,6 +5,13 @@
 
 #define PARA_BUF_SIZE 4096
 
+typedef struct {
+    char text[PARA_BUF_SIZE];
+    int type;
+    int heading_level;
+    long start_pos;
+} markdown_block_t;
+
 static char para_remainder[PARA_BUF_SIZE];
 static int has_remainder = 0;
 static int remainder_para_type = 0;
@@ -289,65 +296,65 @@ static void add_spacer(rendered_line_t *lines, int *count, int max_lines) {
     }
 }
 
-static int read_next_block(FILE *f, char *text, size_t text_size, int *para_type, int *heading_level, long *start_pos) {
+static int read_next_block(FILE *f, markdown_block_t *block) {
     char line[512];
-    text[0] = '\0';
-    *para_type = 0;
-    *heading_level = 0;
-    *start_pos = ftell(f);
+    block->text[0] = '\0';
+    block->type = 0;
+    block->heading_level = 0;
+    block->start_pos = ftell(f);
 
     while (fgets(line, sizeof(line), f)) {
         strip_newline(line);
 
         if (is_blank_line(line)) {
-            if (text[0]) break;
+            if (block->text[0]) break;
             continue;
         }
 
         if (is_tag_only_line(line)) {
-            if (text[0]) break;
+            if (block->text[0]) break;
             continue;
         }
 
         if (is_heading_line(line)) {
-            if (text[0]) {
+            if (block->text[0]) {
                 fseek(f, -((long)strlen(line) + 1), SEEK_CUR);
                 break;
             }
             const char *cursor = line;
             while (*cursor == '#') {
-                (*heading_level)++;
+                block->heading_level++;
                 cursor++;
             }
             while (*cursor == ' ') cursor++;
-            strncpy(text, cursor, text_size - 1);
-            text[text_size - 1] = '\0';
-            *para_type = 1;
+            strncpy(block->text, cursor, sizeof(block->text) - 1);
+            block->text[sizeof(block->text) - 1] = '\0';
+            block->type = 1;
             break;
         }
 
         if (is_hr_line(line)) {
-            if (text[0]) {
+            if (block->text[0]) {
                 fseek(f, -((long)strlen(line) + 1), SEEK_CUR);
                 break;
             }
-            text[0] = '-';
-            text[1] = '\0';
-            *para_type = 3;
+            block->text[0] = '-';
+            block->text[1] = '\0';
+            block->type = 3;
             break;
         }
 
-        if (*para_type == 0) *para_type = 2;
-        size_t remaining = text_size - strlen(text) - 1;
-        size_t needed = strlen(line) + (text[0] ? 2 : 1);
+        if (block->type == 0) block->type = 2;
+        size_t remaining = sizeof(block->text) - strlen(block->text) - 1;
+        size_t needed = strlen(line) + (block->text[0] ? 2 : 1);
         if (needed > remaining) {
             break;
         }
-        if (text[0]) strcat(text, " ");
-        strcat(text, line);
+        if (block->text[0]) strcat(block->text, " ");
+        strcat(block->text, line);
     }
 
-    return text[0] != '\0';
+    return block->text[0] != '\0';
 }
 
 static const char *append_wrapped_lines(rendered_line_t *lines, int *count, int max_lines, const char *src, int width, uint8_t color, uint8_t attr, char *remainder, size_t remainder_size) {
@@ -373,6 +380,45 @@ static const char *append_wrapped_lines(rendered_line_t *lines, int *count, int 
 
     remainder[0] = '\0';
     return NULL;
+}
+
+static void render_block(rendered_line_t *lines, int *count, int max_lines, FILE *f, const markdown_block_t *block, int screen_width) {
+    const char *src = block->text;
+
+    if (block->type == 3) {
+        if (*count + 1 >= max_lines) {
+            fseek(f, block->start_pos, SEEK_SET);
+            carry_spacer = 0;
+            return;
+        }
+
+        int w = screen_width;
+        if (w > MAX_LINE_TEXT - 1) w = MAX_LINE_TEXT - 1;
+        rendered_line_t line;
+        memset(line.text, '-', w);
+        line.text[w] = '\0';
+        line.color = TEXT_COLOR_CYAN;
+        line.attr = TEXT_ATTR_NORMAL;
+        lines[(*count)++] = line;
+        carry_spacer = 1;
+        return;
+    }
+
+    uint8_t line_color = TEXT_COLOR_WHITE;
+    uint8_t line_attr = TEXT_ATTR_NORMAL;
+    if (block->type == 1) {
+        line_color = (block->heading_level == 1) ? TEXT_COLOR_BRIGHT_WHITE : TEXT_COLOR_BRIGHT_CYAN;
+        line_attr = TEXT_ATTR_BOLD;
+    }
+
+    if (append_wrapped_lines(lines, count, max_lines, src, screen_width, line_color, line_attr, para_remainder, sizeof(para_remainder))) {
+        has_remainder = 1;
+        remainder_para_type = block->type;
+        remainder_heading_level = block->heading_level;
+        carry_spacer = 0;
+    } else {
+        carry_spacer = 1;
+    }
 }
 
 int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_width) {
@@ -413,17 +459,14 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
 
     // Read new content from file
     while (count < max_lines) {
-        char block_text[PARA_BUF_SIZE];
-        int para_type = 0;
-        int heading_level = 0;
-        long para_start_pos = 0;
+        markdown_block_t block;
 
-        if (!read_next_block(f, block_text, sizeof(block_text), &para_type, &heading_level, &para_start_pos)) {
+        if (!read_next_block(f, &block)) {
             break;
         }
 
-        normalize_markdown_text(block_text);
-        if (!block_text[0]) {
+        normalize_markdown_text(block.text);
+        if (!block.text[0]) {
             carry_spacer = 0;
             continue;
         }
@@ -439,41 +482,7 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
             carry_spacer = 0;
         }
 
-        // Word-wrap the paragraph one line at a time
-        const char *src = block_text;
-
-        if (para_type == 3) {
-            if (count + 1 >= max_lines) {
-                fseek(f, para_start_pos, SEEK_SET);
-                carry_spacer = 0;
-                break;
-            }
-            int w = screen_width;
-            if (w > MAX_LINE_TEXT - 1) w = MAX_LINE_TEXT - 1;
-            rendered_line_t line;
-            memset(line.text, '-', w);
-            line.text[w] = '\0';
-            line.color = TEXT_COLOR_CYAN;
-            line.attr = TEXT_ATTR_NORMAL;
-            lines[count++] = line;
-            carry_spacer = 1;
-        } else {
-            uint8_t line_color = TEXT_COLOR_WHITE;
-            uint8_t line_attr = TEXT_ATTR_NORMAL;
-            if (para_type == 1) {
-                line_color = (heading_level == 1) ? TEXT_COLOR_BRIGHT_WHITE : TEXT_COLOR_BRIGHT_CYAN;
-                line_attr = TEXT_ATTR_BOLD;
-            }
-
-            if (append_wrapped_lines(lines, &count, max_lines, src, screen_width, line_color, line_attr, para_remainder, sizeof(para_remainder))) {
-                has_remainder = 1;
-                remainder_para_type = para_type;
-                remainder_heading_level = heading_level;
-                carry_spacer = 0;
-            } else {
-                carry_spacer = 1;
-            }
-        }
+        render_block(lines, &count, max_lines, f, &block, screen_width);
     }
 
     return count;
