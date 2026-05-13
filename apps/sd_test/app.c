@@ -1,5 +1,6 @@
 #include "os_core.h"
 #include "text_mode.h"
+#include "ui.h"
 #include <stdio.h>
 #include <string.h>
 #include <dirent.h>
@@ -13,7 +14,11 @@ static const char *TAG = "sd_test";
 static int entry_count = 0;
 static char entries[MAX_ENTRIES][NAME_LEN];
 static int entry_is_dir[MAX_ENTRIES];
+static struct stat entry_stat[MAX_ENTRIES];
+static const char *item_ptrs[MAX_ENTRIES];
+static int selected = 0;
 static int scroll_offset = 0;
+static int detail_mode = 0;
 
 static void scan_dir(const char *full_base, const char *rel_prefix) {
     DIR *dir = opendir(full_base);
@@ -26,15 +31,15 @@ static void scan_dir(const char *full_base, const char *rel_prefix) {
         char child_full[256];
         snprintf(child_full, sizeof(child_full), "%s/%s", full_base, dent->d_name);
 
-        struct stat st;
-        int is_dir = (stat(child_full, &st) == 0 && S_ISDIR(st.st_mode));
-
         if (rel_prefix[0]) {
             snprintf(entries[entry_count], NAME_LEN, "%s/%s", rel_prefix, dent->d_name);
         } else {
             strncpy(entries[entry_count], dent->d_name, NAME_LEN - 1);
             entries[entry_count][NAME_LEN - 1] = '\0';
         }
+        item_ptrs[entry_count] = entries[entry_count];
+
+        int is_dir = (stat(child_full, &entry_stat[entry_count]) == 0 && S_ISDIR(entry_stat[entry_count].st_mode));
         entry_is_dir[entry_count] = is_dir;
         entry_count++;
 
@@ -51,29 +56,44 @@ static void load_directory(void) {
     os_log(TAG, "Found %d entries on SD card", entry_count);
 }
 
-static void draw_screen(void) {
+static void draw_list(void) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();
-    int list_rows = rows - 3;
+    int list_rows = rows - 2;
 
-    text_mode_clear(TEXT_COLOR_BLACK);
-    text_mode_print_at_attr(0, 0, "SD Card Contents", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_clear();
+    ui_window(0, 0, cols, rows, "SD Card Browser");
+    ui_menu_draw(1, 1, list_rows - 1, item_ptrs, entry_count, selected);
+    ui_status_bar(rows - 1, "W/S: nav  ENTER: info", "ESC: exit");
+}
 
-    if (entry_count == 0) {
-        text_mode_print_at_attr(0, 2, "(empty or no SD card)", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
-    }
+static void draw_detail(void) {
+    int rows = text_mode_get_rows();
+    int cols = text_mode_get_cols();
 
-    for (int i = 0; i < list_rows && (scroll_offset + i) < entry_count; i++) {
-        int idx = scroll_offset + i;
-        uint8_t color = entry_is_dir[idx] ? TEXT_COLOR_YELLOW : TEXT_COLOR_WHITE;
-        int max_name = cols - 1;
-        char line[256];
-        snprintf(line, sizeof(line), "%.*s", max_name, entries[idx]);
-        text_mode_print_at_attr(0, i + 1, line, color, TEXT_ATTR_NORMAL);
-    }
+    ui_clear();
+    ui_window(0, 0, cols, rows, "File Info");
 
-    text_mode_printf_at_attr(0, rows - 1, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL,
-                             "W/S: scroll  (%d items)", entry_count);
+    struct stat *st = &entry_stat[selected];
+    char buf[128];
+
+    text_mode_print_at_attr(1, 1, entries[selected], TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+
+    snprintf(buf, sizeof(buf), "Size: %d bytes", (int)st->st_size);
+    text_mode_print_at_attr(1, 3, buf, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+
+    snprintf(buf, sizeof(buf), "Mode: 0%o", (unsigned int)st->st_mode);
+    text_mode_print_at_attr(1, 4, buf, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+
+    text_mode_print_at_attr(1, 5, S_ISDIR(st->st_mode) ? "Type: directory" : "Type: file", TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+
+    snprintf(buf, sizeof(buf), "Inode: %d", (int)st->st_ino);
+    text_mode_print_at_attr(1, 6, buf, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+
+    snprintf(buf, sizeof(buf), "Links: %d", (int)st->st_nlink);
+    text_mode_print_at_attr(1, 7, buf, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+
+    ui_status_bar(rows - 1, "ESC: back", "");
 }
 
 void app_init(app_context_t *ctx) {
@@ -82,10 +102,10 @@ void app_init(app_context_t *ctx) {
 
     text_mode_init();
     load_directory();
+    selected = 0;
     scroll_offset = 0;
-    draw_screen();
-
-    os_log(TAG, "SD test started");
+    detail_mode = 0;
+    draw_list();
 }
 
 void app_checkpoint(app_context_t *ctx) {
@@ -93,24 +113,39 @@ void app_checkpoint(app_context_t *ctx) {
 
 void app_close(app_context_t *ctx) {
     text_mode_clear(TEXT_COLOR_BLACK);
-    os_log(TAG, "SD test closing");
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
-    if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
-        int rows = text_mode_get_rows();
-        int list_rows = rows - 3;
+    if (!(event->type == EVENT_KEYBOARD && event->keyboard.pressed)) return;
 
-        if (event->keyboard.key == 'w' || event->keyboard.key == 'W') {
-            if (scroll_offset > 0) {
-                scroll_offset--;
-                draw_screen();
-            }
-        } else if (event->keyboard.key == 's' || event->keyboard.key == 'S') {
-            if (scroll_offset + list_rows < entry_count) {
-                scroll_offset++;
-                draw_screen();
-            }
+    int rows = text_mode_get_rows();
+    int list_rows = rows - 3;
+    char key = event->keyboard.key;
+
+    if (detail_mode) {
+        if (key == 27) {
+            detail_mode = 0;
+            draw_list();
         }
+        return;
+    }
+
+    if (key == 'w' || key == 'W') {
+        if (selected > 0) {
+            selected--;
+            if (selected < scroll_offset) scroll_offset = selected;
+            draw_list();
+        }
+    } else if (key == 's' || key == 'S') {
+        if (selected < entry_count - 1) {
+            selected++;
+            if (selected >= scroll_offset + list_rows) scroll_offset = selected - list_rows + 1;
+            draw_list();
+        }
+    } else if (key == '\n' || key == '\r') {
+        detail_mode = 1;
+        draw_detail();
+    } else if (key == 27) {
+        text_mode_clear(TEXT_COLOR_BLACK);
     }
 }
