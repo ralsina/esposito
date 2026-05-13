@@ -69,3 +69,9 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Local generated artifacts
+pg84.md
+pg98.md
+shot_*.ppm
+shot_*.png
