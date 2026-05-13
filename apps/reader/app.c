@@ -102,6 +102,16 @@ static void scan_md_files(void) {
     closedir(dir);
 }
 
+static int find_file_index_by_path(const char *path) {
+    if (!path || !path[0]) return -1;
+    for (int index = 0; index < state.file_count; index++) {
+        if (strcmp(state.file_paths[index], path) == 0) {
+            return index;
+        }
+    }
+    return -1;
+}
+
 static void close_current_file(void) {
     if (state.file) {
         save_current_book_progress();
@@ -395,10 +405,15 @@ static void draw_file_list(void) {
 }
 
 static void exit_to_file_list(void) {
+    char last_path[MAX_PATH];
+    strncpy(last_path, state.current_file, sizeof(last_path) - 1);
+    last_path[sizeof(last_path) - 1] = '\0';
+
     state.mode = MODE_FILE_LIST;
     close_current_file();
     scan_md_files();
-    state.file_selected = 0;
+    int selected_index = find_file_index_by_path(last_path);
+    state.file_selected = (selected_index >= 0) ? selected_index : 0;
     checkpoint_save_string(KEY_LAST_FILE, "");
     draw_file_list();
 }
