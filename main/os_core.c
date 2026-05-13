@@ -266,6 +266,11 @@ void os_event_loop(void) {
             }
         }
 
+        // Auto-restart launcher if no app is running
+        if (current_app == NULL && !app_launcher_is_active()) {
+            app_launcher_start();
+        }
+
         // Small delay to prevent watchdog
         vTaskDelay(pdMS_TO_TICKS(10));
     }

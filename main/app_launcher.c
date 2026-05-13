@@ -47,7 +47,7 @@ static void app_launcher_show_static(void) {
     ui_label_attr(5, INSTRUCTIONS_START_ROW, "Controls:", TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
     ui_label(5, INSTRUCTIONS_START_ROW + 1, "W/S or Up/Down: Navigate", TEXT_COLOR_WHITE);
     ui_label(5, INSTRUCTIONS_START_ROW + 2, "Enter: Launch app", TEXT_COLOR_WHITE);
-    ui_label(5, INSTRUCTIONS_START_ROW + 3, "ESC: Exit launcher", TEXT_COLOR_WHITE);
+    ui_label(5, INSTRUCTIONS_START_ROW + 3, "Ctrl+ESC: Return to launcher", TEXT_COLOR_WHITE);
 }
 
 static void app_launcher_show(void) {
@@ -105,14 +105,6 @@ static void app_launcher_handle_key(char key) {
             app_launcher_active = false;
             previous_selected = -1; // Reset for next launch
             os_load_app(app_names[app_launcher_selected]);
-            return;
-
-        case 27: // ESC
-            // Exit launcher
-            ESP_LOGI(TAG, "Launcher exited");
-            app_launcher_active = false;
-            previous_selected = -1; // Reset for next launch
-            ui_clear();
             return;
 
         default:
