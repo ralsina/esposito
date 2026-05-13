@@ -198,7 +198,8 @@ static int wrap_line(const char *text, int width, char *out, int max_out) {
             probe++;
         }
 
-        if (word_chars > remaining && written > 0) {
+        // Account for the separator space that will be emitted between words.
+        if ((word_chars + 1) > remaining && written > 0) {
             text = word_start;
             break;
         }
