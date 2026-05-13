@@ -143,6 +143,43 @@ static void strip_markdown_images(char *line) {
     }
 }
 
+static void convert_markdown_links(char *line) {
+    char *src = line;
+    char *dst = line;
+
+    while (*src) {
+        if (src[0] == '[') {
+            char *text_end = strchr(src + 1, ']');
+            if (text_end && text_end[1] == '(') {
+                char *url_end = strchr(text_end + 2, ')');
+                if (url_end) {
+                    // Emit link text underlined by wrapping each word with toggles.
+                    char *text = src + 1;
+                    while (text < text_end) {
+                        while (text < text_end && is_space((unsigned char)*text)) {
+                            *dst++ = *text++;
+                        }
+                        if (text >= text_end) break;
+
+                        *dst++ = MD_LINK_TOGGLE;
+                        while (text < text_end && !is_space((unsigned char)*text)) {
+                            *dst++ = *text++;
+                        }
+                        *dst++ = MD_LINK_TOGGLE;
+                    }
+
+                    src = url_end + 1;
+                    continue;
+                }
+            }
+        }
+
+        *dst++ = *src++;
+    }
+
+    *dst = '\0';
+}
+
 static int wrap_line(const char *text, int width, char *out, int max_out) {
     while (*text == ' ') text++;
     if (!*text) return 0;
@@ -154,15 +191,27 @@ static int wrap_line(const char *text, int width, char *out, int max_out) {
     while (*text && remaining > 0) {
         const char *word_start = text;
         while (*text && *text != ' ') text++;
-        int word_len = (int)(text - word_start);
+        int word_chars = 0;
+        const char *probe = word_start;
+        while (probe < text) {
+            if (*probe != MD_LINK_TOGGLE) word_chars++;
+            probe++;
+        }
 
-        if (word_len > remaining && written > 0) {
+        if (word_chars > remaining && written > 0) {
             text = word_start;
             break;
         }
-        if (word_len > width) {
-            word_len = width;
-            text = word_start + width;
+
+        int split_long_word = (word_chars > width);
+        if (split_long_word) {
+            int visible = 0;
+            const char *split = word_start;
+            while (*split && *split != ' ' && visible < width) {
+                if (*split != MD_LINK_TOGGLE) visible++;
+                split++;
+            }
+            text = split;
         }
 
         if (written > 0) {
@@ -170,15 +219,16 @@ static int wrap_line(const char *text, int width, char *out, int max_out) {
             written++;
             remaining--;
         }
-        int to_copy = word_len;
-        if (to_copy > remaining) to_copy = remaining;
-        if (to_copy > max_out - written) to_copy = max_out - written;
-        if (to_copy > 0) {
-            memcpy(out, word_start, to_copy);
-            out += to_copy;
-            written += to_copy;
-            remaining -= to_copy;
+
+        // Copy the selected segment, counting only visible characters toward width.
+        const char *copy_ptr = word_start;
+        while (copy_ptr < text && written < max_out) {
+            char current = *copy_ptr++;
+            *out++ = current;
+            written++;
+            if (current != MD_LINK_TOGGLE) remaining--;
         }
+
         while (*text == ' ') text++;
     }
     *out = '\0';
@@ -301,6 +351,7 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
         strip_html(md_para);
         asciify(md_para);
         strip_markdown_images(md_para);
+        convert_markdown_links(md_para);
         if (!md_para[0]) {
             carry_spacer = 0;
             continue;

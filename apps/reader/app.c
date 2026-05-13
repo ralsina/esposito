@@ -56,6 +56,7 @@ typedef struct {
 
 static reader_state_t state;
 static int bold_pending = 0;
+static int underline_pending = 0;
 
 static void scan_md_files(void) {
     state.file_count = 0;
@@ -89,6 +90,7 @@ static int open_file(const char *path) {
     close_current_file();
     md_clear_remainder();
     bold_pending = 0;
+    underline_pending = 0;
     state.file = fopen(path, "r");
     if (!state.file) return 0;
     strncpy(state.current_file, path, MAX_PATH - 1);
@@ -102,6 +104,7 @@ static int open_file(const char *path) {
 static int load_current_page(void) {
     if (!state.file) return 0;
     bold_pending = 0;
+    underline_pending = 0;
     uint32_t offset = page_cache_current_offset(&state.page_cache);
     fseek(state.file, offset, SEEK_SET);
     state.line_count = md_scan_page(state.file, state.lines, state.content_rows, state.screen_width);
@@ -111,17 +114,34 @@ static int load_current_page(void) {
 static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t bg, uint8_t base_attr) {
     int cur_x = x;
     uint8_t attr = base_attr;
-    int pending = 0;
+    int bold_active = 0;
+    int underline_active = 0;
     if (bold_pending) {
         attr = base_attr | TEXT_ATTR_BOLD;
-        pending = 1;
+        bold_active = 1;
         bold_pending = 0;
+    }
+    if (underline_pending) {
+        attr |= TEXT_ATTR_UNDERLINE;
+        underline_active = 1;
+        underline_pending = 0;
     }
     while (*text) {
         if (text[0] == '*' && text[1] == '*') {
             attr = (attr & TEXT_ATTR_BOLD) ? base_attr : (base_attr | TEXT_ATTR_BOLD);
             text += 2;
-            pending = (attr & TEXT_ATTR_BOLD) ? 1 : 0;
+            bold_active = (attr & TEXT_ATTR_BOLD) ? 1 : 0;
+            continue;
+        }
+        if (*text == MD_LINK_TOGGLE) {
+            if (attr & TEXT_ATTR_UNDERLINE) {
+                attr &= ~TEXT_ATTR_UNDERLINE;
+                underline_active = 0;
+            } else {
+                attr |= TEXT_ATTR_UNDERLINE;
+                underline_active = 1;
+            }
+            text++;
             continue;
         }
         char buf[2] = {*text, '\0'};
@@ -129,7 +149,8 @@ static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t b
         cur_x++;
         text++;
     }
-    if (pending) bold_pending = 1;
+    if (bold_active) bold_pending = 1;
+    if (underline_active) underline_pending = 1;
 }
 
 static void draw_reading_page(void) {
@@ -161,6 +182,7 @@ static void draw_reading_page(void) {
         rendered_line_t *rl = &state.lines[i];
         if (rl->text[0] == '\0') {
             bold_pending = 0;
+            underline_pending = 0;
         }
         draw_rich_line(MARGIN, 2 + i, rl->text, rl->color, TEXT_COLOR_BLACK, rl->attr);
     }
