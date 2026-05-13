@@ -1,166 +1,71 @@
 #include "os_core.h"
 #include "checkpoint.h"
 #include "text_mode.h"
-#include "reader_page.h"
 #include "reader_md.h"
+#include "reader_state.h"
+#include "reader_core.h"
 #include "ui.h"
 extern void app_launcher_start(void);
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <dirent.h>
 #include <sys/stat.h>
 
-#define MARGIN 2
-#define MAX_FILES 64
-#define MAX_PATH 256
+#define TOUCH_PAGE_SPLIT_X 160
 
-#define KEY_LAST_FILE "reader_last_file"
-#define KEY_LEGACY_LAST_FILE "reader_file"
-#define KEY_BOOK_OFFSET_PREFIX "reader_off"
-#define KEY_BOOK_PAGE_PREFIX "reader_page"
+#define FILE_LIST_BTN_WIDTH 13
+#define FILE_LIST_BTN_GAP 2
+#define FILE_LIST_BTN_UP_LABEL "  UP  "
+#define FILE_LIST_BTN_OPEN_LABEL " OPEN "
+#define FILE_LIST_BTN_DOWN_LABEL " DOWN "
+#define FILE_LIST_BTN_EXIT_LABEL " EXIT "
 
-typedef enum {
-    MODE_FILE_LIST,
-    MODE_READING,
-    MODE_GOTO,
-} reader_mode_t;
-
-typedef struct {
-    reader_mode_t mode;
-
-    // File list state
-    int file_count;
-    char file_names[MAX_FILES][64];
-    char file_paths[MAX_FILES][MAX_PATH];
-    const char *file_ptrs[MAX_FILES];
-    int file_selected;
-
-    // Reading state
-    char current_file[MAX_PATH];
-    FILE *file;
-    page_cache_t page_cache;
-    rendered_line_t lines[MAX_RENDERED_LINES];
-    int line_count;
-    int screen_width;
-    int content_rows;
-    int page_number;
-
-    // Goto state
-    char goto_buf[8];
-    int goto_pos;
-
-    // File list touch button positions
-    int btn_up_x;
-    int btn_open_x;
-    int btn_down_x;
-    int btn_exit_x;
-    int btn_row;
-    int btn_w;
-} reader_state_t;
+#define READING_CLOSE_BUTTON_WIDTH 4
 
 static reader_state_t state;
 static int bold_pending = 0;
 static int underline_pending = 0;
 
-static void build_book_key(char *out, size_t out_size, const char *prefix, const char *path) {
-    snprintf(out, out_size, "%s:%s", prefix, path);
+static int load_current_page(void);
+static void draw_reading_page(void);
+static void draw_file_list(void);
+static int open_book(const char *path);
+
+static void enter_reading_mode(void) {
+    state.mode = MODE_READING;
+    state.screen_width = text_mode_get_cols() - MARGIN * 2;
+    state.content_rows = text_mode_get_rows() - 2;
+    load_current_page();
+    draw_reading_page();
 }
 
-static void save_current_book_progress(void) {
-    if (!state.file || !state.current_file[0] || state.page_cache.current < 0) {
+static void change_file_selection(int delta) {
+    int next = state.file_selected + delta;
+    if (next < 0 || next >= state.file_count) {
         return;
     }
-
-    char offset_key[320];
-    char page_key[320];
-    build_book_key(offset_key, sizeof(offset_key), KEY_BOOK_OFFSET_PREFIX, state.current_file);
-    build_book_key(page_key, sizeof(page_key), KEY_BOOK_PAGE_PREFIX, state.current_file);
-
-    checkpoint_save_int(offset_key, (int)page_cache_current_offset(&state.page_cache));
-    checkpoint_save_int(page_key, state.page_number);
-    checkpoint_save_string(KEY_LAST_FILE, state.current_file);
+    state.file_selected = next;
+    draw_file_list();
 }
 
-static void scan_md_files(void) {
-    state.file_count = 0;
-    DIR *dir = opendir("/sdcard/books");
-    if (!dir) return;
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL && state.file_count < MAX_FILES) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-        size_t len = strlen(entry->d_name);
-        if (len < 3 || strcmp(entry->d_name + len - 3, ".md") != 0) continue;
-
-        strncpy(state.file_names[state.file_count], entry->d_name, 63);
-        state.file_names[state.file_count][63] = '\0';
-        snprintf(state.file_paths[state.file_count], MAX_PATH, "/sdcard/books/%s", entry->d_name);
-        state.file_ptrs[state.file_count] = state.file_names[state.file_count];
-        state.file_count++;
+static void open_selected_book(void) {
+    if (state.file_count <= 0) {
+        return;
     }
-    closedir(dir);
-}
-
-static int find_file_index_by_path(const char *path) {
-    if (!path || !path[0]) return -1;
-    for (int index = 0; index < state.file_count; index++) {
-        if (strcmp(state.file_paths[index], path) == 0) {
-            return index;
-        }
+    if (open_book(state.file_paths[state.file_selected])) {
+        enter_reading_mode();
     }
-    return -1;
 }
 
-static void close_current_file(void) {
-    if (state.file) {
-        save_current_book_progress();
-        fclose(state.file);
-        state.file = NULL;
-    }
-    state.current_file[0] = '\0';
-}
-
-static int open_file(const char *path) {
-    close_current_file();
+static int open_book(const char *path) {
     md_clear_remainder();
     bold_pending = 0;
     underline_pending = 0;
-    state.file = fopen(path, "r");
-    if (!state.file) return 0;
-    strncpy(state.current_file, path, MAX_PATH - 1);
-    state.current_file[MAX_PATH - 1] = '\0';
-    page_cache_init(&state.page_cache);
-    page_cache_set_start(&state.page_cache, 0);
-    state.page_number = 1;
-
-    // Restore per-book progress if we have it.
-    char offset_key[320];
-    char page_key[320];
-    build_book_key(offset_key, sizeof(offset_key), KEY_BOOK_OFFSET_PREFIX, path);
-    build_book_key(page_key, sizeof(page_key), KEY_BOOK_PAGE_PREFIX, path);
-
-    int saved_offset = checkpoint_load_int(offset_key);
-    int saved_page = checkpoint_load_int(page_key);
-
-    if (saved_offset > 0) {
-        page_cache_set_start(&state.page_cache, (uint32_t)saved_offset);
-    }
-    if (saved_page > 0) {
-        state.page_number = saved_page;
-    }
-
-    return 1;
+    return reader_open_file(&state, path);
 }
 
 static int load_current_page(void) {
-    if (!state.file) return 0;
-    bold_pending = 0;
-    underline_pending = 0;
-    uint32_t offset = page_cache_current_offset(&state.page_cache);
-    fseek(state.file, offset, SEEK_SET);
-    state.line_count = md_scan_page(state.file, state.lines, state.content_rows, state.screen_width);
-    return state.line_count;
+    return reader_load_current_page(&state, &bold_pending, &underline_pending);
 }
 
 static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t bg, uint8_t base_attr) {
@@ -372,8 +277,8 @@ static void draw_file_list(void) {
     ui_menu_draw(1, 1, list_rows, state.file_ptrs, state.file_count, state.file_selected);
 
     int btn_row = rows - 3;
-    int btn_w = 13;
-    int gap = 2;
+    int btn_w = FILE_LIST_BTN_WIDTH;
+    int gap = FILE_LIST_BTN_GAP;
 
     char spacer[64];
     memset(spacer, ' ', btn_w);
@@ -385,16 +290,16 @@ static void draw_file_list(void) {
     int exit_x = down_x + btn_w + gap;
 
     text_mode_print_at_attr_bg(up_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(up_x + (btn_w - 6) / 2, btn_row, "  UP  ", TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(up_x + (btn_w - 6) / 2, btn_row, FILE_LIST_BTN_UP_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
 
     text_mode_print_at_attr_bg(open_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(open_x + (btn_w - 6) / 2, btn_row, " OPEN ", TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(open_x + (btn_w - 6) / 2, btn_row, FILE_LIST_BTN_OPEN_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
 
     text_mode_print_at_attr_bg(down_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(down_x + (btn_w - 6) / 2, btn_row, " DOWN ", TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(down_x + (btn_w - 6) / 2, btn_row, FILE_LIST_BTN_DOWN_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
 
     text_mode_print_at_attr_bg(exit_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(exit_x + (btn_w - 6) / 2, btn_row, " EXIT ", TEXT_COLOR_BLACK, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(exit_x + (btn_w - 6) / 2, btn_row, FILE_LIST_BTN_EXIT_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
 
     state.btn_up_x = up_x;
     state.btn_open_x = open_x;
@@ -410,9 +315,9 @@ static void exit_to_file_list(void) {
     last_path[sizeof(last_path) - 1] = '\0';
 
     state.mode = MODE_FILE_LIST;
-    close_current_file();
-    scan_md_files();
-    int selected_index = find_file_index_by_path(last_path);
+    reader_close_current_file(&state);
+    reader_scan_md_files(&state);
+    int selected_index = reader_find_file_index_by_path(&state, last_path);
     state.file_selected = (selected_index >= 0) ? selected_index : 0;
     checkpoint_save_string(KEY_LAST_FILE, "");
     draw_file_list();
@@ -420,23 +325,11 @@ static void exit_to_file_list(void) {
 
 static void handle_file_list_event(char key) {
     if (key == 'w' || key == 'W') {
-        if (state.file_selected > 0) {
-            state.file_selected--;
-            draw_file_list();
-        }
+        change_file_selection(-1);
     } else if (key == 's' || key == 'S') {
-        if (state.file_selected < state.file_count - 1) {
-            state.file_selected++;
-            draw_file_list();
-        }
+        change_file_selection(1);
     } else if (key == '\n' || key == '\r') {
-        if (state.file_count > 0 && open_file(state.file_paths[state.file_selected])) {
-            state.mode = MODE_READING;
-            state.screen_width = text_mode_get_cols() - MARGIN * 2;
-            state.content_rows = text_mode_get_rows() - 2;
-            load_current_page();
-            draw_reading_page();
-        }
+        open_selected_book();
     }
 }
 
@@ -490,81 +383,110 @@ void app_init(app_context_t *ctx) {
     if (saved_file && saved_file[0]) {
         struct stat st;
         if (stat(saved_file, &st) == 0 && S_ISREG(st.st_mode)) {
-            if (open_file(saved_file)) {
-                state.mode = MODE_READING;
-                state.screen_width = text_mode_get_cols() - MARGIN * 2;
-                state.content_rows = text_mode_get_rows() - 2;
-                load_current_page();
-                draw_reading_page();
+            if (open_book(saved_file)) {
+                enter_reading_mode();
                 return;
             }
         }
     }
 
     // Show file list
-    scan_md_files();
+    reader_scan_md_files(&state);
     state.file_selected = 0;
     state.mode = MODE_FILE_LIST;
     draw_file_list();
 }
 
+static void handle_file_list_touch(int x_col) {
+    if (x_col >= state.btn_up_x && x_col < state.btn_up_x + state.btn_w) {
+        change_file_selection(-1);
+    } else if (x_col >= state.btn_open_x && x_col < state.btn_open_x + state.btn_w) {
+        open_selected_book();
+    } else if (x_col >= state.btn_down_x && x_col < state.btn_down_x + state.btn_w) {
+        change_file_selection(1);
+    } else if (x_col >= state.btn_exit_x && x_col < state.btn_exit_x + state.btn_w) {
+        reader_close_current_file(&state);
+        checkpoint_save_string(KEY_LAST_FILE, "");
+        app_launcher_start();
+    }
+}
+
+static void handle_reading_touch(const event_t *event) {
+    int char_width = text_mode_get_char_width();
+    int char_height = text_mode_get_char_height();
+    int cols = text_mode_get_cols();
+
+    if (event->touch.x >= (cols - READING_CLOSE_BUTTON_WIDTH) * char_width && event->touch.y < char_height * 2) {
+        exit_to_file_list();
+    } else if (event->touch.x < TOUCH_PAGE_SPLIT_X) {
+        prev_page();
+    } else {
+        next_page();
+    }
+}
+
+static char normalize_key_for_dispatch(const event_t *event) {
+    char key = event->keyboard.key;
+
+    // If keyboard firmware maps Ctrl+letter to control chars, map back to letters
+    // so navigation bindings remain robust.
+    if ((event->keyboard.modifiers & MODIFIER_CTRL) && key >= 1 && key <= 26) {
+        key = (char)('a' + key - 1);
+    }
+
+    return key;
+}
+
+static void dispatch_keyboard(const event_t *event) {
+    char key = normalize_key_for_dispatch(event);
+
+    switch (state.mode) {
+        case MODE_FILE_LIST:
+            handle_file_list_event(key);
+            break;
+        case MODE_GOTO:
+            handle_goto_event(key);
+            break;
+        case MODE_READING:
+            handle_reading_event(key);
+            break;
+    }
+}
+
+static void dispatch_touch(const event_t *event) {
+    if (state.mode == MODE_READING) {
+        handle_reading_touch(event);
+        return;
+    }
+
+    if (state.mode != MODE_FILE_LIST) {
+        return;
+    }
+
+    int char_width = text_mode_get_char_width();
+    int char_height = text_mode_get_char_height();
+    if (event->touch.y < state.btn_row * char_height || event->touch.y >= (state.btn_row + 1) * char_height) {
+        return;
+    }
+
+    int x_col = event->touch.x / char_width;
+    handle_file_list_touch(x_col);
+}
+
 void app_event(app_context_t *ctx, event_t *event) {
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
-        char key = event->keyboard.key;
-
-        if (state.mode == MODE_FILE_LIST) {
-            handle_file_list_event(key);
-        } else if (state.mode == MODE_GOTO) {
-            handle_goto_event(key);
-        } else {
-            handle_reading_event(key);
-        }
+        dispatch_keyboard(event);
     } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
-        int cw = text_mode_get_char_width();
-        int ch = text_mode_get_char_height();
-        int cols = text_mode_get_cols();
-        if (state.mode == MODE_READING) {
-            if (event->touch.x >= (cols - 4) * cw && event->touch.y < ch * 2) {
-                exit_to_file_list();
-            } else if (event->touch.x < 160) prev_page();
-            else next_page();
-        } else if (state.mode == MODE_FILE_LIST) {
-            if (event->touch.y >= state.btn_row * ch && event->touch.y < (state.btn_row + 1) * ch) {
-                int x_col = event->touch.x / cw;
-                if (x_col >= state.btn_up_x && x_col < state.btn_up_x + state.btn_w) {
-                    if (state.file_selected > 0) {
-                        state.file_selected--;
-                        draw_file_list();
-                    }
-                } else if (x_col >= state.btn_open_x && x_col < state.btn_open_x + state.btn_w) {
-                    if (state.file_count > 0 && open_file(state.file_paths[state.file_selected])) {
-                        state.mode = MODE_READING;
-                        state.screen_width = text_mode_get_cols() - MARGIN * 2;
-                        state.content_rows = text_mode_get_rows() - 2;
-                        load_current_page();
-                        draw_reading_page();
-                    }
-                } else if (x_col >= state.btn_down_x && x_col < state.btn_down_x + state.btn_w) {
-                    if (state.file_selected < state.file_count - 1) {
-                        state.file_selected++;
-                        draw_file_list();
-                    }
-                } else if (x_col >= state.btn_exit_x && x_col < state.btn_exit_x + state.btn_w) {
-                    close_current_file();
-                    checkpoint_save_string(KEY_LAST_FILE, "");
-                    app_launcher_start();
-                }
-            }
-        }
+        dispatch_touch(event);
     }
 }
 
 void app_checkpoint(app_context_t *ctx) {
-    save_current_book_progress();
+    reader_save_current_book_progress(&state);
 }
 
 void app_close(app_context_t *ctx) {
+    reader_close_current_file(&state);
     checkpoint_close();
-    close_current_file();
     text_mode_clear(TEXT_COLOR_BLACK);
 }
