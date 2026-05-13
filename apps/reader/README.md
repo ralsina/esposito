@@ -16,6 +16,7 @@ A markdown ebook reader for the Esposito terminal OS on ESP32/CYD2USB.
 |-----|--------|
 | `W` | Previous page |
 | `S` | Next page |
+| `G` | Go to page (enter number, Enter to jump, ESC to cancel) |
 | `ESC` | Back to file list |
 
 ## Converting books

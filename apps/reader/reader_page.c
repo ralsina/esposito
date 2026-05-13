@@ -34,9 +34,17 @@ uint32_t page_cache_next(page_cache_t *cache) {
 }
 
 void page_cache_add_next(page_cache_t *cache, uint32_t offset) {
-    if (cache->current < PAGE_CACHE_ENTRIES - 1) {
-        cache->offsets[cache->current + 1] = offset;
-        cache->count = cache->current + 2;
+    int next = cache->current + 1;
+    if (next < PAGE_CACHE_ENTRIES) {
+        cache->offsets[next] = offset;
+        if (next + 1 > cache->count) cache->count = next + 1;
+    } else {
+        // Ring buffer full: drop oldest entry, shift left, put new at end
+        for (int i = 0; i < PAGE_CACHE_ENTRIES - 1; i++) {
+            cache->offsets[i] = cache->offsets[i + 1];
+        }
+        cache->offsets[PAGE_CACHE_ENTRIES - 1] = offset;
+        cache->current = PAGE_CACHE_ENTRIES - 1;
     }
 }
 

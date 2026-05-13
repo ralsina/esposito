@@ -5,6 +5,7 @@
 #include "reader_md.h"
 #include "ui.h"
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -16,6 +17,7 @@
 typedef enum {
     MODE_FILE_LIST,
     MODE_READING,
+    MODE_GOTO,
 } reader_mode_t;
 
 typedef struct {
@@ -36,6 +38,11 @@ typedef struct {
     int line_count;
     int screen_width;
     int content_rows;
+    int page_number;
+
+    // Goto state
+    char goto_buf[8];
+    int goto_pos;
 } reader_state_t;
 
 static reader_state_t state;
@@ -77,6 +84,7 @@ static int open_file(const char *path) {
     state.current_file[MAX_PATH - 1] = '\0';
     page_cache_init(&state.page_cache);
     page_cache_set_start(&state.page_cache, 0);
+    state.page_number = 1;
     return 1;
 }
 
@@ -100,7 +108,7 @@ static void draw_reading_page(void) {
     if (slash) fname = slash + 1;
 
     char page_info[48];
-    snprintf(page_info, sizeof(page_info), "Page %d  W:prev S:next", page_cache_page_number(&state.page_cache));
+    snprintf(page_info, sizeof(page_info), "Page %d  W:prev S:next", state.page_number);
 
     for (int x = 0; x < cols; x++) {
         text_mode_print_at_attr(x, 0, "-", TEXT_COLOR_CYAN, TEXT_ATTR_UNDERLINE);
@@ -128,15 +136,112 @@ static void next_page(void) {
         page_cache_add_next(&state.page_cache, next_offset);
         page_cache_next(&state.page_cache);
     }
+    state.page_number++;
     load_current_page();
     draw_reading_page();
 }
 
+static void goto_page(int target);
+
 static void prev_page(void) {
-    if (!page_cache_can_prev(&state.page_cache)) return;
-    page_cache_prev(&state.page_cache);
+    if (page_cache_can_prev(&state.page_cache)) {
+        page_cache_prev(&state.page_cache);
+        state.page_number--;
+        load_current_page();
+        draw_reading_page();
+    } else if (state.page_number > 1) {
+        int cols = text_mode_get_cols();
+        int rows = text_mode_get_rows();
+        for (int y = 2; y < rows; y++)
+            for (int x = 0; x < cols; x++)
+                text_mode_print_at_attr_bg(x, y, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+        text_mode_print_at_attr((cols - 10) / 2, rows / 2, "Loading...", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+        goto_page(state.page_number - 1);
+    }
+}
+
+static void goto_page(int target) {
+    if (target < 1) return;
+    md_clear_remainder();
+    fseek(state.file, 0, SEEK_SET);
+
+    uint32_t page_starts[PAGE_CACHE_ENTRIES];
+    int store_count = 0;
+    int store_pos = 0;
+
+    int last_page = 0;
+    int page;
+    for (page = 1; page < target; page++) {
+        uint32_t start = ftell(state.file);
+        int n = md_scan_page(state.file, state.lines, state.content_rows, state.screen_width);
+        if (n == 0) break;
+        last_page = page;
+        page_starts[store_pos] = start;
+        store_pos = (store_pos + 1) % PAGE_CACHE_ENTRIES;
+        if (store_count < PAGE_CACHE_ENTRIES) store_count++;
+    }
+
+    uint32_t offset;
+    int actual_page;
+    if (last_page == 0) {
+        offset = 0;
+        actual_page = 1;
+        fseek(state.file, 0, SEEK_SET);
+    } else if (page < target) {
+        // Compute offset from ring buffer
+        int idx = (store_pos - 1 + PAGE_CACHE_ENTRIES) % PAGE_CACHE_ENTRIES;
+        offset = page_starts[idx];
+        actual_page = last_page;
+        fseek(state.file, offset, SEEK_SET);
+    } else {
+        long probe_pos = ftell(state.file);
+        md_clear_remainder();
+        int probe_n = md_scan_page(state.file, state.lines, state.content_rows, state.screen_width);
+        if (probe_n == 0) {
+            int idx = (store_pos - 1 + PAGE_CACHE_ENTRIES) % PAGE_CACHE_ENTRIES;
+            offset = page_starts[idx];
+            actual_page = last_page;
+            fseek(state.file, offset, SEEK_SET);
+        } else {
+            offset = (uint32_t)probe_pos;
+            actual_page = target;
+            fseek(state.file, probe_pos, SEEK_SET);
+            // Store target page start in ring buffer
+            page_starts[store_pos] = offset;
+            store_pos = (store_pos + 1) % PAGE_CACHE_ENTRIES;
+            if (store_count < PAGE_CACHE_ENTRIES) store_count++;
+        }
+    }
+
+    // Populate page cache from ring buffer: oldest first, current last
+    page_cache_init(&state.page_cache);
+    int copy_count = store_count;
+    state.page_cache.count = copy_count;
+    state.page_cache.current = copy_count - 1;
+    for (int i = 0; i < copy_count; i++) {
+        int src = (store_pos - copy_count + i + PAGE_CACHE_ENTRIES) % PAGE_CACHE_ENTRIES;
+        state.page_cache.offsets[i] = page_starts[src];
+    }
+
+    md_clear_remainder();
+    state.page_number = actual_page;
     load_current_page();
     draw_reading_page();
+}
+
+static void draw_goto_prompt(void) {
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+    char prompt[24];
+    int n = snprintf(prompt, sizeof(prompt), "Go to page: %s", state.goto_buf);
+    if (n < (int)sizeof(prompt) - 1) {
+        prompt[n] = '_';
+        prompt[n + 1] = '\0';
+    }
+    for (int x = 0; x < cols; x++) {
+        text_mode_print_at_attr_bg(x, rows - 1, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
+    }
+    text_mode_print_at_attr_bg(0, rows - 1, prompt, TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
 }
 
 static void draw_file_list(void) {
@@ -177,10 +282,33 @@ static void handle_reading_event(char key) {
         prev_page();
     } else if (key == 's' || key == 'S') {
         next_page();
+    } else if (key == 'g' || key == 'G') {
+        state.mode = MODE_GOTO;
+        state.goto_pos = 0;
+        state.goto_buf[0] = '\0';
+        draw_goto_prompt();
     } else if (key == 27) {
         state.mode = MODE_FILE_LIST;
         close_current_file();
         draw_file_list();
+    }
+}
+
+static void handle_goto_event(char key) {
+    if (key >= '0' && key <= '9') {
+        if (state.goto_pos < (int)sizeof(state.goto_buf) - 1) {
+            state.goto_buf[state.goto_pos++] = key;
+            state.goto_buf[state.goto_pos] = '\0';
+            draw_goto_prompt();
+        }
+    } else if (key == '\n' || key == '\r') {
+        state.mode = MODE_READING;
+        int page = atoi(state.goto_buf);
+        if (page > 0) goto_page(page);
+        else draw_reading_page();
+    } else if (key == 27) {
+        state.mode = MODE_READING;
+        draw_reading_page();
     }
 }
 
@@ -195,11 +323,13 @@ void app_init(app_context_t *ctx) {
     // Try checkpoint restore
     const char *saved_file = checkpoint_load_string("reader_file");
     int saved_offset = checkpoint_load_int("reader_offset");
+    int saved_page = checkpoint_load_int("reader_page");
 
     if (saved_file && saved_file[0] && saved_offset >= 0) {
         struct stat st;
         if (stat(saved_file, &st) == 0 && S_ISREG(st.st_mode)) {
             if (open_file(saved_file)) {
+                state.page_number = saved_page > 0 ? saved_page : 1;
                 state.mode = MODE_READING;
                 state.screen_width = text_mode_get_cols() - MARGIN * 2;
                 state.content_rows = text_mode_get_rows() - 2;
@@ -224,6 +354,8 @@ void app_event(app_context_t *ctx, event_t *event) {
 
     if (state.mode == MODE_FILE_LIST) {
         handle_file_list_event(key);
+    } else if (state.mode == MODE_GOTO) {
+        handle_goto_event(key);
     } else {
         handle_reading_event(key);
     }
@@ -233,6 +365,7 @@ void app_checkpoint(app_context_t *ctx) {
     if (state.mode == MODE_READING && state.current_file[0]) {
         checkpoint_save_string("reader_file", state.current_file);
         checkpoint_save_int("reader_offset", (int)page_cache_current_offset(&state.page_cache));
+        checkpoint_save_int("reader_page", state.page_number);
     }
 }
 
