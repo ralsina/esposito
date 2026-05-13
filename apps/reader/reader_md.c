@@ -3,11 +3,8 @@
 #include <string.h>
 #include <stdio.h>
 
-#define MD_LINE_BUF 512
 #define PARA_BUF_SIZE 4096
 
-static char md_para[PARA_BUF_SIZE];
-static char md_line[MD_LINE_BUF];
 static char para_remainder[PARA_BUF_SIZE];
 static int has_remainder = 0;
 static int remainder_para_type = 0;
@@ -252,6 +249,67 @@ static void add_spacer(rendered_line_t *lines, int *count, int max_lines) {
     }
 }
 
+static int read_next_block(FILE *f, char *text, size_t text_size, int *para_type, int *heading_level, long *start_pos) {
+    char line[512];
+    text[0] = '\0';
+    *para_type = 0;
+    *heading_level = 0;
+    *start_pos = ftell(f);
+
+    while (fgets(line, sizeof(line), f)) {
+        strip_newline(line);
+
+        if (is_blank_line(line)) {
+            if (text[0]) break;
+            continue;
+        }
+
+        if (is_tag_only_line(line)) {
+            if (text[0]) break;
+            continue;
+        }
+
+        if (is_heading_line(line)) {
+            if (text[0]) {
+                fseek(f, -((long)strlen(line) + 1), SEEK_CUR);
+                break;
+            }
+            const char *cursor = line;
+            while (*cursor == '#') {
+                (*heading_level)++;
+                cursor++;
+            }
+            while (*cursor == ' ') cursor++;
+            strncpy(text, cursor, text_size - 1);
+            text[text_size - 1] = '\0';
+            *para_type = 1;
+            break;
+        }
+
+        if (is_hr_line(line)) {
+            if (text[0]) {
+                fseek(f, -((long)strlen(line) + 1), SEEK_CUR);
+                break;
+            }
+            text[0] = '-';
+            text[1] = '\0';
+            *para_type = 3;
+            break;
+        }
+
+        if (*para_type == 0) *para_type = 2;
+        size_t remaining = text_size - strlen(text) - 1;
+        size_t needed = strlen(line) + (text[0] ? 2 : 1);
+        if (needed > remaining) {
+            break;
+        }
+        if (text[0]) strcat(text, " ");
+        strcat(text, line);
+    }
+
+    return text[0] != '\0';
+}
+
 static const char *append_wrapped_lines(rendered_line_t *lines, int *count, int max_lines, const char *src, int width, uint8_t color, uint8_t attr, char *remainder, size_t remainder_size) {
     while (*count < max_lines) {
         rendered_line_t line;
@@ -315,63 +373,17 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
 
     // Read new content from file
     while (count < max_lines) {
-        long para_start_pos = ftell(f);
-        md_para[0] = '\0';
+        char block_text[PARA_BUF_SIZE];
         int para_type = 0;
         int heading_level = 0;
+        long para_start_pos = 0;
 
-        // Accumulate one paragraph (joining lines between blank lines)
-        while (fgets(md_line, sizeof(md_line), f)) {
-            strip_newline(md_line);
-
-            if (is_blank_line(md_line)) {
-                if (md_para[0]) break;
-                continue;
-            }
-
-            if (is_tag_only_line(md_line)) {
-                if (md_para[0]) break;
-                continue;
-            }
-
-            if (is_heading_line(md_line)) {
-                if (md_para[0]) {
-                    fseek(f, -((long)strlen(md_line) + 1), SEEK_CUR);
-                    break;
-                }
-                const char *p = md_line;
-                while (*p == '#') { heading_level++; p++; }
-                while (*p == ' ') p++;
-                strcpy(md_para, p);
-                para_type = 1;
-                break;
-            }
-
-            if (is_hr_line(md_line)) {
-                if (md_para[0]) {
-                    fseek(f, -((long)strlen(md_line) + 1), SEEK_CUR);
-                    break;
-                }
-                md_para[0] = '-';
-                md_para[1] = '\0';
-                para_type = 3;
-                break;
-            }
-
-            if (para_type == 0) para_type = 2;
-            size_t remaining_buf = sizeof(md_para) - strlen(md_para) - 1;
-            size_t needed = strlen(md_line) + (md_para[0] ? 2 : 1);
-            if (needed > remaining_buf) {
-                break;
-            }
-            if (md_para[0]) strcat(md_para, " ");
-            strcat(md_para, md_line);
+        if (!read_next_block(f, block_text, sizeof(block_text), &para_type, &heading_level, &para_start_pos)) {
+            break;
         }
 
-        if (!md_para[0]) break;
-
-        normalize_markdown_text(md_para);
-        if (!md_para[0]) {
+        normalize_markdown_text(block_text);
+        if (!block_text[0]) {
             carry_spacer = 0;
             continue;
         }
@@ -388,7 +400,7 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
         }
 
         // Word-wrap the paragraph one line at a time
-        const char *src = md_para;
+        const char *src = block_text;
 
         if (para_type == 3) {
             if (count + 1 >= max_lines) {
