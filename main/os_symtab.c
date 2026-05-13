@@ -2,6 +2,7 @@
 #include "os_core.h"
 #include "hardware.h"
 #include "checkpoint.h"
+#include "app_launcher.h"
 #include "text_mode.h"
 #include "fonts.h"
 #include "wifi.h"
@@ -26,6 +27,7 @@ static const os_symtab_entry_t symtab[] = {
     {"checkpoint_open",         checkpoint_open},
     {"checkpoint_close",        checkpoint_close},
     {"os_get_current_app",      os_get_current_app},
+    {"app_launcher_start",      app_launcher_start},
     {"text_mode_init",          text_mode_init},
     {"text_mode_init_ex",       text_mode_init_ex},
     {"text_mode_get_cols",      text_mode_get_cols},

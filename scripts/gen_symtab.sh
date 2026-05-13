@@ -30,6 +30,7 @@ SYMBOLS=(
     checkpoint_open
     checkpoint_close
     os_get_current_app
+    app_launcher_start
     text_mode_init
     text_mode_init_ex
     text_mode_get_cols
