@@ -347,7 +347,7 @@ static void handle_goto_event(char key) {
 }
 
 void app_init(app_context_t *ctx) {
-    ctx->subscriptions = EVENT_KEYBOARD;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 0;
 
     memset(&state, 0, sizeof(state));
@@ -383,15 +383,21 @@ void app_init(app_context_t *ctx) {
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
-    if (!(event->type == EVENT_KEYBOARD && event->keyboard.pressed)) return;
-    char key = event->keyboard.key;
+    if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
+        char key = event->keyboard.key;
 
-    if (state.mode == MODE_FILE_LIST) {
-        handle_file_list_event(key);
-    } else if (state.mode == MODE_GOTO) {
-        handle_goto_event(key);
-    } else {
-        handle_reading_event(key);
+        if (state.mode == MODE_FILE_LIST) {
+            handle_file_list_event(key);
+        } else if (state.mode == MODE_GOTO) {
+            handle_goto_event(key);
+        } else {
+            handle_reading_event(key);
+        }
+    } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
+        if (state.mode == MODE_READING) {
+            if (event->touch.x < 160) prev_page();
+            else next_page();
+        }
     }
 }
 
