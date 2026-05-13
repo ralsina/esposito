@@ -181,6 +181,7 @@ static void convert_markdown_links(char *line) {
 }
 
 static int wrap_line(const char *text, int width, char *out, int max_out) {
+    const char *original = text;
     while (*text == ' ') text++;
     if (!*text) return 0;
 
@@ -233,7 +234,7 @@ static int wrap_line(const char *text, int width, char *out, int max_out) {
         while (*text == ' ') text++;
     }
     *out = '\0';
-    return (int)(text - start);
+    return (int)(text - original);
 }
 
 static void add_spacer(rendered_line_t *lines, int *count, int max_lines) {
