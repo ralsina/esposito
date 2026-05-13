@@ -246,11 +246,15 @@ static void goto_page(int target) {
     // Populate page cache from ring buffer: oldest first, current last
     page_cache_init(&state.page_cache);
     int copy_count = store_count;
-    state.page_cache.count = copy_count;
-    state.page_cache.current = copy_count - 1;
-    for (int i = 0; i < copy_count; i++) {
-        int src = (store_pos - copy_count + i + PAGE_CACHE_ENTRIES) % PAGE_CACHE_ENTRIES;
-        state.page_cache.offsets[i] = page_starts[src];
+    if (copy_count > 0) {
+        state.page_cache.count = copy_count;
+        state.page_cache.current = copy_count - 1;
+        for (int i = 0; i < copy_count; i++) {
+            int src = (store_pos - copy_count + i + PAGE_CACHE_ENTRIES) % PAGE_CACHE_ENTRIES;
+            state.page_cache.offsets[i] = page_starts[src];
+        }
+    } else {
+        page_cache_set_start(&state.page_cache, offset);
     }
 
     md_clear_remainder();
@@ -334,8 +338,8 @@ static void handle_goto_event(char key) {
     } else if (key == '\n' || key == '\r') {
         state.mode = MODE_READING;
         int page = atoi(state.goto_buf);
-        if (page > 0) goto_page(page);
-        else draw_reading_page();
+        if (page > 1) goto_page(page);
+        else goto_page(1);
     } else if (key == 27) {
         state.mode = MODE_READING;
         draw_reading_page();
