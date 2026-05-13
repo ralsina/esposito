@@ -24,7 +24,20 @@ static char app_names[10][64]; // Support up to 10 apps
 #define APPS_START_ROW 4
 #define INSTRUCTIONS_START_ROW 15
 
-static int previous_selected = -1; // Track previous selection for smart updates
+static int previous_selected = -1;
+
+static void sort_app_names(void) {
+    for (int i = 0; i < app_count - 1; i++) {
+        for (int j = i + 1; j < app_count; j++) {
+            if (strcmp(app_names[i], app_names[j]) > 0) {
+                char tmp[64];
+                strcpy(tmp, app_names[i]);
+                strcpy(app_names[i], app_names[j]);
+                strcpy(app_names[j], tmp);
+            }
+        }
+    }
+}
 
 static void app_launcher_show_static(void) {
     ui_label_attr((TEXT_MODE_COLS - 20) / 2, HEADER_ROW, "Esposito OS App Launcher", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
@@ -120,6 +133,7 @@ void app_launcher_start(void) {
 
     // Get list of available apps
     app_count = app_loader_scan(app_names, 10);
+    sort_app_names();
     if (app_count == 0) {
         ESP_LOGE(TAG, "No apps found!");
         ui_clear();
