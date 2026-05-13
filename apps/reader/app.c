@@ -4,9 +4,9 @@
 #include "reader_state.h"
 #include "reader_core.h"
 #include "reader_events.h"
+#include "reader_startup.h"
 extern void app_launcher_start(void);
 #include <string.h>
-#include <sys/stat.h>
 
 static reader_state_t state;
 static int bold_pending = 0;
@@ -17,26 +17,7 @@ void app_init(app_context_t *ctx) {
     ctx->timer_interval_ms = 0;
 
     memset(&state, 0, sizeof(state));
-    text_mode_init();
-    checkpoint_open("reader");
-
-    // Try last-opened file restore (legacy fallback included).
-    const char *saved_file = checkpoint_load_string(KEY_LAST_FILE);
-    if (!saved_file || !saved_file[0]) {
-        saved_file = checkpoint_load_string(KEY_LEGACY_LAST_FILE);
-    }
-
-    if (saved_file && saved_file[0]) {
-        struct stat st;
-        if (stat(saved_file, &st) == 0 && S_ISREG(st.st_mode)) {
-            if (reader_events_open_book(&state, saved_file, &bold_pending, &underline_pending)) {
-                reader_events_enter_reading_mode(&state, &bold_pending, &underline_pending);
-                return;
-            }
-        }
-    }
-
-    reader_events_show_file_list(&state);
+    reader_startup_init(&state, &bold_pending, &underline_pending);
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
