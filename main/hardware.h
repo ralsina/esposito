@@ -37,6 +37,7 @@ void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_
 bool keyboard_init(void);
 void keyboard_deinit(void);
 bool keyboard_read_event(event_t *event);
+bool keyboard_is_available(void);
 
 // Timer functions
 bool timer_init(void);

@@ -38,8 +38,7 @@ bool hardware_init(void) {
     }
 
     if (!keyboard_init()) {
-        ESP_LOGE(TAG, "Keyboard initialization failed");
-        return false;
+        ESP_LOGW(TAG, "Keyboard initialization failed, continuing without keyboard");
     }
 
     // Configure BOOT button (GPIO 0) as input with pull-up
@@ -159,6 +158,10 @@ bool keyboard_init(void) {
         ESP_LOGE(TAG, "❌ BBQ20 keyboard initialization failed");
         return false;
     }
+}
+
+bool keyboard_is_available(void) {
+    return keyboard_initialized;
 }
 
 void keyboard_deinit(void) {

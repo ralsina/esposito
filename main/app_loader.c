@@ -94,9 +94,14 @@ bool app_loader_load(const char *app_name) {
     ctx->timer_interval_ms = 0;
     ctx->user_data = NULL;
 
-    // Reset keyboard after flash operations to recover I2C bus
-    keyboard_deinit();
-    keyboard_init();
+    // Reset keyboard after flash operations to recover I2C bus,
+    // but only when a keyboard is actually present.
+    if (keyboard_is_available()) {
+        keyboard_deinit();
+        if (!keyboard_init()) {
+            ESP_LOGW(TAG, "Keyboard reset failed; continuing without keyboard");
+        }
+    }
 
     if (!ctx->init) {
         ESP_LOGE(TAG, "ELF missing app_init entry point");

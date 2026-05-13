@@ -123,7 +123,7 @@ void boot_display_splash(void) {
     // Show hardware status
     text_mode_print_at_color(2, 10, "Hardware:", TEXT_COLOR_WHITE);
     text_mode_print_at_color(2, 11, "  Display: OK (ST7789)", TEXT_COLOR_GREEN);
-    text_mode_print_at_color(2, 12, "  Keyboard: OK (BBQ20)", TEXT_COLOR_GREEN);
+    text_mode_print_at_color(2, 12, "  Keyboard: Optional (BBQ20)", TEXT_COLOR_YELLOW);
     text_mode_print_at_color(2, 13, "  SD Card: OK (FAT32)", TEXT_COLOR_GREEN);
     text_mode_print_at_color(2, 14, "  Touch: OK (XPT2046)", TEXT_COLOR_GREEN);
 
@@ -168,10 +168,10 @@ void boot_sequence(void) {
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting keyboard init");
 
     if (!keyboard_init()) {
-        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "Keyboard not detected");
-        // Continue anyway - keyboard is optional for some apps
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "Keyboard not detected (optional)");
+    } else {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Keyboard ready");
     }
-    boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Keyboard subsystem ready");
 
     // Stage 4.5: SD Card
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting SD card init");
