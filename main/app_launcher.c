@@ -7,6 +7,7 @@
 #include "ui.h"
 #include "hardware.h"
 #include "text_mode.h"
+#include "sd_card.h"
 #include "esp_log.h"
 #include <string.h>
 #include <stdio.h>
@@ -122,6 +123,17 @@ static void app_launcher_handle_key(char key) {
 
 void app_launcher_start(void) {
     ESP_LOGI(TAG, "Starting app launcher");
+
+    if (!sd_card_is_mounted()) {
+        ESP_LOGE(TAG, "SD card not mounted!");
+        app_count = 0;
+        app_launcher_active = true;
+        previous_selected = -1;
+        ui_clear();
+        ui_label_attr((TEXT_MODE_COLS - 20) / 2, 10, "No SD card detected!", TEXT_COLOR_RED, TEXT_ATTR_BOLD);
+        ui_label((TEXT_MODE_COLS - 34) / 2, 12, "Insert a SD card with apps and reset", TEXT_COLOR_WHITE);
+        return;
+    }
 
     // Get list of available apps
     app_count = app_loader_scan(app_names, 10);

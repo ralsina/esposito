@@ -27,6 +27,8 @@ SYMBOLS=(
     checkpoint_save_int
     checkpoint_load_int
     checkpoint_save
+    checkpoint_open
+    checkpoint_close
     os_get_current_app
     text_mode_init
     text_mode_init_ex
@@ -90,6 +92,12 @@ SYMBOLS=(
     wifi_save_config
     font_table
     font_lookup_by_name
+    fopen
+    fread
+    fclose
+    fseek
+    ftell
+    fgets
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"

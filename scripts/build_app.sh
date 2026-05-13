@@ -50,12 +50,10 @@ if [ ! -f "$FIRMWARE_ELF" ]; then
     exit 1
 fi
 
-# Generate OS symbol table if needed
-if [ ! -f "$OS_SYMBOLS_LD" ]; then
-    echo "Generating OS symbol table..."
-    mkdir -p "$(dirname "$OS_SYMBOLS_LD")"
-    scripts/gen_symtab.sh "$FIRMWARE_ELF" "$OS_SYMBOLS_LD"
-fi
+# Generate OS symbol table
+echo "Generating OS symbol table..."
+mkdir -p "$(dirname "$OS_SYMBOLS_LD")"
+scripts/gen_symtab.sh "$FIRMWARE_ELF" "$OS_SYMBOLS_LD"
 
 # Create output directory
 mkdir -p "$OUTPUT_DIR"

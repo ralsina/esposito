@@ -23,6 +23,8 @@ static const os_symtab_entry_t symtab[] = {
     {"checkpoint_save_int",     checkpoint_save_int},
     {"checkpoint_load_int",     checkpoint_load_int},
     {"checkpoint_save",         checkpoint_save},
+    {"checkpoint_open",         checkpoint_open},
+    {"checkpoint_close",        checkpoint_close},
     {"os_get_current_app",      os_get_current_app},
     {"text_mode_init",          text_mode_init},
     {"text_mode_init_ex",       text_mode_init_ex},
@@ -86,6 +88,12 @@ static const os_symtab_entry_t symtab[] = {
     {"font_table",              (void*)font_table},
     {"font_lookup_by_name",     font_lookup_by_name},
     {"wifi_save_config",        wifi_save_config},
+    {"fopen",                   fopen},
+    {"fread",                   fread},
+    {"fclose",                  fclose},
+    {"fseek",                   fseek},
+    {"ftell",                   ftell},
+    {"fgets",                   fgets},
     {NULL, NULL}
 };
 
