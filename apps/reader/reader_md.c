@@ -110,6 +110,11 @@ static void asciify(char *line) {
             if (*src) src++;
             continue;
         }
+        if (*src == '\\') {
+            src++;
+            if (*src) { *dst++ = *src++; continue; }
+            break;
+        }
         if (*src < 0x20 || *src > 0x7E) {
             src++;
             continue;
