@@ -2,11 +2,16 @@
 #include "hardware.h"
 #include "lovgfx_config.h"
 #include "fonts.h"
+#include "sd_card.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <sys/stat.h>
+#include <lgfx/v1/lgfx_fonts.hpp>
+#include <lgfx/utility/pgmspace.h>
+
 
 extern "C" {
     #include "checkpoint.h"
@@ -338,6 +343,185 @@ void text_mode_restore(void) {
             update_cell(x, y);
         }
     }
+}
+
+// Decode LovyanGFX RLE-encoded glyph bitmap into 1-bit-per-pixel flat array
+static void decode_glyph_rle(const uint8_t *data, int w, int h, uint8_t *pixels) {
+    int total = w * h;
+    int px = 0;
+
+    uint8_t mask = 0x80;
+    int32_t btmp = pgm_read_byte(data);
+    if (btmp & mask) { btmp = ~btmp; }
+    uint32_t bitlen = 0;
+
+    for (int row = 0; row < h && px < total; row++) {
+        int remain = w;
+        while (remain > 0 && px < total) {
+            if (bitlen == 0) {
+                btmp = ~btmp;
+                do {
+                    do {
+                        ++bitlen;
+                        if (0 == (mask >>= 1)) {
+                            goto read_next_byte_rle;
+                        }
+                    } while (btmp & mask);
+                    break;
+
+                read_next_byte_rle:
+                    mask = 0x80;
+                    data++;
+                    btmp = pgm_read_byte(data) ^ (btmp < 0 ? ~0 : 0);
+                } while (btmp & mask);
+            }
+
+            int l = bitlen;
+            if (l > remain) l = remain;
+            bitlen -= l;
+            remain -= l;
+
+            uint8_t val = (btmp >= 0) ? 1 : 0;
+            for (int i = 0; i < l && px < total; i++) {
+                pixels[px++] = val;
+            }
+        }
+    }
+}
+
+bool text_mode_save_screenshot(void) {
+    if (!initialized || !grid) return false;
+    if (!sd_card_is_mounted()) return false;
+
+    mkdir("/sdcard/screenshots", 0777);
+
+    char path[64];
+    int num = 0;
+    FILE *existing;
+    do {
+        snprintf(path, sizeof(path), "/sdcard/screenshots/shot_%03d", num);
+        char try_path[72];
+        snprintf(try_path, sizeof(try_path), "%s.ppm", path);
+        existing = fopen(try_path, "r");
+        if (existing) {
+            fclose(existing);
+            num++;
+        }
+    } while (existing && num < 1000);
+    if (num >= 1000) return false;
+
+    // Write PPM (.ppm) — decode RLE glyph bitmaps directly, no sprite
+    char ppm_path[72];
+    snprintf(ppm_path, sizeof(ppm_path), "%s.ppm", path);
+    FILE *fppm = fopen(ppm_path, "wb");
+    if (!fppm) return false;
+
+    fprintf(fppm, "P6\n%d %d\n255\n", 320, 240);
+
+    // Get GFXfont data pointers
+    const void *fptr = font_table[current_font].font_ptr;
+    const uint8_t *bitmap_base = NULL;
+    uint16_t first_char = 0;
+    uint16_t last_char = 0;
+    if (fptr) {
+        const GFXfont *fnt = (const GFXfont *)fptr;
+        bitmap_base = (const uint8_t *)pgm_read_ptr(&fnt->bitmap);
+        first_char = pgm_read_word(&fnt->first);
+        last_char = pgm_read_word(&fnt->last);
+    }
+
+    uint8_t row_buf[960];
+
+    // Decode one glyph into a flat 1-bit-per-pixel buffer (max 5×8 = 40 bytes)
+    uint8_t glyph_bits[80];
+
+    for (int py = 0; py < 240; py++) {
+        int gy = py / font_height;
+        int char_row = py % font_height;
+        uint8_t *p = row_buf;
+
+        if (!bitmap_base || gy >= grid_rows) {
+            memset(row_buf, 0, 960);
+            fwrite(row_buf, 1, 960, fppm);
+            continue;
+        }
+
+        for (int gx = 0; gx < grid_cols; gx++) {
+            text_cell_t *cell = &grid[gy * grid_cols + gx];
+
+            uint8_t fg_idx = cell->color & 0x0F;
+            uint8_t bg_idx = cell->bg_color & 0x0F;
+
+            if (cell->attributes & TEXT_ATTR_INVERSE) {
+                uint8_t tmp = fg_idx; fg_idx = bg_idx; bg_idx = tmp;
+            }
+
+            uint16_t rgb565_fg = color_palette[fg_idx];
+            uint16_t rgb565_bg = color_palette[bg_idx];
+
+            uint8_t r_fg = (rgb565_fg >> 8) & 0xF8; r_fg |= r_fg >> 5;
+            uint8_t g_fg = (rgb565_fg >> 3) & 0xFC; g_fg |= g_fg >> 6;
+            uint8_t b_fg = (rgb565_fg << 3) & 0xF8; b_fg |= b_fg >> 5;
+            uint8_t r_bg = (rgb565_bg >> 8) & 0xF8; r_bg |= r_bg >> 5;
+            uint8_t g_bg = (rgb565_bg >> 3) & 0xFC; g_bg |= g_bg >> 6;
+            uint8_t b_bg = (rgb565_bg << 3) & 0xF8; b_bg |= b_bg >> 5;
+
+            // Decode character glyph via RLE
+            int char_idx = (unsigned char)cell->character - first_char;
+            uint8_t gw = 0;
+            uint8_t gh = 0;
+
+            if (cell->character != ' ' && bitmap_base
+                && char_idx >= 0 && char_idx <= (int)(last_char - first_char)) {
+
+                const GFXglyph *g = (const GFXglyph *)pgm_read_ptr(
+                    &((const GFXfont *)fptr)->glyph);
+                g = &g[char_idx];
+
+                uint32_t offset = pgm_read_dword(&g->bitmapOffset);
+                gw = pgm_read_byte(&g->width);
+                gh = pgm_read_byte(&g->height);
+
+                if (gw > 0 && gh > 0 && gw <= font_width && gh <= font_height) {
+                    memset(glyph_bits, 0, gw * gh);
+                    decode_glyph_rle(bitmap_base + offset, gw, gh, glyph_bits);
+                } else {
+                    gw = 0;
+                }
+            }
+
+            // Render this cell row to the PPM row buffer
+            for (int dx = 0; dx < font_width; dx++) {
+                bool pixel_set = false;
+                if (gw > 0 && dx < gw && char_row < gh) {
+                    pixel_set = glyph_bits[char_row * gw + dx] != 0;
+                }
+                // Bold
+                if (!pixel_set && (cell->attributes & TEXT_ATTR_BOLD) && dx > 0
+                    && gw > 0 && (dx - 1) < gw && char_row < gh) {
+                    pixel_set = glyph_bits[char_row * gw + (dx - 1)] != 0;
+                }
+                // Underline
+                if (!pixel_set && (cell->attributes & TEXT_ATTR_UNDERLINE)
+                    && char_row == font_height - 1) {
+                    pixel_set = true;
+                }
+
+                if (pixel_set) {
+                    *p++ = r_fg; *p++ = g_fg; *p++ = b_fg;
+                } else {
+                    *p++ = r_bg; *p++ = g_bg; *p++ = b_bg;
+                }
+            }
+        }
+
+        fwrite(row_buf, 1, 960, fppm);
+    }
+
+    fclose(fppm);
+
+    ESP_LOGI(TAG, "Screenshots saved: %s.ppm", path);
+    return true;
 }
 
 void text_mode_switch_graphics(void) {

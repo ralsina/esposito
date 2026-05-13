@@ -4,6 +4,7 @@
 #include "elf_loader.h"
 #include "checkpoint.h"
 #include "hardware.h"
+#include "text_mode.h"
 #include "touchscreen.h"
 #include "esp_log.h"
 #include "esp_spiffs.h"
@@ -256,7 +257,7 @@ void os_event_loop(void) {
                 event.keyboard.key == 27 &&  // ESC key
                 (event.keyboard.modifiers & MODIFIER_FN)) {
                 ESP_LOGI(TAG, "Screenshot triggered (Fn+ESC)");
-                display_save_screenshot();
+                text_mode_save_screenshot();
                 continue;
             }
 

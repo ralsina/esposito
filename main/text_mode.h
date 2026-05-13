@@ -111,6 +111,9 @@ void text_mode_switch_text(void);
 // Flush back buffer to display (swap buffers and update only changed cells)
 void text_mode_flush(void);
 
+// Save screenshot of current text grid as PPM on SD card
+bool text_mode_save_screenshot(void);
+
 #ifdef __cplusplus
 }
 #endif

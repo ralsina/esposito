@@ -48,9 +48,6 @@ void serial_deinit(void);
 size_t serial_read(char *buffer, size_t max_len);
 size_t serial_write(const char *data, size_t len);
 
-// Screenshot: capture display to a PPM file on SD card
-bool display_save_screenshot(void);
-
 #ifdef __cplusplus
 }
 #endif
