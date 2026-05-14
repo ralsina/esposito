@@ -9,7 +9,6 @@ static const char *TAG = "esposito";
 
 void app_main(void)
 {
-    serial_log_output_set_enabled(true);
     ESP_LOGI(TAG, "Esposito OS v0.1.0-alpha");
     ESP_LOGI(TAG, "Starting boot sequence...");
 

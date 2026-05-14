@@ -57,7 +57,12 @@ static void boot_report_app_memory(void) {
 }
 
 static void boot_apply_log_output_setting(void) {
-    serial_log_output_set_enabled(true);
+    bool enabled = false;
+    if (config_bind_app("settings")) {
+        enabled = config_get_bool("serial_log_output", false);
+        config_unbind_app();
+    }
+    serial_log_output_set_enabled(enabled);
 }
 
 void boot_display_progress(boot_stage_t stage, bool success, const char *message) {
