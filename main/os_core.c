@@ -203,10 +203,18 @@ void os_event_loop(void) {
                      current_app ? current_app->subscriptions : 0);
         }
 
-        // Poll for keyboard events if current app is subscribed or launcher is active
-        if ((current_app && (current_app->subscriptions & EVENT_KEYBOARD)) || app_launcher_is_active()) {
-            if (keyboard_read_event(&event)) {
-                // Add the keyboard event to the queue
+        // Poll keyboard always so global OS shortcuts cannot be disabled by apps.
+        if (keyboard_read_event(&event)) {
+            bool wants_keyboard = app_launcher_is_active() ||
+                                  (current_app && (current_app->subscriptions & EVENT_KEYBOARD));
+            bool is_ctrl_esc = (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
+                                event.keyboard.key == 27 &&
+                                (event.keyboard.modifiers & MODIFIER_CTRL));
+            bool is_fn_esc = (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
+                              event.keyboard.key == 27 &&
+                              (event.keyboard.modifiers & MODIFIER_FN));
+
+            if (wants_keyboard || is_ctrl_esc || is_fn_esc) {
                 event_queue_push(&event);
                 ESP_LOGI(TAG, "Keyboard event added to queue");
             }
