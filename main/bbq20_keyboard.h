@@ -13,9 +13,10 @@ extern "C" {
 
 // Key state structure for BBQ20 keyboard events
 typedef struct {
-    uint8_t key_code;      // Raw key code or ASCII character
-    uint8_t modifiers;     // Key state (down, up, repeat, caps lock, num lock)
-    bool pressed;         // True for key down, false for key up
+    uint8_t key_code;      // Mapped key code delivered to apps (ASCII/control)
+    uint8_t raw_key_code;  // Raw keyboard scan code from BBQ20 FIFO
+    uint8_t modifiers;     // Modifier bitmask (Ctrl/Alt/Fn/Fn2)
+    bool pressed;          // True for key down, false for key up
 } bbq20_key_event_t;
 
 // Initialize BBQ20 keyboard (I2C or fallback to fake keyboard)

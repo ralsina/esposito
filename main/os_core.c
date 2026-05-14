@@ -7,6 +7,7 @@
 #include "checkpoint.h"
 #include "hardware.h"
 #include "text_mode.h"
+#include "terminal_mode.h"
 #include "touchscreen.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -246,9 +247,15 @@ void os_event_loop(void) {
                               event.keyboard.key == 27 &&
                               (event.keyboard.modifiers & MODIFIER_FN));
 
+            if (event.type == EVENT_KEYBOARD) {
+                ESP_LOGI(TAG, "KB: key=%d(0x%02x) raw=0x%02x mod=0x%02x pressed=%d wants=%d",
+                         event.keyboard.key, event.keyboard.key,
+                         event.keyboard.raw_key_code, event.keyboard.modifiers,
+                         event.keyboard.pressed, wants_keyboard);
+            }
+
             if (wants_keyboard || is_ctrl_esc || is_fn_esc) {
                 event_queue_push(&event);
-                ESP_LOGD(TAG, "Keyboard event added to queue");
             }
         }
 
@@ -351,7 +358,9 @@ void os_event_loop(void) {
                 event.keyboard.key == 27 &&  // ESC key
                 (event.keyboard.modifiers & MODIFIER_FN)) {
                 ESP_LOGI(TAG, "Screenshot triggered (Fn+ESC)");
-                text_mode_save_screenshot();
+                if (!terminal_mode_save_screenshot(terminal_mode_default())) {
+                    text_mode_save_screenshot();
+                }
                 continue;
             }
 

@@ -3,6 +3,7 @@
 #include "esp_system.h"
 #include "os_core.h"
 #include "boot.h"
+#include "hardware.h"
 
 static const char *TAG = "esposito";
 

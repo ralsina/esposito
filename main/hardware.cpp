@@ -11,6 +11,10 @@
 #include "driver/gpio.h"
 #include <string.h>
 
+extern "C" {
+#include "sd_card.h"
+}
+
 static const char *TAG = "hardware";
 
 // Display state
@@ -146,6 +150,36 @@ void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_
     }
 }
 
+bool display_save_screenshot_ppm(const char *path) {
+    if (!path || !display_initialized || !display_tft) return false;
+    if (!sd_card_is_mounted()) return false;
+
+    FILE *fppm = fopen(path, "wb");
+    if (!fppm) return false;
+
+    const int width = 320;
+    const int height = 240;
+    fprintf(fppm, "P6\n%d %d\n255\n", width, height);
+
+    uint8_t row_buf[960];
+    for (int y = 0; y < height; y++) {
+        uint8_t *p = row_buf;
+        for (int x = 0; x < width; x++) {
+            uint16_t rgb565 = display_tft->readPixel(x, y);
+            uint8_t r = (rgb565 >> 8) & 0xF8; r |= r >> 5;
+            uint8_t g = (rgb565 >> 3) & 0xFC; g |= g >> 6;
+            uint8_t b = (rgb565 << 3) & 0xF8; b |= b >> 5;
+            *p++ = r;
+            *p++ = g;
+            *p++ = b;
+        }
+        fwrite(row_buf, 1, sizeof(row_buf), fppm);
+    }
+
+    fclose(fppm);
+    return true;
+}
+
 // Keyboard implementation for BBQ20 (based on terminado)
 bool keyboard_init(void) {
     ESP_LOGI(TAG, "Initializing BBQ20 keyboard driver");
@@ -186,7 +220,15 @@ bool keyboard_read_event(event_t *event) {
         event->keyboard.key = (char)bbq20_event.key_code;
         event->keyboard.pressed = bbq20_event.pressed;
         event->keyboard.modifiers = bbq20_event.modifiers;  // Include modifier state
-        event->keyboard.raw_key_code = bbq20_event.key_code;  // Preserve raw key code
+        event->keyboard.raw_key_code = bbq20_event.raw_key_code;
+
+        ESP_LOGI(TAG,
+                 "KB EVT enqueue: key=%d(0x%02x) raw=0x%02x mod=0x%02x pressed=%d",
+                 event->keyboard.key,
+                 (uint8_t)event->keyboard.key,
+                 event->keyboard.raw_key_code,
+                 event->keyboard.modifiers,
+                 event->keyboard.pressed);
 
         return true;
     }
@@ -206,7 +248,8 @@ void timer_set_interval(uint32_t interval_ms) {
 
 // Serial
 static bool serial_initialized = false;
-static vprintf_like_t saved_vprintf = NULL;
+static vprintf_like_t default_vprintf = NULL;
+static bool serial_log_output_enabled = true;
 
 static int noop_vprintf(const char *fmt, va_list args) {
     (void)fmt;
@@ -239,15 +282,10 @@ static uart_stop_bits_t serial_stop_bits_map(int stop_bits) {
 }
 
 bool serial_init(int baud, int data_bits, char parity, int stop_bits) {
-    // Redirect logging away from UART to prevent log spam on the terminal line
-    saved_vprintf = esp_log_set_vprintf(noop_vprintf);
-
     esp_err_t ret = uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
     if (ret == ESP_ERR_INVALID_STATE) {
         // Driver already installed, still fine
     } else if (ret != ESP_OK) {
-        esp_log_set_vprintf(saved_vprintf);
-        saved_vprintf = NULL;
         return false;
     }
 
@@ -261,8 +299,6 @@ bool serial_init(int baud, int data_bits, char parity, int stop_bits) {
     uart_config.source_clk = UART_SCLK_DEFAULT;
     ret = uart_param_config(UART_NUM_0, &uart_config);
     if (ret != ESP_OK) {
-        esp_log_set_vprintf(saved_vprintf);
-        saved_vprintf = NULL;
         return false;
     }
     uart_set_pin(UART_NUM_0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE,
@@ -281,10 +317,6 @@ void serial_deinit(void) {
         serial_initialized = false;
         uart_driver_delete(UART_NUM_0);
     }
-    if (saved_vprintf) {
-        esp_log_set_vprintf(saved_vprintf);
-        saved_vprintf = NULL;
-    }
 }
 
 size_t serial_read(char *buffer, size_t max_len) {
@@ -301,4 +333,24 @@ size_t serial_write(const char *data, size_t len) {
     if (!serial_initialized || !data || len == 0) return 0;
     int written = uart_write_bytes(UART_NUM_0, data, len);
     return written > 0 ? (size_t)written : 0;
+}
+
+void serial_log_output_set_enabled(bool enabled) {
+    if (enabled == serial_log_output_enabled) {
+        return;
+    }
+
+    if (!enabled) {
+        default_vprintf = esp_log_set_vprintf(noop_vprintf);
+        serial_log_output_enabled = false;
+    } else {
+        if (default_vprintf) {
+            esp_log_set_vprintf(default_vprintf);
+        }
+        serial_log_output_enabled = true;
+    }
+}
+
+bool serial_log_output_is_enabled(void) {
+    return serial_log_output_enabled;
 }

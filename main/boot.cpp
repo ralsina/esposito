@@ -3,6 +3,7 @@
 #include "os_core.h"
 #include "app_loader.h"
 #include "app_launcher.h"
+#include "app_config.h"
 #include "text_mode.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -53,6 +54,15 @@ static void boot_report_app_memory(void) {
              (unsigned)free_internal, (double)free_internal / 1024.0);
     ESP_LOGI(TAG, "  Largest internal block: %u bytes (%.1f KiB)",
              (unsigned)largest_internal, (double)largest_internal / 1024.0);
+}
+
+static void boot_apply_log_output_setting(void) {
+    bool enabled = false;
+    if (config_bind_app("settings")) {
+        enabled = config_get_bool("serial_log_output", false);
+        config_unbind_app();
+    }
+    serial_log_output_set_enabled(enabled);
 }
 
 void boot_display_progress(boot_stage_t stage, bool success, const char *message) {
@@ -181,6 +191,7 @@ void boot_sequence(void) {
         return;
     }
     boot_display_progress(BOOT_STAGE_FILESYSTEM_INIT, true, "Filesystem ready");
+    boot_apply_log_output_setting();
 
     // Stage 4: Keyboard
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting keyboard init");
