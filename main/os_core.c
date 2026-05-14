@@ -203,8 +203,37 @@ void os_post_event(event_t *event) {
 void os_event_loop(void) {
     ESP_LOGI(TAG, "Starting event loop");
 
+    TickType_t timer_last_tick = xTaskGetTickCount();
+    app_context_t *timer_last_app = NULL;
+
     while (1) {
         event_t event;
+
+        // Generate timer events for apps that opt in.
+        if (current_app != timer_last_app) {
+            timer_last_app = current_app;
+            timer_last_tick = xTaskGetTickCount();
+        }
+
+        if (current_app &&
+            !app_launcher_is_active() &&
+            (current_app->subscriptions & EVENT_TIMER) &&
+            current_app->timer_interval_ms > 0) {
+            TickType_t now = xTaskGetTickCount();
+            TickType_t interval_ticks = pdMS_TO_TICKS(current_app->timer_interval_ms);
+            if (interval_ticks == 0) {
+                interval_ticks = 1;
+            }
+
+            while ((now - timer_last_tick) >= interval_ticks) {
+                event.type = EVENT_TIMER;
+                if (!event_queue_push(&event)) {
+                    break;
+                }
+                timer_last_tick += interval_ticks;
+                now = xTaskGetTickCount();
+            }
+        }
 
         // Poll keyboard always so global OS shortcuts cannot be disabled by apps.
         if (keyboard_read_event(&event)) {
