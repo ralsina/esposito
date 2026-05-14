@@ -520,9 +520,6 @@ and interpret it as a direction input.
         int char_height = text_mode_get_char_height();
         int tx = event->touch.x / char_width;
         int ty = event->touch.y / char_height;
-
-        printf("Touch: px=(%d,%d) ch=(%d,%d) char_size=(%d,%d) cols=%d rows=%d\n",
-               event->touch.x, event->touch.y, tx, ty, char_width, char_height, cols, rows);
 ```
 
 Check which region was touched.
@@ -530,16 +527,12 @@ Priority: left/right thirds first, then up/down for middle section.
 
 ```c
         if (touch_in_button(&touch_left, tx, ty)) {
-            printf("  -> LEFT region\n");
             set_direction(-1, 0);
         } else if (touch_in_button(&touch_right, tx, ty)) {
-            printf("  -> RIGHT region\n");
             set_direction(1, 0);
         } else if (touch_in_button(&touch_up, tx, ty)) {
-            printf("  -> UP region\n");
             set_direction(0, -1);
         } else if (touch_in_button(&touch_down, tx, ty)) {
-            printf("  -> DOWN region\n");
             set_direction(0, 1);
 ```
 
@@ -549,9 +542,6 @@ Also allows restart by tapping anywhere in the lower region when game over
             if (game_over) {
                 reset_game();
             }
-        } else {
-            printf("  -> NO region matched (tx in [%d-%d], ty in [%d-%d])\n",
-                   touch_up.x0, touch_up.x1, touch_up.y0, touch_down.y1);
         }
         return;
     }
