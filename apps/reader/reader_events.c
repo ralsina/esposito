@@ -153,12 +153,19 @@ static void toc_return_to_reading(reader_state_t *state, int *bold_pending, int 
 }
 
 static void toc_move_selection(reader_state_t *state, int delta) {
+    int previous_selected = state->toc_selected;
     int next = state->toc_selected + delta;
     if (next < 0 || next >= state->toc_count) {
         return;
     }
     state->toc_selected = next;
-    reader_view_draw_toc(state);
+
+    if (state->toc_count > 0) {
+        reader_view_update_toc_selection(state, previous_selected);
+    } else {
+        reader_view_draw_toc(state);
+    }
+
     text_mode_flush();
 }
 

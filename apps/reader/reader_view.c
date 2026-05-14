@@ -16,6 +16,55 @@
 #define TOC_BTN_JUMP_LABEL " JUMP "
 #define TOC_BTN_BACK_LABEL " BACK "
 
+static int toc_scroll_for_selection(int selected, int list_rows) {
+    if (selected >= list_rows) {
+        return selected - list_rows + 1;
+    }
+    return 0;
+}
+
+static void draw_toc_row(const reader_state_t *state, int row_index, int toc_index, int selected) {
+    int cols = text_mode_get_cols();
+    int y = 2 + row_index;
+
+    for (int x = 2; x < cols - 1; x++) {
+        text_mode_print_at_color(x, y, " ", TEXT_COLOR_WHITE);
+    }
+
+    if (toc_index < 0 || toc_index >= state->toc_count) {
+        return;
+    }
+
+    const toc_entry_t *entry = &state->toc[toc_index];
+    char page_label[8];
+    snprintf(page_label, sizeof(page_label), "p.%d", entry->page_number);
+    int page_len = (int)strlen(page_label);
+
+    int indent = (entry->level > 1) ? (entry->level - 1) * 2 : 0;
+    if (indent > 8) {
+        indent = 8;
+    }
+
+    int title_x = 4 + indent;
+    int title_max = cols - title_x - 3 - page_len;
+    if (title_max < 4) {
+        title_max = 4;
+    }
+
+    char title[64];
+    strncpy(title, entry->title, sizeof(title) - 1);
+    title[sizeof(title) - 1] = '\0';
+    if ((int)strlen(title) > title_max) {
+        title[title_max - 1] = '.';
+        title[title_max] = '\0';
+    }
+
+    uint8_t row_color = selected ? TEXT_COLOR_GREEN : TEXT_COLOR_WHITE;
+    text_mode_print_at_color(2, y, selected ? ">" : " ", row_color);
+    text_mode_print_at_color(title_x, y, title, row_color);
+    text_mode_print_at_color(cols - 2 - page_len, y, page_label, TEXT_COLOR_CYAN);
+}
+
 static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t bg, uint8_t base_attr, int *bold_pending, int *underline_pending) {
     int cur_x = x;
     uint8_t attr = base_attr;
@@ -120,45 +169,17 @@ void reader_view_draw_toc(reader_state_t *state) {
     if (state->toc_count == 0) {
         ui_label(2, 2, "No headings found", TEXT_COLOR_YELLOW);
     } else {
-        // Scroll window so selected entry is visible
-        int scroll = 0;
-        if (state->toc_selected >= list_rows) {
-            scroll = state->toc_selected - list_rows + 1;
-        }
+        int scroll = toc_scroll_for_selection(state->toc_selected, list_rows);
 
         for (int i = 0; i < list_rows && (i + scroll) < state->toc_count; i++) {
             int idx = i + scroll;
-            const toc_entry_t *entry = &state->toc[idx];
-            char pg[8];
-            snprintf(pg, sizeof(pg), "p.%d", entry->page_number);
-            int pg_len = (int)strlen(pg);
-            int indent = (entry->level > 1) ? (entry->level - 1) * 2 : 0;
-            if (indent > 8) {
-                indent = 8;
-            }
-            int title_x = 4 + indent;
-            int title_max = cols - title_x - 3 - pg_len;
-            if (title_max < 4) {
-                title_max = 4;
-            }
+            draw_toc_row(state, i, idx, idx == state->toc_selected);
+        }
 
-            char title[64];
-            strncpy(title, entry->title, sizeof(title) - 1);
-            title[sizeof(title) - 1] = '\0';
-            if ((int)strlen(title) > title_max) {
-                title[title_max - 1] = '.';
-                title[title_max] = '\0';
+        for (int i = state->toc_count - scroll; i < list_rows; i++) {
+            if (i >= 0) {
+                draw_toc_row(state, i, -1, 0);
             }
-
-            uint8_t color = (idx == state->toc_selected) ? TEXT_COLOR_GREEN : TEXT_COLOR_WHITE;
-            char line[80];
-            text_mode_print_at_color(2, 2 + i, (idx == state->toc_selected) ? ">" : " ", color);
-            for (int clear_x = 3; clear_x < title_x; clear_x++) {
-                text_mode_print_at_color(clear_x, 2 + i, " ", color);
-            }
-            snprintf(line, sizeof(line), "%s", title);
-            text_mode_print_at_color(title_x, 2 + i, line, color);
-            text_mode_print_at_color(cols - 2 - pg_len, 2 + i, pg, TEXT_COLOR_CYAN);
         }
     }
 
@@ -194,6 +215,33 @@ void reader_view_draw_toc(reader_state_t *state) {
     state->btn_w = button_width;
 
     ui_status_bar(rows - 2, "W/S Navigate  Enter Jump", "ESC Cancel");
+}
+
+void reader_view_update_toc_selection(const reader_state_t *state, int previous_selected) {
+    int rows = text_mode_get_rows();
+    int list_rows = rows - 5;
+
+    if (state->toc_count == 0) {
+        return;
+    }
+
+    int old_scroll = toc_scroll_for_selection(previous_selected, list_rows);
+    int new_scroll = toc_scroll_for_selection(state->toc_selected, list_rows);
+
+    if (old_scroll != new_scroll) {
+        reader_view_draw_toc((reader_state_t *)state);
+        return;
+    }
+
+    int old_row = previous_selected - new_scroll;
+    int new_row = state->toc_selected - new_scroll;
+
+    if (old_row >= 0 && old_row < list_rows) {
+        draw_toc_row(state, old_row, previous_selected, 0);
+    }
+    if (new_row >= 0 && new_row < list_rows) {
+        draw_toc_row(state, new_row, state->toc_selected, 1);
+    }
 }
 
 void reader_view_draw_file_list(reader_state_t *state) {
