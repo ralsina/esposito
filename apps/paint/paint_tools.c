@@ -4,6 +4,7 @@
 #include "paint_storage.h"
 
 #include <string.h>
+#include <stdio.h>
 
 uint8_t paint_canvas_get(const paint_state_t *state, int x, int y) {
     if (!state || !state->canvas || x < 0 || x >= PAINT_WIDTH || y < 0 || y >= PAINT_HEIGHT) {
@@ -223,8 +224,22 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
     }
 
     if (!pressed) {
-        state->touch_active = false;
         state->preview_active = false;
+        if (state->shape_pending && state->touch_active) {
+            if (state->tool == PAINT_TOOL_LINE) {
+                draw_line_on_canvas(state, state->shape_start_x, state->shape_start_y, 
+                                  state->preview_x, state->preview_y, state->current_color);
+                paint_render_all(state);
+                paint_render_status(state, "Line drawn");
+            } else if (state->tool == PAINT_TOOL_RECT) {
+                draw_rect_on_canvas(state, state->shape_start_x, state->shape_start_y,
+                                  state->preview_x, state->preview_y, state->current_color);
+                paint_render_all(state);
+                paint_render_status(state, "Rectangle drawn");
+            }
+            state->shape_pending = false;
+        }
+        state->touch_active = false;
         return;
     }
 
@@ -235,21 +250,6 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
             state->preview_active = true;
             paint_render_all(state);
         }
-        if (state->touch_active) {
-            return;
-        }
-        state->touch_active = true;
-        if (state->tool == PAINT_TOOL_LINE) {
-            draw_line_on_canvas(state, state->shape_start_x, state->shape_start_y, x, y, state->current_color);
-            paint_render_all(state);
-            paint_render_status(state, "Line drawn");
-        } else if (state->tool == PAINT_TOOL_RECT) {
-            draw_rect_on_canvas(state, state->shape_start_x, state->shape_start_y, x, y, state->current_color);
-            paint_render_all(state);
-            paint_render_status(state, "Rectangle drawn");
-        }
-        state->shape_pending = false;
-        state->preview_active = false;
         return;
     }
 
@@ -263,7 +263,9 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
     state->shape_start_x = x;
     state->shape_start_y = y;
     state->preview_active = false;
-    paint_render_status(state, "Shape start selected");
+    char debug_msg[48];
+    snprintf(debug_msg, sizeof(debug_msg), "Shape start: %d,%d tool=%d", x, y, state->tool);
+    paint_render_status(state, debug_msg);
 }
 
 void paint_tools_handle_touch(paint_state_t *state, int x, int y, bool pressed, void (*launch_app_list)(void)) {
