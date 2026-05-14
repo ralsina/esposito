@@ -1,6 +1,7 @@
 #include "ui.h"
 #include "text_mode.h"
 #include <string.h>
+#include <stdio.h>
 
 #define KEY_ESC 27
 #define KEY_BS  8
@@ -89,6 +90,73 @@ int ui_text_input_handle(char key, char *buffer, int max_len) {
         return 0;
     }
     return 0;
+}
+
+void ui_text_input_widget_draw(const ui_text_input_widget_t *widget) {
+    if (!widget || !widget->buffer || widget->max_len <= 0) {
+        return;
+    }
+
+    ui_clear();
+
+    int y = 0;
+    const char *title = widget->title ? widget->title : "Text Input";
+    int tlen = (int)strlen(title);
+    int tx = (TEXT_MODE_COLS - tlen) / 2;
+    if (tx < 0) {
+        tx = 0;
+    }
+
+    ui_label_attr(tx, y++, title, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_separator(y++);
+    y++;
+
+    ui_label_attr(3, y++, widget->label ? widget->label : "Value:", TEXT_COLOR_WHITE, TEXT_ATTR_BOLD);
+
+    char shown[64];
+    const char *source = widget->buffer;
+    size_t src_len = strlen(source);
+    size_t copy_len = src_len;
+    if (copy_len > sizeof(shown) - 2) {
+        copy_len = sizeof(shown) - 2;
+    }
+
+    if (widget->mask_input) {
+        for (size_t index = 0; index < copy_len; index++) {
+            shown[index] = '*';
+        }
+    } else {
+        memcpy(shown, source, copy_len);
+    }
+    shown[copy_len] = '_';
+    shown[copy_len + 1] = '\0';
+
+    ui_label(3, y, shown, TEXT_COLOR_BRIGHT_GREEN);
+
+    ui_status_bar(TEXT_MODE_ROWS - 3,
+                  widget->hint_left ? widget->hint_left : "Type to enter  Enter Confirm",
+                  widget->hint_right ? widget->hint_right : "ESC Cancel");
+}
+
+int ui_text_input_widget_handle_event(const ui_text_input_widget_t *widget, const event_t *event) {
+    if (!widget || !event || !widget->buffer || widget->max_len <= 0) {
+        return 0;
+    }
+
+    if (event->type != EVENT_KEYBOARD || !event->keyboard.pressed) {
+        return 0;
+    }
+
+    if (event->keyboard.modifiers & MODIFIER_CTRL) {
+        return 0;
+    }
+
+    int result = ui_text_input_handle(event->keyboard.key, widget->buffer, widget->max_len);
+    if (result == 0) {
+        ui_text_input_widget_draw(widget);
+        text_mode_flush();
+    }
+    return result;
 }
 
 void ui_clear(void) {

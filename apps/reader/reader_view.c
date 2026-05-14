@@ -99,23 +99,6 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
     }
 }
 
-void reader_view_draw_goto_prompt(const reader_state_t *state) {
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
-    char prompt[24];
-
-    int prompt_len = snprintf(prompt, sizeof(prompt), "Go to page: %s", state->goto_buf);
-    if (prompt_len < (int)sizeof(prompt) - 1) {
-        prompt[prompt_len] = '_';
-        prompt[prompt_len + 1] = '\0';
-    }
-
-    for (int x = 0; x < cols; x++) {
-        text_mode_print_at_attr_bg(x, rows - 1, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
-    }
-    text_mode_print_at_attr_bg(0, rows - 1, prompt, TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
-}
-
 void reader_view_draw_file_list(reader_state_t *state) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();

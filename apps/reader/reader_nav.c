@@ -4,6 +4,8 @@
 #include "reader_md.h"
 #include "reader_view.h"
 #include "text_mode.h"
+#include "ui.h"
+#include "os_core.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -127,30 +129,42 @@ void reader_nav_prev_page(reader_state_t *state, int *bold_pending, int *underli
 
 void reader_nav_start_goto(reader_state_t *state) {
     state->mode = MODE_GOTO;
-    state->goto_pos = 0;
     state->goto_buf[0] = '\0';
-    reader_view_draw_goto_prompt(state);
+    
+    state->goto_widget.title = "Go to Page";
+    state->goto_widget.label = "Page:";
+    state->goto_widget.buffer = state->goto_buf;
+    state->goto_widget.max_len = sizeof(state->goto_buf);
+    state->goto_widget.mask_input = false;
+    state->goto_widget.hint_left = "Type number  Enter Confirm";
+    state->goto_widget.hint_right = "ESC Cancel";
+    
+    ui_text_input_widget_draw(&state->goto_widget);
+    text_mode_flush();
 }
 
 void reader_nav_handle_goto_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
-    if (key >= '0' && key <= '9') {
-        if (state->goto_pos < (int)sizeof(state->goto_buf) - 1) {
-            state->goto_buf[state->goto_pos++] = key;
-            state->goto_buf[state->goto_pos] = '\0';
-            reader_view_draw_goto_prompt(state);
+    // Create a minimal event for the widget handler
+    event_t event = {
+        .type = EVENT_KEYBOARD,
+        .keyboard = {
+            .key = key,
+            .pressed = 1,
+            .modifiers = 0
         }
-        return;
-    }
-
-    if (key == '\n' || key == '\r') {
+    };
+    
+    int result = ui_text_input_widget_handle_event(&state->goto_widget, &event);
+    
+    if (result == 1) {
+        // Enter confirmed
         int page = atoi(state->goto_buf);
         state->mode = MODE_READING;
         reader_nav_goto_page(state, (page > 1) ? page : 1, bold_pending, underline_pending);
-        return;
-    }
-
-    if (key == 27) {
+    } else if (result == -1) {
+        // ESC cancelled
         state->mode = MODE_READING;
         reader_view_draw_reading_page(state, bold_pending, underline_pending);
     }
+    // result == 0 means still editing, widget handles redraw
 }

@@ -1,7 +1,9 @@
 #ifndef UI_H
 #define UI_H
 
+#include <stdbool.h>
 #include <stdint.h>
+#include "os_core.h"
 #include "text_mode.h"
 
 #ifdef __cplusplus
@@ -28,6 +30,25 @@ void ui_status_bar(int y, const char *left, const char *right);
 // Handle keyboard input for text entry
 // Returns: 1 on Enter (confirm), 0 while editing, -1 on ESC (cancel)
 int ui_text_input_handle(char key, char *buffer, int max_len);
+
+// Stateful text input widget handled by the UI layer
+typedef struct {
+	const char *title;
+	const char *label;
+	char *buffer;
+	int max_len;
+	bool mask_input;
+	const char *hint_left;
+	const char *hint_right;
+} ui_text_input_widget_t;
+
+// Draw text input widget (does not flush)
+void ui_text_input_widget_draw(const ui_text_input_widget_t *widget);
+
+// Handle keyboard event for text input widget.
+// Returns: 1 on Enter (confirm), 0 while editing/ignored, -1 on ESC (cancel)
+// Redraws + flushes automatically while editing.
+int ui_text_input_widget_handle_event(const ui_text_input_widget_t *widget, const event_t *event);
 
 // Clear screen to black
 void ui_clear(void);

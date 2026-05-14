@@ -3,6 +3,7 @@
 
 #include "reader_page.h"
 #include "reader_md.h"
+#include "ui.h"
 #include <stdio.h>
 
 #define MARGIN 2
@@ -42,7 +43,7 @@ typedef struct {
 
     // Goto state
     char goto_buf[8];
-    int goto_pos;
+    ui_text_input_widget_t goto_widget;
 
     // File list touch button positions
     int btn_up_x;
