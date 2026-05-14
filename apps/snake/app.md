@@ -31,7 +31,6 @@ Some constants for the game
 #define HUD_ROW_SCORE 0
 #define HUD_ROW_HELP 1
 #define PLAY_TOP 2
-#define CONTROL_ROWS 3
 
 #define MAX_SNAKE_CELLS 2048
 #define TIMER_BASE_MS 170
@@ -87,15 +86,15 @@ typedef struct {
 } button_rect_t;
 ```
 
-We have a touchscreen, so we use 4 rectangles
-as touch targets for up/down/left/right
+Touch regions for invisible directional controls.
+We divide the screen into quadrants: top/bottom halves and left/right sides.
 
 ```c
 
-static button_rect_t btn_up;
-static button_rect_t btn_left;
-static button_rect_t btn_down;
-static button_rect_t btn_right;
+static button_rect_t touch_up;
+static button_rect_t touch_down;
+static button_rect_t touch_left;
+static button_rect_t touch_right;
 ```
 
 Get a random number
@@ -115,7 +114,7 @@ player crashed into the walls.
 
 static int inside_playfield(int x, int y) {
     if (x < 0 || x >= cols) return 0;
-    if (y < PLAY_TOP || y >= (rows - CONTROL_ROWS)) return 0;
+    if (y < PLAY_TOP || y >= rows) return 0;
     return 1;
 }
 ```
@@ -189,45 +188,38 @@ static void draw_hud(void) {
 }
 ```
 
-Remember those rectangles? Well, we draw them so the user can click them
+Update the invisible touch regions based on screen size.
+The screen is divided into 4 regions:
+- Top half (above middle): UP direction
+- Bottom half (below middle): DOWN direction
+- Left third: LEFT direction
+- Right third: RIGHT direction
 
 ```c
 
-static void draw_touch_controls(void) {
-    int control_top = rows - CONTROL_ROWS;
-    int middle = cols / 2;
-    int third = cols / 3;
+static void setup_touch_regions(void) {
+    int middle_y = PLAY_TOP + (rows - PLAY_TOP) / 2;
+    int third_x = cols / 3;
 
-    btn_up.x0 = middle - 4;
-    btn_up.x1 = middle + 4;
-    btn_up.y0 = control_top;
-    btn_up.y1 = control_top;
+    touch_up.x0 = 0;
+    touch_up.x1 = cols - 1;
+    touch_up.y0 = PLAY_TOP;
+    touch_up.y1 = middle_y - 1;
 
-    btn_left.x0 = 1;
-    btn_left.x1 = third;
-    btn_left.y0 = control_top + 1;
-    btn_left.y1 = control_top + 1;
+    touch_down.x0 = 0;
+    touch_down.x1 = cols - 1;
+    touch_down.y0 = middle_y;
+    touch_down.y1 = rows - 1;
 
-    btn_down.x0 = middle - 4;
-    btn_down.x1 = middle + 4;
-    btn_down.y0 = control_top + 1;
-    btn_down.y1 = control_top + 1;
+    touch_left.x0 = 0;
+    touch_left.x1 = third_x;
+    touch_left.y0 = PLAY_TOP;
+    touch_left.y1 = rows - 1;
 
-    btn_right.x0 = cols - third - 1;
-    btn_right.x1 = cols - 2;
-    btn_right.y0 = control_top + 1;
-    btn_right.y1 = control_top + 1;
-
-    for (int y = control_top; y < rows; y++) {
-        for (int x = 0; x < cols; x++) {
-            text_mode_print_at_color(x, y, " ", TEXT_COLOR_BRIGHT_BLACK);
-        }
-    }
-
-    text_mode_print_at_attr(btn_up.x0, btn_up.y0, "   [UP]   ", TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
-    text_mode_print_at_attr(btn_left.x0, btn_left.y0, " [LEFT] ", TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
-    text_mode_print_at_attr(btn_down.x0, btn_down.y0, "  [DOWN]  ", TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
-    text_mode_print_at_attr(btn_right.x0, btn_right.y0, " [RIGHT] ", TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
+    touch_right.x0 = cols - third_x - 1;
+    touch_right.x1 = cols - 1;
+    touch_right.y0 = PLAY_TOP;
+    touch_right.y1 = rows - 1;
 }
 ```
 
@@ -279,7 +271,7 @@ Clear
 ```c
 
 static void clear_playfield(void) {
-    for (int y = PLAY_TOP; y < rows - CONTROL_ROWS; y++) {
+    for (int y = PLAY_TOP; y < rows; y++) {
         for (int x = 0; x < cols; x++) {
             text_mode_print_at_color(x, y, " ", TEXT_COLOR_BLACK);
         }
@@ -320,7 +312,7 @@ static void reset_game(void) {
     next_dir_y = 0;
 
     int cx = cols / 2;
-    int cy = PLAY_TOP + (rows - CONTROL_ROWS - PLAY_TOP) / 2;
+    int cy = PLAY_TOP + (rows - PLAY_TOP) / 2;
 
     snake_len = 4;
     for (int index = 0; index < snake_len; index++) {
@@ -330,7 +322,7 @@ static void reset_game(void) {
 
     clear_playfield();
     draw_hud();
-    draw_touch_controls();
+    setup_touch_regions();
     draw_snake_full();
     spawn_food();
     text_mode_flush();
@@ -518,8 +510,8 @@ Time has passed, move the snake, check collisions, etc.
     }
 ```
 
-User touched the screen! See if he did it in an important
-place and react to it.
+User touched the screen! We check which region they touched
+and interpret it as a direction input.
 
 ```c
 
@@ -529,13 +521,37 @@ place and react to it.
         int tx = event->touch.x / char_width;
         int ty = event->touch.y / char_height;
 
-        if (touch_in_button(&btn_up, tx, ty)) set_direction(0, -1);
-        if (touch_in_button(&btn_down, tx, ty)) set_direction(0, 1);
-        if (touch_in_button(&btn_left, tx, ty)) set_direction(-1, 0);
-        if (touch_in_button(&btn_right, tx, ty)) set_direction(1, 0);
+        printf("Touch: px=(%d,%d) ch=(%d,%d) char_size=(%d,%d) cols=%d rows=%d\n",
+               event->touch.x, event->touch.y, tx, ty, char_width, char_height, cols, rows);
+```
 
-        if (game_over && touch_in_button(&btn_down, tx, ty)) {
-            reset_game();
+Check which region was touched.
+Priority: left/right thirds first, then up/down for middle section.
+
+```c
+        if (touch_in_button(&touch_left, tx, ty)) {
+            printf("  -> LEFT region\n");
+            set_direction(-1, 0);
+        } else if (touch_in_button(&touch_right, tx, ty)) {
+            printf("  -> RIGHT region\n");
+            set_direction(1, 0);
+        } else if (touch_in_button(&touch_up, tx, ty)) {
+            printf("  -> UP region\n");
+            set_direction(0, -1);
+        } else if (touch_in_button(&touch_down, tx, ty)) {
+            printf("  -> DOWN region\n");
+            set_direction(0, 1);
+```
+
+Also allows restart by tapping anywhere in the lower region when game over
+
+```c
+            if (game_over) {
+                reset_game();
+            }
+        } else {
+            printf("  -> NO region matched (tx in [%d-%d], ty in [%d-%d])\n",
+                   touch_up.x0, touch_up.x1, touch_up.y0, touch_down.y1);
         }
         return;
     }

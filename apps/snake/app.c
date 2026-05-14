@@ -427,9 +427,13 @@ void app_event(app_context_t *ctx, event_t *event) {
         int tx = event->touch.x / char_width;
         int ty = event->touch.y / char_height;
 
-        // Check which region was touched. Vertical regions (up/down)
-        // take priority over horizontal regions (left/right).
-        if (touch_in_button(&touch_up, tx, ty)) {
+        // Check which region was touched. 
+        // Priority: left/right thirds first, then up/down for middle section.
+        if (touch_in_button(&touch_left, tx, ty)) {
+            set_direction(-1, 0);
+        } else if (touch_in_button(&touch_right, tx, ty)) {
+            set_direction(1, 0);
+        } else if (touch_in_button(&touch_up, tx, ty)) {
             set_direction(0, -1);
         } else if (touch_in_button(&touch_down, tx, ty)) {
             set_direction(0, 1);
@@ -437,10 +441,6 @@ void app_event(app_context_t *ctx, event_t *event) {
             if (game_over) {
                 reset_game();
             }
-        } else if (touch_in_button(&touch_left, tx, ty)) {
-            set_direction(-1, 0);
-        } else if (touch_in_button(&touch_right, tx, ty)) {
-            set_direction(1, 0);
         }
         return;
     }
