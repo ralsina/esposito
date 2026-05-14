@@ -82,6 +82,7 @@ SYMBOLS=(
     stat
     os_log
     serial_init
+    serial_deinit
     serial_write
     wifi_init
     wifi_is_connected

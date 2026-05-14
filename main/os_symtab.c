@@ -80,6 +80,7 @@ static const os_symtab_entry_t symtab[] = {
     {"stat",                    stat},
     {"os_log",                  os_log},
     {"serial_init",             serial_init},
+    {"serial_deinit",           serial_deinit},
     {"serial_write",            serial_write},
     {"wifi_init",               wifi_init},
     {"wifi_is_connected",       wifi_is_connected},
