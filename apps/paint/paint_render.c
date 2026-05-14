@@ -136,6 +136,18 @@ void paint_render_preview_line(const paint_state_t *state) {
     }
 }
 
+void paint_render_canvas(const paint_state_t *state) {
+    int canvas_start_y = PAINT_TOP_BAR_H;
+    int canvas_end_y = PAINT_HEIGHT - PAINT_PALETTE_H;
+    
+    for (int y = canvas_start_y; y < canvas_end_y; y++) {
+        for (int x = 0; x < PAINT_WIDTH; x++) {
+            uint8_t color = paint_canvas_get(state, x, y);
+            display_draw_pixel(x, y, paint_palette_rgb565(color));
+        }
+    }
+}
+
 void paint_render_all(const paint_state_t *state) {
     for (int y = 0; y < PAINT_HEIGHT; y++) {
         for (int x = 0; x < PAINT_WIDTH; x++) {

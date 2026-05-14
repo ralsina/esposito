@@ -6,6 +6,7 @@
 #include "paint_state.h"
 
 uint16_t paint_palette_rgb565(uint8_t index);
+void paint_render_canvas(const paint_state_t *state);
 void paint_render_all(const paint_state_t *state);
 void paint_render_pixel(const paint_state_t *state, int x, int y);
 void paint_render_preview_line(const paint_state_t *state);

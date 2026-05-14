@@ -248,7 +248,8 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
             state->preview_x = x;
             state->preview_y = y;
             state->preview_active = true;
-            paint_render_all(state);
+            paint_render_canvas(state);
+            paint_render_preview_line(state);
         }
         return;
     }
@@ -263,9 +264,7 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
     state->shape_start_x = x;
     state->shape_start_y = y;
     state->preview_active = false;
-    char debug_msg[48];
-    snprintf(debug_msg, sizeof(debug_msg), "Shape start: %d,%d tool=%d", x, y, state->tool);
-    paint_render_status(state, debug_msg);
+    paint_render_status(state, "Drag to preview shape");
 }
 
 void paint_tools_handle_touch(paint_state_t *state, int x, int y, bool pressed, void (*launch_app_list)(void)) {
