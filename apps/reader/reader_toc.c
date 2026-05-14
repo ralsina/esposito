@@ -14,7 +14,7 @@
 #define KEY_TOC_MTIME_PREFIX "rtoc_mt"
 #define KEY_TOC_VER_PREFIX   "rtoc_v"
 #define KEY_TOC_TOTAL_PREFIX "rtoc_tp"
-#define TOC_CACHE_VERSION    4
+#define TOC_CACHE_VERSION    5
 
 // Field and record separators for serialized TOC
 #define TOC_FIELD_SEP '\x01'
@@ -144,8 +144,11 @@ static void scan_and_build(reader_state_t *state) {
     int content_rows = state->content_rows > 0 ? state->content_rows : 26;
 
     rendered_line_t *scan_lines = malloc(sizeof(rendered_line_t) * MAX_RENDERED_LINES);
-    if (!scan_lines) {
+    uint8_t *scan_levels = malloc(sizeof(uint8_t) * MAX_RENDERED_LINES);
+    if (!scan_lines || !scan_levels) {
         // Keep reader usable even if TOC scan cannot allocate scratch memory.
+        if (scan_lines) free(scan_lines);
+        if (scan_levels) free(scan_levels);
         md_clear_remainder();
         fseek(state->file, saved_pos, SEEK_SET);
         return;
@@ -155,7 +158,7 @@ static void scan_and_build(reader_state_t *state) {
 
     while (state->toc_count < MAX_TOC_ENTRIES) {
         uint32_t page_start = (uint32_t)ftell(state->file);
-        int count = md_scan_page(state->file, scan_lines, content_rows, screen_width);
+        int count = md_scan_page_with_levels(state->file, scan_lines, scan_levels, content_rows, screen_width);
         if (count == 0) break;
 
         // Detect headings across the full page, not only at top.
@@ -166,14 +169,20 @@ static void scan_and_build(reader_state_t *state) {
                 continue;
             }
 
-            int is_heading = ((scan_lines[i].color == TEXT_COLOR_BRIGHT_WHITE) ||
-                              (scan_lines[i].color == TEXT_COLOR_BRIGHT_CYAN)) &&
-                             (scan_lines[i].attr & TEXT_ATTR_BOLD);
+            int heading_level = (int)scan_levels[i];
+            int is_heading = heading_level > 0;
 
             // For wrapped headings, keep only the first rendered line.
             if (is_heading && !in_heading_block) {
                 toc_entry_t *entry = &state->toc[state->toc_count++];
                 strip_markers(scan_lines[i].text, entry->title, sizeof(entry->title));
+                entry->level = (uint8_t)heading_level;
+                if (entry->level < 1) {
+                    entry->level = 1;
+                }
+                if (entry->level > 6) {
+                    entry->level = 6;
+                }
                 entry->page_number = page;
                 entry->file_offset = page_start;
                 in_heading_block = 1;
@@ -195,6 +204,7 @@ static void scan_and_build(reader_state_t *state) {
     draw_scan_progress(state->current_file, total_size, total_size, state->total_pages, state->toc_count, 1);
 
     // Restore file position and md state
+    free(scan_levels);
     free(scan_lines);
     md_clear_remainder();
     fseek(state->file, saved_pos, SEEK_SET);
@@ -219,7 +229,7 @@ static void save_toc_to_checkpoint(const reader_state_t *state, long mtime) {
         return;
     }
 
-    // Serialize: title\x01page\x01offset\x02title\x01page\x01offset\x02...
+    // Serialize: title\x01level\x01page\x01offset\x02...
     char *serialize_buf = malloc(2048);
     if (!serialize_buf) {
         checkpoint_save_string(key, "");
@@ -230,8 +240,10 @@ static void save_toc_to_checkpoint(const reader_state_t *state, long mtime) {
 
     for (int i = 0; i < state->toc_count && pos < 2048 - 64; i++) {
         if (i > 0) serialize_buf[pos++] = TOC_REC_SEP;
-        int n = snprintf(serialize_buf + pos, 2048 - pos, "%s%c%d%c%lu",
+        int n = snprintf(serialize_buf + pos, 2048 - pos, "%s%c%d%c%d%c%lu",
                          state->toc[i].title,
+                         TOC_FIELD_SEP,
+                         state->toc[i].level,
                          TOC_FIELD_SEP,
                          state->toc[i].page_number,
                          TOC_FIELD_SEP,
@@ -293,12 +305,19 @@ static int load_toc_from_checkpoint(reader_state_t *state, long file_mtime) {
         char *f2 = strchr(f1 + 1, TOC_FIELD_SEP);
         if (!f2) break;
         *f2 = '\0';
+        char *f3 = strchr(f2 + 1, TOC_FIELD_SEP);
+        if (!f3) break;
+        *f3 = '\0';
 
         toc_entry_t *entry = &state->toc[state->toc_count++];
         strncpy(entry->title, rec, sizeof(entry->title) - 1);
         entry->title[sizeof(entry->title) - 1] = '\0';
-        entry->page_number = atoi(f1 + 1);
-        entry->file_offset = (uint32_t)atol(f2 + 1);
+        entry->level = (uint8_t)atoi(f1 + 1);
+        if (entry->level < 1) {
+            entry->level = 1;
+        }
+        entry->page_number = atoi(f2 + 1);
+        entry->file_offset = (uint32_t)atol(f3 + 1);
 
         if (rec_end) rec = rec_end + 1;
         else break;

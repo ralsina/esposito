@@ -17,6 +17,7 @@ typedef struct {
     uint8_t attr;
 } rendered_line_t;
 
+int md_scan_page_with_levels(FILE *f, rendered_line_t *lines, uint8_t *heading_levels, int max_lines, int screen_width);
 int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_width);
 void md_clear_remainder(void);
 

@@ -25,6 +25,7 @@ typedef enum {
 
 typedef struct {
     char title[64];
+    uint8_t level;
     int page_number;
     uint32_t file_offset;
 } toc_entry_t;

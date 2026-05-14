@@ -123,11 +123,18 @@ void reader_view_draw_toc(reader_state_t *state) {
         for (int i = 0; i < list_rows && (i + scroll) < state->toc_count; i++) {
             int idx = i + scroll;
             const toc_entry_t *entry = &state->toc[idx];
-            char marker = (idx == state->toc_selected) ? '>' : ' ';
             char pg[8];
             snprintf(pg, sizeof(pg), "p.%d", entry->page_number);
             int pg_len = (int)strlen(pg);
-            int title_max = cols - 6 - pg_len;
+            int indent = (entry->level > 1) ? (entry->level - 1) * 2 : 0;
+            if (indent > 8) {
+                indent = 8;
+            }
+            int title_x = 4 + indent;
+            int title_max = cols - title_x - 3 - pg_len;
+            if (title_max < 4) {
+                title_max = 4;
+            }
 
             char title[64];
             strncpy(title, entry->title, sizeof(title) - 1);
@@ -139,8 +146,12 @@ void reader_view_draw_toc(reader_state_t *state) {
 
             uint8_t color = (idx == state->toc_selected) ? TEXT_COLOR_GREEN : TEXT_COLOR_WHITE;
             char line[80];
-            snprintf(line, sizeof(line), "%c %s", marker, title);
-            text_mode_print_at_color(2, 2 + i, line, color);
+            text_mode_print_at_color(2, 2 + i, (idx == state->toc_selected) ? ">" : " ", color);
+            for (int clear_x = 3; clear_x < title_x; clear_x++) {
+                text_mode_print_at_color(clear_x, 2 + i, " ", color);
+            }
+            snprintf(line, sizeof(line), "%s", title);
+            text_mode_print_at_color(title_x, 2 + i, line, color);
             text_mode_print_at_color(cols - 2 - pg_len, 2 + i, pg, TEXT_COLOR_CYAN);
         }
     }

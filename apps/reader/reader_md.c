@@ -287,11 +287,14 @@ static int wrap_line(const char *text, int width, char *out, int max_out) {
     return (int)(text - original);
 }
 
-static void add_spacer(rendered_line_t *lines, int *count, int max_lines) {
+static void add_spacer(rendered_line_t *lines, uint8_t *heading_levels, int *count, int max_lines) {
     if (*count < max_lines) {
         lines[*count].text[0] = '\0';
         lines[*count].color = TEXT_COLOR_BLACK;
         lines[*count].attr = TEXT_ATTR_NORMAL;
+        if (heading_levels) {
+            heading_levels[*count] = 0;
+        }
         (*count)++;
     }
 }
@@ -357,7 +360,7 @@ static int read_next_block(FILE *f, markdown_block_t *block) {
     return block->text[0] != '\0';
 }
 
-static const char *append_wrapped_lines(rendered_line_t *lines, int *count, int max_lines, const char *src, int width, uint8_t color, uint8_t attr, char *remainder, size_t remainder_size) {
+static const char *append_wrapped_lines(rendered_line_t *lines, uint8_t *heading_levels, int heading_level, int *count, int max_lines, const char *src, int width, uint8_t color, uint8_t attr, char *remainder, size_t remainder_size) {
     while (*count < max_lines) {
         rendered_line_t line;
         int consumed = wrap_line(src, width, line.text, MAX_LINE_TEXT);
@@ -368,6 +371,9 @@ static const char *append_wrapped_lines(rendered_line_t *lines, int *count, int 
         line.color = color;
         line.attr = attr;
         lines[*count] = line;
+        if (heading_levels) {
+            heading_levels[*count] = (uint8_t)heading_level;
+        }
         (*count)++;
         src += consumed;
     }
@@ -382,7 +388,7 @@ static const char *append_wrapped_lines(rendered_line_t *lines, int *count, int 
     return NULL;
 }
 
-static void render_block(rendered_line_t *lines, int *count, int max_lines, FILE *f, const markdown_block_t *block, int screen_width) {
+static void render_block(rendered_line_t *lines, uint8_t *heading_levels, int *count, int max_lines, FILE *f, const markdown_block_t *block, int screen_width) {
     const char *src = block->text;
 
     if (block->type == 3) {
@@ -400,6 +406,9 @@ static void render_block(rendered_line_t *lines, int *count, int max_lines, FILE
         line.color = TEXT_COLOR_CYAN;
         line.attr = TEXT_ATTR_NORMAL;
         lines[(*count)++] = line;
+        if (heading_levels) {
+            heading_levels[*count - 1] = 0;
+        }
         carry_spacer = 1;
         return;
     }
@@ -411,7 +420,7 @@ static void render_block(rendered_line_t *lines, int *count, int max_lines, FILE
         line_attr = TEXT_ATTR_BOLD;
     }
 
-    if (append_wrapped_lines(lines, count, max_lines, src, screen_width, line_color, line_attr, para_remainder, sizeof(para_remainder))) {
+    if (append_wrapped_lines(lines, heading_levels, block->type == 1 ? block->heading_level : 0, count, max_lines, src, screen_width, line_color, line_attr, para_remainder, sizeof(para_remainder))) {
         has_remainder = 1;
         remainder_para_type = block->type;
         remainder_heading_level = block->heading_level;
@@ -421,13 +430,13 @@ static void render_block(rendered_line_t *lines, int *count, int max_lines, FILE
     }
 }
 
-int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_width) {
+int md_scan_page_with_levels(FILE *f, rendered_line_t *lines, uint8_t *heading_levels, int max_lines, int screen_width) {
     int count = 0;
 
     // Inter-page spacer if previous page ended with a complete block
     if (carry_spacer && count < max_lines) {
         if (count + 1 < max_lines) {
-            add_spacer(lines, &count, max_lines);
+            add_spacer(lines, heading_levels, &count, max_lines);
             carry_spacer = 0;
         } else {
             carry_spacer = 1;
@@ -446,7 +455,7 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
             rem_attr = TEXT_ATTR_BOLD;
         }
 
-        if (append_wrapped_lines(lines, &count, max_lines, src, screen_width, rem_color, rem_attr, para_remainder, sizeof(para_remainder))) {
+        if (append_wrapped_lines(lines, heading_levels, remainder_para_type == 1 ? remainder_heading_level : 0, &count, max_lines, src, screen_width, rem_color, rem_attr, para_remainder, sizeof(para_remainder))) {
             carry_spacer = 0;
             return count;
         }
@@ -478,14 +487,18 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
                 carry_spacer = 1;
                 break;
             }
-            add_spacer(lines, &count, max_lines);
+            add_spacer(lines, heading_levels, &count, max_lines);
             carry_spacer = 0;
         }
 
-        render_block(lines, &count, max_lines, f, &block, screen_width);
+        render_block(lines, heading_levels, &count, max_lines, f, &block, screen_width);
     }
 
     return count;
+}
+
+int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_width) {
+    return md_scan_page_with_levels(f, lines, NULL, max_lines, screen_width);
 }
 
 void md_clear_remainder(void) {
