@@ -76,7 +76,8 @@ int ui_text_input_handle(char key, char *buffer, int max_len) {
     if (key == '\n' || key == '\r') {
         return 1;
     }
-    if (key == KEY_BS || key == KEY_DEL) {
+    // Handle backspace: 0x08, 0x7F, or common terminal codes
+    if (key == KEY_BS || key == KEY_DEL || key == 0x08 || key == 0x7F) {
         size_t len = strlen(buffer);
         if (len > 0) buffer[len - 1] = '\0';
         return 0;
@@ -97,22 +98,33 @@ void ui_text_input_widget_draw(const ui_text_input_widget_t *widget) {
         return;
     }
 
-    ui_clear();
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
 
-    int y = 0;
-    const char *title = widget->title ? widget->title : "Text Input";
-    int tlen = (int)strlen(title);
-    int tx = (TEXT_MODE_COLS - tlen) / 2;
-    if (tx < 0) {
-        tx = 0;
+    // Draw in bottom 4 rows instead of clearing entire screen
+    int input_start_row = rows - 4;
+
+    // Clear the input area
+    for (int row = input_start_row; row < rows; row++) {
+        for (int col = 0; col < cols; col++) {
+            text_mode_print_at_attr_bg(col, row, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+        }
     }
 
-    ui_label_attr(tx, y++, title, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
-    ui_separator(y++);
-    y++;
+    int y = input_start_row;
 
-    ui_label_attr(3, y++, widget->label ? widget->label : "Value:", TEXT_COLOR_WHITE, TEXT_ATTR_BOLD);
+    // Title
+    const char *title = widget->title ? widget->title : "Text Input";
+    int tlen = (int)strlen(title);
+    int tx = (cols - tlen) / 2;
+    if (tx < 0) tx = 0;
+    text_mode_print_at_attr_bg(tx, y++, title, TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
 
+    // Label and input value on next row
+    const char *label = widget->label ? widget->label : "Value:";
+    text_mode_print_at_attr_bg(2, y, label, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
+
+    // Build the display string (masked if needed)
     char shown[64];
     const char *source = widget->buffer;
     size_t src_len = strlen(source);
@@ -131,11 +143,22 @@ void ui_text_input_widget_draw(const ui_text_input_widget_t *widget) {
     shown[copy_len] = '_';
     shown[copy_len + 1] = '\0';
 
-    ui_label(3, y, shown, TEXT_COLOR_BRIGHT_GREEN);
+    int value_x = 2 + (int)strlen(label) + 1;
+    text_mode_print_at_attr_bg(value_x, y, shown, TEXT_COLOR_BRIGHT_GREEN, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+    y++;
 
-    ui_status_bar(TEXT_MODE_ROWS - 3,
-                  widget->hint_left ? widget->hint_left : "Type to enter  Enter Confirm",
-                  widget->hint_right ? widget->hint_right : "ESC Cancel");
+    // Hints at bottom
+    const char *hint_left = widget->hint_left ? widget->hint_left : "Type to enter  Enter Confirm";
+    const char *hint_right = widget->hint_right ? widget->hint_right : "ESC Cancel";
+
+    text_mode_print_at_attr_bg(2, y, hint_left, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+    if (hint_right && hint_right[0]) {
+        int rlen = (int)strlen(hint_right);
+        int rx = cols - 2 - rlen;
+        if (rx > 2) {
+            text_mode_print_at_attr_bg(rx, y, hint_right, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+        }
+    }
 }
 
 int ui_text_input_widget_handle_event(const ui_text_input_widget_t *widget, const event_t *event) {
