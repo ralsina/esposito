@@ -23,6 +23,8 @@ static int msg_timer = 0;
 static int selected = 0;
 static int scan_count = 0;
 static int scan_selected = 0;
+static ui_text_input_widget_t ssid_input;
+static ui_text_input_widget_t password_input;
 
 static void set_status(const char *msg) {
     strncpy(status_msg, msg, sizeof(status_msg) - 1);
@@ -99,24 +101,6 @@ static void draw_scan_results(void) {
     ui_status_bar(TEXT_MODE_ROWS - 3, "W/S Navigate  Enter Select", "ESC Back");
 }
 
-static void draw_text_entry(const char *title, const char *label, const char *value) {
-    ui_clear();
-
-    int y = 0;
-    int tlen = (int)strlen(title);
-    ui_label_attr((TEXT_MODE_COLS - tlen - 4) / 2, y++, title, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
-    ui_separator(y++);
-    y++;
-
-    ui_label_attr(3, y++, label, TEXT_COLOR_WHITE, TEXT_ATTR_BOLD);
-
-    char display[64];
-    snprintf(display, sizeof(display), "%s_", value);
-    ui_label(3, y, display, TEXT_COLOR_BRIGHT_GREEN);
-
-    ui_status_bar(TEXT_MODE_ROWS - 3, "Type to enter  Enter Confirm", "ESC Cancel");
-}
-
 static void draw_message(void) {
     ui_clear();
 
@@ -138,10 +122,10 @@ static void render(void) {
             draw_scan_results();
             break;
         case STATE_ENTER_SSID:
-            draw_text_entry("Enter SSID", "SSID:", input_ssid);
+            ui_text_input_widget_draw(&ssid_input);
             break;
         case STATE_ENTER_PASSWORD:
-            draw_text_entry("Enter Password", "Password:", input_password);
+            ui_text_input_widget_draw(&password_input);
             break;
         case STATE_MESSAGE:
             draw_message();
@@ -168,6 +152,22 @@ void app_init(app_context_t *ctx) {
     input_password[0] = '\0';
     selected = 0;
     scan_selected = 0;
+
+    ssid_input.title = "Enter SSID";
+    ssid_input.label = "SSID:";
+    ssid_input.buffer = input_ssid;
+    ssid_input.max_len = sizeof(input_ssid);
+    ssid_input.mask_input = false;
+    ssid_input.hint_left = "Type to enter  Enter Confirm";
+    ssid_input.hint_right = "ESC Cancel";
+
+    password_input.title = "Enter Password";
+    password_input.label = "Password:";
+    password_input.buffer = input_password;
+    password_input.max_len = sizeof(input_password);
+    password_input.mask_input = true;
+    password_input.hint_left = "Type to enter  Enter Confirm";
+    password_input.hint_right = "ESC Cancel";
 
     render();
     os_log(TAG, "Settings app initialized");
@@ -268,23 +268,13 @@ static void handle_scan_key(char key) {
     }
 }
 
-static void handle_text_entry(char key) {
-    char *buf;
-    int max_len;
-
-    if (state == STATE_ENTER_SSID) {
-        buf = input_ssid;
-        max_len = sizeof(input_ssid) - 1;
-    } else {
-        buf = input_password;
-        max_len = sizeof(input_password) - 1;
-    }
-
-    int result = ui_text_input_handle(key, buf, max_len);
+static void handle_text_entry_event(event_t *event) {
+    const ui_text_input_widget_t *widget = (state == STATE_ENTER_SSID) ? &ssid_input : &password_input;
+    int result = ui_text_input_widget_handle_event(widget, event);
     if (result != 0) {
         state = STATE_MAIN;
+        render();
     }
-    render();
 }
 
 static void handle_message_key(char key) {
@@ -310,7 +300,7 @@ void app_event(app_context_t *ctx, event_t *event) {
                 break;
             case STATE_ENTER_SSID:
             case STATE_ENTER_PASSWORD:
-                handle_text_entry(key);
+                handle_text_entry_event(event);
                 break;
             case STATE_MESSAGE:
                 handle_message_key(key);

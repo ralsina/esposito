@@ -174,12 +174,48 @@ int ui_text_input_widget_handle_event(const ui_text_input_widget_t *widget, cons
         return 0;
     }
 
-    int result = ui_text_input_handle(event->keyboard.key, widget->buffer, widget->max_len);
-    if (result == 0) {
+    char key = event->keyboard.key;
+    uint8_t raw_code = event->keyboard.raw_key_code;
+
+    // DEBUG: Log what we received
+    os_log("ui_widget", "key='%c'(0x%02x) raw_key_code=0x%02x", (key >= 32 && key <= 126) ? key : '?', (unsigned char)key, raw_code);
+
+    // Check raw key code FIRST, before checking the mapped ASCII key
+    // This avoids mistaking non-ASCII keys that are mapped to printable chars (like backspace -> 'E')
+    // Also check key == KEY_BS directly since raw_key_code may not be populated in all paths
+    if (raw_code == 0x08 || key == KEY_BS || key == KEY_DEL || key == 0x7F) {
+        // Backspace
+        size_t len = strlen(widget->buffer);
+        if (len > 0) widget->buffer[len - 1] = '\0';
         ui_text_input_widget_draw(widget);
         text_mode_flush();
+        return 0;
     }
-    return result;
+
+    // Handle ESC
+    if (key == KEY_ESC) {
+        return -1;
+    }
+
+    // Handle Enter
+    if (key == '\n' || key == '\r') {
+        return 1;
+    }
+
+    // Handle regular character input (only if it's a printable character)
+    if (key >= 32 && key <= 126) {
+        size_t len = strlen(widget->buffer);
+        if (len < (size_t)(widget->max_len - 1)) {
+            widget->buffer[len] = key;
+            widget->buffer[len + 1] = '\0';
+        }
+        ui_text_input_widget_draw(widget);
+        text_mode_flush();
+        return 0;
+    }
+
+    // Ignore other keys
+    return 0;
 }
 
 void ui_clear(void) {

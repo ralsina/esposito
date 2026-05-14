@@ -186,6 +186,7 @@ bool keyboard_read_event(event_t *event) {
         event->keyboard.key = (char)bbq20_event.key_code;
         event->keyboard.pressed = bbq20_event.pressed;
         event->keyboard.modifiers = bbq20_event.modifiers;  // Include modifier state
+        event->keyboard.raw_key_code = bbq20_event.key_code;  // Preserve raw key code
 
         return true;
     }

@@ -206,6 +206,7 @@ void os_event_loop(void) {
                     event.keyboard.key = 27;
                     event.keyboard.pressed = true;
                     event.keyboard.modifiers = MODIFIER_CTRL;
+                    event.keyboard.raw_key_code = 27;
                     event_queue_push(&event);
                 }
             } else {

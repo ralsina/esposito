@@ -37,6 +37,7 @@ typedef struct {
             char key;
             bool pressed;
             uint8_t modifiers;  // Modifier key state (Ctrl, Alt, Shift, etc.)
+            uint8_t raw_key_code;  // Raw key code from keyboard (for non-ASCII keys)
         } keyboard;
         struct {
             char data[256];

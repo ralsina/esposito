@@ -280,6 +280,7 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
     // Special keys (must be checked before range checks to avoid conflicts)
     if (key_code == 10) return '\n';  // Enter key (0x0A)
     if (key_code == BBQ20_KEY_ESCAPE) return 27;  // Escape key
+    if (key_code == 8) return '\b';   // Backspace key (0x08) - MUST be before BBQ10 key mapping!
     if (key_code == 40) return ' ';
     if (key_code == 41) return '\t';
     if (key_code == 42) return '\n';
@@ -291,17 +292,7 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
         return 0;
     }
 
-    // Fallback to BBQ10 key code mapping for non-ASCII keys
-    // Key codes 4-29 are A-Z in BBQ10 protocol
-    if (key_code >= 4 && key_code <= 29) {
-        return 'A' + (key_code - 4);
-    }
-
-    // Key codes 30-39 are 0-9
-    if (key_code >= 30 && key_code <= 39) {
-        return '0' + (key_code - 30);
-    }
-
+    // No other special keys recognized for BBQ20 (BBQ10 fallback disabled)
     return 0;
 }
 
