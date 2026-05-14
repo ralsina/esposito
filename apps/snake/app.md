@@ -1,16 +1,19 @@
-// # Snakes and Ositos
-//
-// ![Snake game](snake.png)
-//
-// This is an implementation of the classic snake minigame
-// for the ESPOsito operating system. I think it's a nice
-// example of the basics of creating an app for this OS,
-// and small enough to be understood in a few minutes
-// if you know basic C. So, let's give this a shot!
-//
-// We start with some includes, as is traditional.
-// Nothing very surprising, other than these three
-// which are provided by the OS.
+
+# Snakes and Ositos
+
+![Snake game](snake.png)
+
+This is an implementation of the classic snake minigame
+for the ESPOsito operating system. I think it's a nice
+example of the basics of creating an app for this OS,
+and small enough to be understood in a few minutes
+if you know basic C. So, let's give this a shot!
+
+We start with some includes, as is traditional.
+Nothing very surprising, other than these three
+which are provided by the OS.
+
+```c
 
 #include "os_core.h"
 #include "app_config.h"
@@ -19,8 +22,11 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+```
 
-// Some constants for the game
+Some constants for the game
+
+```c
 
 #define HUD_ROW_SCORE 0
 #define HUD_ROW_HELP 1
@@ -32,9 +38,12 @@
 #define TIMER_STEP_MS 10
 #define TIMER_MIN_MS 80
 #define RAMP_EVERY_FOOD 3
+```
 
-// The snake is an array of cells, true of this snake
-// and of the more traditional biological snakes.
+The snake is an array of cells, true of this snake
+and of the more traditional biological snakes.
+
+```c
 
 typedef struct {
     int x;
@@ -43,8 +52,11 @@ typedef struct {
 
 static cell_t snake[MAX_SNAKE_CELLS];
 static int snake_len = 0;
+```
 
-// Some variables for the game state
+Some variables for the game state
+
+```c
 
 static int dir_x = 1;
 static int dir_y = 0;
@@ -61,8 +73,11 @@ static int cols = 0;
 static int rows = 0;
 static int speed_ms = TIMER_BASE_MS;
 static app_context_t *g_ctx = NULL;
+```
 
-// A rectangle.
+A rectangle.
+
+```c
 
 typedef struct {
     int x0;
@@ -70,38 +85,53 @@ typedef struct {
     int y0;
     int y1;
 } button_rect_t;
+```
 
-// We have a touchscreen, so we use 4 rectangles
-// as touch targets for up/down/left/right
+We have a touchscreen, so we use 4 rectangles
+as touch targets for up/down/left/right
+
+```c
 
 static button_rect_t btn_up;
 static button_rect_t btn_left;
 static button_rect_t btn_down;
 static button_rect_t btn_right;
+```
 
-// Get a random number
+Get a random number
+
+```c
 
 static uint32_t next_random(void) {
     prng_state = prng_state * 1664525u + 1013904223u;
     return prng_state;
 }
+```
 
-// Is this position in the playfield? Useful to know if the
-// player crashed into the walls.
+Is this position in the playfield? Useful to know if the
+player crashed into the walls.
+
+```c
 
 static int inside_playfield(int x, int y) {
     if (x < 0 || x >= cols) return 0;
     if (y < PLAY_TOP || y >= (rows - CONTROL_ROWS)) return 0;
     return 1;
 }
+```
 
-// Is this position in this rectangle?
+Is this position in this rectangle?
+
+```c
 
 static int touch_in_button(const button_rect_t *button, int x, int y) {
     return x >= button->x0 && x <= button->x1 && y >= button->y0 && y <= button->y1;
 }
+```
 
-// Bump speed if needed, by which we mean make the delays lower.
+Bump speed if needed, by which we mean make the delays lower.
+
+```c
 
 static void update_speed(void) {
     int level = score / RAMP_EVERY_FOOD;
@@ -114,9 +144,12 @@ static void update_speed(void) {
         g_ctx->timer_interval_ms = (uint32_t)speed_ms;
     }
 }
+```
 
-// Is this position in the snake?
-// Useful to know if we crashed into the snake.
+Is this position in the snake?
+Useful to know if we crashed into the snake.
+
+```c
 
 static int snake_contains(int x, int y) {
     for (int index = 0; index < snake_len; index++) {
@@ -126,11 +159,14 @@ static int snake_contains(int x, int y) {
     }
     return 0;
 }
+```
 
-// Maybe HUD is a bit pretentious but this shows the score and that
-// sort of things. Notice the use of `text_mode_print_at_color`,
-// that is one of the ways `text_mode` lets you draw text. There are
-// a few similar functions like `text_mode_print_at_attr`.
+Maybe HUD is a bit pretentious but this shows the score and that
+sort of things. Notice the use of `text_mode_print_at_color`,
+that is one of the ways `text_mode` lets you draw text. There are
+a few similar functions like `text_mode_print_at_attr`.
+
+```c
 
 static void draw_hud(void) {
     char line[80];
@@ -151,8 +187,11 @@ static void draw_hud(void) {
         text_mode_print_at_color(0, HUD_ROW_HELP, "WASD/touch move, Ctrl+ESC launcher", TEXT_COLOR_CYAN);
     }
 }
+```
 
-// Remember those rectangles? Well, we draw them so the user can click them
+Remember those rectangles? Well, we draw them so the user can click them
+
+```c
 
 static void draw_touch_controls(void) {
     int control_top = rows - CONTROL_ROWS;
@@ -190,16 +229,22 @@ static void draw_touch_controls(void) {
     text_mode_print_at_attr(btn_down.x0, btn_down.y0, "  [DOWN]  ", TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
     text_mode_print_at_attr(btn_right.x0, btn_right.y0, " [RIGHT] ", TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
 }
+```
 
-// Draw the background.
+Draw the background.
+
+```c
 
 static void draw_cell(int x, int y, const char *ch, uint8_t color) {
     if (inside_playfield(x, y)) {
         text_mode_print_at_color(x, y, ch, color);
     }
 }
+```
 
-// Food for the snake! In a random place, not inside the snake :-)
+Food for the snake! In a random place, not inside the snake :-)
+
+```c
 
 static void spawn_food(void) {
     int play_rows = rows - PLAY_TOP;
@@ -227,8 +272,11 @@ static void spawn_food(void) {
     food_x = -1;
     food_y = -1;
 }
+```
 
-// Clear
+Clear
+
+```c
 
 static void clear_playfield(void) {
     for (int y = PLAY_TOP; y < rows - CONTROL_ROWS; y++) {
@@ -237,16 +285,22 @@ static void clear_playfield(void) {
         }
     }
 }
+```
 
-// Draw the whole snake and nothing but the snake
+Draw the whole snake and nothing but the snake
+
+```c
 
 static void draw_snake_full(void) {
     for (int index = 0; index < snake_len; index++) {
         draw_cell(snake[index].x, snake[index].y, index == 0 ? "@" : "o", index == 0 ? TEXT_COLOR_BRIGHT_GREEN : TEXT_COLOR_GREEN);
     }
 }
+```
 
-// Reset everything!
+Reset everything!
+
+```c
 
 static void reset_game(void) {
     cols = text_mode_get_cols();
@@ -281,8 +335,11 @@ static void reset_game(void) {
     spawn_food();
     text_mode_flush();
 }
+```
 
-// Sets the direction of snake movement.
+Sets the direction of snake movement.
+
+```c
 
 static void set_direction(int dx, int dy) {
     if ((dx == -dir_x && dy == -dir_y) || (dx == -next_dir_x && dy == -next_dir_y)) {
@@ -292,9 +349,12 @@ static void set_direction(int dx, int dy) {
     next_dir_y = dy;
     running = 1;
 }
+```
 
-// We're done playing! Notice how we have a config system where we can save
-// the high score for later.
+We're done playing! Notice how we have a config system where we can save
+the high score for later.
+
+```c
 
 static void finish_game(void) {
     game_over = 1;
@@ -306,9 +366,12 @@ static void finish_game(void) {
     draw_hud();
     text_mode_flush();
 }
+```
 
-// The actual game code. We call this repeatedly, and that
-// is how the game progresses.
+The actual game code. We call this repeatedly, and that
+is how the game progresses.
+
+```c
 
 static void step_game(void) {
     if (!running || game_over || snake_len <= 0) {
@@ -369,65 +432,96 @@ static void step_game(void) {
 
     text_mode_flush();
 }
+```
 
-// The `app_init` is what the operating system calls when the app starts.
-// Think of it as a traditional C program's `main()`
-//
-// However, apps in this OS need to do some chores here.
+The `app_init` is what the operating system calls when the app starts.
+Think of it as a traditional C program's `main()`
+
+However, apps in this OS need to do some chores here.
+
+```c
 
 void app_init(app_context_t *ctx) {
+```
 
-    // The app context is a place where the app communicates with the
-    // OS.
-    //
+The app context is a place where the app communicates with the
+OS.
+
+
+```c
     g_ctx = ctx;
     update_speed();
+```
 
-    // For example, subscriptions means the OS will send those events
-    // to the app. We want to know about keyboard, touch and timers.
+For example, subscriptions means the OS will send those events
+to the app. We want to know about keyboard, touch and timers.
+
+```c
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TIMER | EVENT_TOUCH;
-    // And the timer is set as the current speed of the game. This way
-    // there is no "speed logic", things just happen faster!
-    ctx->timer_interval_ms = (uint32_t)speed_ms;
+```
 
-    // This is a `text_mode` app, so init things.
+And the timer is set as the current speed of the game. This way
+there is no "speed logic", things just happen faster!
+
+```c
+    ctx->timer_interval_ms = (uint32_t)speed_ms;
+```
+
+This is a `text_mode` app, so init things.
+
+```c
     text_mode_init();
     text_mode_clear(TEXT_COLOR_BLACK);
 
     high_score = config_get_int("snake/high_score", 0);
     reset_game();
 }
+```
 
-// Apps are required to implement this.
-//
-// Since this is NOT a multitasking OS, apps are expected to
-// save enough state so that when they restart they will be
-// in the state the user expects.
-//
+Apps are required to implement this.
+
+Since this is NOT a multitasking OS, apps are expected to
+save enough state so that when they restart they will be
+in the state the user expects.
+
+
+```c
 void app_checkpoint(app_context_t *ctx) {
     config_set_int("snake/high_score", high_score);
 }
+```
 
-// Cleanup when the app closes.
+Cleanup when the app closes.
+
+```c
 void app_close(app_context_t *ctx) {
     g_ctx = NULL;
     text_mode_clear(TEXT_COLOR_BLACK);
 }
+```
 
-// The event handler! This is called whenever one of the
-// events we are subscribed to happens.
+The event handler! This is called whenever one of the
+events we are subscribed to happens.
+
+```c
 
 void app_event(app_context_t *ctx, event_t *event) {
+```
 
-    // Time has passed, move the snake, check collisions, etc.
+Time has passed, move the snake, check collisions, etc.
+
+```c
 
     if (event->type == EVENT_TIMER) {
         step_game();
         return;
     }
+```
 
-    // User touched the screen! See if he did it in an important
-    // place and react to it.
+User touched the screen! See if he did it in an important
+place and react to it.
+
+```c
 
     if (event->type == EVENT_TOUCH && event->touch.pressed) {
         int char_width = text_mode_get_char_width();
@@ -445,33 +539,50 @@ void app_event(app_context_t *ctx, event_t *event) {
         }
         return;
     }
+```
 
-    // User *released* a key, we don't care.
+User *released* a key, we don't care.
+
+```c
 
     if (event->type != EVENT_KEYBOARD || !event->keyboard.pressed) {
         return;
     }
+```
 
-    // User pressed a key, we care!
+User pressed a key, we care!
+
+```c
 
     char key = event->keyboard.key;
     if ((event->keyboard.modifiers & MODIFIER_CTRL) && key >= 1 && key <= 26) {
         key = (char)('a' + key - 1);
     }
+```
 
-    // Enter or space when game over, we start a new game.
+Enter or space when game over, we start a new game.
+
+```c
 
     if (game_over && (key == '\n' || key == '\r' || key == ' ')) {
         reset_game();
         return;
     }
+```
 
-    // Set the snake direction!
+Set the snake direction!
+
+```c
 
     if (key == 'w' || key == 'W') set_direction(0, -1);
     if (key == 's' || key == 'S') set_direction(0, 1);
     if (key == 'a' || key == 'A') set_direction(-1, 0);
     if (key == 'd' || key == 'D') set_direction(1, 0);
 }
+```
 
-// And this is the tail of the snake and that is the whole thing!
+And this is the tail of the snake and that is the whole thing!
+
+```c
+
+```
