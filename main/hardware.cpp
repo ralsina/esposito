@@ -11,6 +11,10 @@
 #include "driver/gpio.h"
 #include <string.h>
 
+extern "C" {
+#include "sd_card.h"
+}
+
 static const char *TAG = "hardware";
 
 // Display state
@@ -146,6 +150,36 @@ void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_
     }
 }
 
+bool display_save_screenshot_ppm(const char *path) {
+    if (!path || !display_initialized || !display_tft) return false;
+    if (!sd_card_is_mounted()) return false;
+
+    FILE *fppm = fopen(path, "wb");
+    if (!fppm) return false;
+
+    const int width = 320;
+    const int height = 240;
+    fprintf(fppm, "P6\n%d %d\n255\n", width, height);
+
+    uint8_t row_buf[960];
+    for (int y = 0; y < height; y++) {
+        uint8_t *p = row_buf;
+        for (int x = 0; x < width; x++) {
+            uint16_t rgb565 = display_tft->readPixel(x, y);
+            uint8_t r = (rgb565 >> 8) & 0xF8; r |= r >> 5;
+            uint8_t g = (rgb565 >> 3) & 0xFC; g |= g >> 6;
+            uint8_t b = (rgb565 << 3) & 0xF8; b |= b >> 5;
+            *p++ = r;
+            *p++ = g;
+            *p++ = b;
+        }
+        fwrite(row_buf, 1, sizeof(row_buf), fppm);
+    }
+
+    fclose(fppm);
+    return true;
+}
+
 // Keyboard implementation for BBQ20 (based on terminado)
 bool keyboard_init(void) {
     ESP_LOGI(TAG, "Initializing BBQ20 keyboard driver");
@@ -186,7 +220,15 @@ bool keyboard_read_event(event_t *event) {
         event->keyboard.key = (char)bbq20_event.key_code;
         event->keyboard.pressed = bbq20_event.pressed;
         event->keyboard.modifiers = bbq20_event.modifiers;  // Include modifier state
-        event->keyboard.raw_key_code = bbq20_event.key_code;  // Preserve raw key code
+        event->keyboard.raw_key_code = bbq20_event.raw_key_code;
+
+        ESP_LOGI(TAG,
+                 "KB EVT enqueue: key=%d(0x%02x) raw=0x%02x mod=0x%02x pressed=%d",
+                 event->keyboard.key,
+                 (uint8_t)event->keyboard.key,
+                 event->keyboard.raw_key_code,
+                 event->keyboard.modifiers,
+                 event->keyboard.pressed);
 
         return true;
     }

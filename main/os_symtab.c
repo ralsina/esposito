@@ -12,8 +12,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <time.h>
 
 static const os_symtab_entry_t symtab[] = {
     {"display_clear",           display_clear},
@@ -91,6 +93,7 @@ static const os_symtab_entry_t symtab[] = {
     {"terminal_mode_render",    terminal_mode_render},
     {"terminal_mode_cols",      terminal_mode_cols},
     {"terminal_mode_rows",      terminal_mode_rows},
+    {"terminal_mode_normalize_key", terminal_mode_normalize_key},
     {"serial_init",             serial_init},
     {"serial_deinit",           serial_deinit},
     {"serial_write",            serial_write},
@@ -128,6 +131,11 @@ static const os_symtab_entry_t symtab[] = {
     {"config_set_float",        config_set_float},
     {"config_set_bool",         config_set_bool},
     {"config_set_string",       config_set_string},
+    {"config_bind_app",         config_bind_app},
+    {"config_unbind_app",       config_unbind_app},
+    {"os_unload_app",           os_unload_app},
+    {"fputc",                   fputc},
+    {"time",                    time},
     {NULL, NULL}
 };
 

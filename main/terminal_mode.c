@@ -2,9 +2,27 @@
 
 #include "hardware.h"
 #include "terminal_vt100.h"
+#include "text_mode.h"
+
+#include "sd_card.h"
 
 #include <string.h>
 #include <stdio.h>
+#include <sys/stat.h>
+
+/* Map ANSI color index 0-7 to CGA text_mode color index 0-15.
+ * Terminal palette uses full-brightness RGB565 values that match the
+ * CGA bright colors (indices 8-15), except black (0 stays 0). */
+static const uint8_t ansi_to_cga[8] = {
+    TEXT_COLOR_BLACK,           /* 0 = black        */
+    TEXT_COLOR_BRIGHT_RED,      /* 1 = red          */
+    TEXT_COLOR_BRIGHT_GREEN,    /* 2 = green        */
+    TEXT_COLOR_BRIGHT_YELLOW,   /* 3 = yellow       */
+    TEXT_COLOR_BRIGHT_BLUE,     /* 4 = blue         */
+    TEXT_COLOR_BRIGHT_MAGENTA,  /* 5 = magenta      */
+    TEXT_COLOR_BRIGHT_CYAN,     /* 6 = cyan         */
+    TEXT_COLOR_BRIGHT_WHITE,    /* 7 = white        */
+};
 
 #define TERM_CELL_W 5
 #define TERM_CELL_H 8
@@ -125,30 +143,33 @@ static void draw_cell(terminal_mode_impl_t *impl, int x, int y, char c, vt100_at
     int px = x * TERM_CELL_W;
     int py = y * TERM_CELL_H;
 
-    uint16_t fg = impl->palette[attr.fg & 7];
-    uint16_t bg = impl->palette[attr.bg & 7];
+    uint8_t fg_cga = ansi_to_cga[attr.fg & 7];
+    uint8_t bg_cga = ansi_to_cga[attr.bg & 7];
     int reverse = attr.reverse ^ impl->vt.screen_reverse;
     if (reverse) {
-        uint16_t tmp = fg;
-        fg = bg;
-        bg = tmp;
+        uint8_t tmp = fg_cga;
+        fg_cga = bg_cga;
+        bg_cga = tmp;
     }
 
-    display_fill_rect(px, py, TERM_CELL_W, TERM_CELL_H, bg);
-    if (c != ' ') {
-        if (attr.bold) {
-            fg = brighten_rgb565(fg);
-        }
+    uint8_t tm_attr = TEXT_ATTR_NORMAL;
+    if (attr.bold)      tm_attr |= TEXT_ATTR_BOLD;
+    if (attr.underline) tm_attr |= TEXT_ATTR_UNDERLINE;
 
-        if (attr.graphics) {
-            draw_graphics_char(px, py, c, fg);
-        } else {
-            display_draw_char_at(px, py, c, fg, bg);
-        }
+    char buf[2] = {c, '\0'};
+    text_mode_print_at_attr_bg(x, y, buf, fg_cga, bg_cga, tm_attr);
 
-        if (attr.underline) {
-            display_fill_rect(px, py + TERM_CELL_H - 1, TERM_CELL_W, 1, fg);
+    /* Graphics chars are drawn as pixels over the grid cell for correct visuals.
+     * The character is already stored in the text_mode grid for screenshots. */
+    if (attr.graphics && c != ' ') {
+        uint16_t fg_px = impl->palette[attr.fg & 7];
+        uint16_t bg_px = impl->palette[attr.bg & 7];
+        if (reverse) {
+            uint16_t tmp = fg_px; fg_px = bg_px; bg_px = tmp;
         }
+        if (attr.bold) fg_px = brighten_rgb565(fg_px);
+        display_fill_rect(px, py, TERM_CELL_W, TERM_CELL_H, bg_px);
+        draw_graphics_char(px, py, c, fg_px);
     }
 }
 
@@ -182,6 +203,7 @@ static void draw_cursor(terminal_mode_impl_t *impl) {
     }
 
     if (impl->cursor_blink_state && impl->vt.cursor_visible) {
+        /* Draw cursor block directly on display — transient, not stored in grid */
         display_fill_rect(px, py, TERM_CELL_W, TERM_CELL_H, fg);
         if (ch != ' ') {
             if (attr.graphics) {
@@ -215,7 +237,6 @@ static void draw_status_bar(terminal_mode_impl_t *impl) {
     impl->status_dirty = 0;
 
     int row = impl->vt.rows;
-    int py = row * TERM_CELL_H;
     int cols = impl->vt.cols;
 
     char padded[TERM_MAX_COLS + 1];
@@ -231,10 +252,7 @@ static void draw_status_bar(terminal_mode_impl_t *impl) {
     }
     memcpy(padded, composed, len);
 
-    display_fill_rect(0, py, cols * TERM_CELL_W, TERM_CELL_H, impl->palette[4]);
-    for (int i = 0; i < cols; i++) {
-        display_draw_char_at(i * TERM_CELL_W, py, padded[i], impl->palette[7], impl->palette[4]);
-    }
+    text_mode_print_at_attr_bg(0, row, padded, TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_BRIGHT_BLUE, TEXT_ATTR_NORMAL);
 }
 
 static void send_bytes(terminal_mode_impl_t *impl, const char *data, size_t len) {
@@ -282,7 +300,7 @@ bool terminal_mode_init(terminal_mode_t *term, int cols, int rows, terminal_mode
     memset(impl->last_screen, 0, sizeof(impl->last_screen));
     memset(impl->last_attrs, 0, sizeof(impl->last_attrs));
 
-    display_fill_rect(0, 0, 320, 240, impl->palette[0]);
+    text_mode_clear(TEXT_COLOR_BLACK);
     impl->initialized = 1;
     return true;
 }
@@ -456,6 +474,14 @@ void terminal_mode_render(terminal_mode_t *term) {
     impl->vt.needs_redraw = 0;
 }
 
+bool terminal_mode_save_screenshot(terminal_mode_t *term) {
+    if (!term || !term->impl.initialized) return false;
+    /* Grid is maintained in sync with the display via text_mode, so
+     * text_mode_save_screenshot() captures the current terminal content. */
+    terminal_mode_render(term);
+    return text_mode_save_screenshot();
+}
+
 int terminal_mode_cols(const terminal_mode_t *term) {
     if (!term) return 0;
     return term->impl.vt.cols;
@@ -464,4 +490,47 @@ int terminal_mode_cols(const terminal_mode_t *term) {
 int terminal_mode_rows(const terminal_mode_t *term) {
     if (!term) return 0;
     return term->impl.vt.rows;
+}
+
+/* Keyboard normalization: Fn+WASD → VT100 arrow sequences, Fn+Q → Tab */
+const char *terminal_mode_normalize_key(const event_t *event, size_t *out_len) {
+    static char buf[4];
+    
+    if (!event || event->type != EVENT_KEYBOARD || !out_len) {
+        if (out_len) *out_len = 0;
+        return "";
+    }
+    
+    char key = event->keyboard.key;
+    uint8_t mods = event->keyboard.modifiers;
+    
+    /* Check for Fn+WASD arrow key mapping */
+    if (mods & (MODIFIER_FN | MODIFIER_FN2)) {
+        if (key == 'w' || key == 'W') {
+            memcpy(buf, "\x1b[A", 3);
+            *out_len = 3;
+            return buf;
+        } else if (key == 's' || key == 'S') {
+            memcpy(buf, "\x1b[B", 3);
+            *out_len = 3;
+            return buf;
+        } else if (key == 'a' || key == 'A') {
+            memcpy(buf, "\x1b[D", 3);
+            *out_len = 3;
+            return buf;
+        } else if (key == 'd' || key == 'D') {
+            memcpy(buf, "\x1b[C", 3);
+            *out_len = 3;
+            return buf;
+        } else if (key == 'q' || key == 'Q') {
+            buf[0] = '\t';  /* Tab */
+            *out_len = 1;
+            return buf;
+        }
+    }
+    
+    /* Regular key pass-through */
+    buf[0] = key;
+    *out_len = 1;
+    return buf;
 }

@@ -32,6 +32,7 @@ void display_set_font(const void *font);
 
 // Display character with specific foreground and background at pixel position
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color);
+bool display_save_screenshot_ppm(const char *path);
 
 // Keyboard functions
 bool keyboard_init(void);

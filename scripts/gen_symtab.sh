@@ -92,6 +92,7 @@ SYMBOLS=(
     terminal_mode_render
     terminal_mode_cols
     terminal_mode_rows
+    terminal_mode_normalize_key
     serial_init
     serial_deinit
     serial_write
@@ -129,6 +130,11 @@ SYMBOLS=(
     config_set_float
     config_set_bool
     config_set_string
+    config_bind_app
+    config_unbind_app
+    os_unload_app
+    fputc
+    time
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"

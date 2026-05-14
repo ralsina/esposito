@@ -220,50 +220,10 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
         return 0;
     }
 
-    // Handle modifier key combinations (based on terminado implementation)
-    if (key_code >= 'a' && key_code <= 'z') {
-        // Check for Fn key combinations (from terminado)
-        if (fn_pressed) {
-            switch (key_code) {
-                case 'q': return '\t';    // Fn+Q = TAB
-                case 'w': return 0x11;    // Fn+W = Up arrow (Ctrl+Q)
-                case 'a': return 0x10;    // Fn+A = Left arrow (Ctrl+P)
-                case 's': return 0x0E;    // Fn+S = Down arrow (Ctrl+N)
-                case 'd': return 0x0F;    // Fn+D = Right arrow (Ctrl+O)
-            }
-        }
-
-        // Check for Ctrl key combinations
-        if (ctrl_pressed) {
-            return key_code & 0x1F;  // Convert to control character
-        }
-
-        // Return normal character
-        return key_code;
-    }
-
-    // Handle uppercase letters
-    if (key_code >= 'A' && key_code <= 'Z') {
-        // Check for Fn key combinations
-        if (fn_pressed) {
-            char lower = key_code + 32;  // Convert to lowercase
-            switch (lower) {
-                case 'q': return '\t';    // Fn+Q = TAB
-                case 'w': return 0x11;    // Fn+W = Up arrow
-                case 'a': return 0x10;    // Fn+A = Left arrow
-                case 's': return 0x0E;    // Fn+S = Down arrow
-                case 'd': return 0x0F;    // Fn+D = Right arrow
-            }
-        }
-
-        // Check for Ctrl key combinations
-        if (ctrl_pressed) {
-            return (key_code + 32) & 0x1F;  // Convert to lowercase, then control
-        }
-
-        // Return normal uppercase character
-        return key_code;
-    }
+    // Driver layer policy:
+    // - never synthesize terminal semantics (Fn/Ctrl combos)
+    // - pass through raw character bytes + separate modifier bitmask
+    // - consumers (terminal_mode/apps) decide meaning of modifiers
 
     // Filter out modifier keys - they should not generate characters
     if (key_code == BBQ20_KEY_FN || key_code == BBQ20_KEY_CTRL ||
@@ -271,25 +231,19 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
         return 0;  // Don't generate ASCII for modifier keys
     }
 
-    // BBQ20 keyboard sends ASCII directly (0x61 = 'a', 0x41 = 'A', etc.)
-    // Check if it's a printable ASCII character
-    if (key_code >= 32 && key_code <= 126) {
-        return key_code;  // Return the ASCII character directly
-    }
-
-    // Special keys (must be checked before range checks to avoid conflicts)
+    // Special keys (must be checked before printable range checks)
     if (key_code == 10) return '\n';  // Enter key (0x0A)
     if (key_code == BBQ20_KEY_ESCAPE) return 27;  // Escape key
-    if (key_code == 8) return '\b';   // Backspace key (0x08) - MUST be before BBQ10 key mapping!
+    if (key_code == 8) return '\b';   // Backspace key (0x08)
     if (key_code == 40) return ' ';
     if (key_code == 41) return '\t';
     if (key_code == 42) return '\n';
     if (key_code == 43) return '\b';
 
-    // Filter out modifier keys first - they should never generate characters
-    if (key_code == BBQ20_KEY_FN || key_code == BBQ20_KEY_CTRL ||
-        key_code == BBQ20_KEY_ALT || key_code == BBQ20_KEY_FN2) {
-        return 0;
+    // BBQ20 keyboard sends ASCII directly (0x61 = 'a', 0x41 = 'A', etc.)
+    // Check if it's a printable ASCII character
+    if (key_code >= 32 && key_code <= 126) {
+        return key_code;  // Return the ASCII character directly
     }
 
     // No other special keys recognized for BBQ20 (BBQ10 fallback disabled)
@@ -328,6 +282,7 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
                     // Extract actual state and modifiers
                     uint8_t actual_state = key_state & BBQ10_STATE_MASK;
 
+                    event->raw_key_code = key_code;
                     event->key_code = key_code;
                     event->modifiers = bbq20_get_modifiers();  // Use current modifier state
                     event->pressed = (actual_state == BBQ10_STATE_PRESS || actual_state == BBQ10_STATE_LONG_PRESS);
@@ -342,7 +297,7 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
                             ESP_LOGD(TAG, "🎹 BBQ20 REAL key: %c (code:0x%02X state:0x%02X mods:0x%02X)",
                                     ascii, key_code, key_state, event->modifiers);
                         }
-                        event->key_code = ascii;
+                        event->key_code = (uint8_t)ascii;
                         return true;
                     } else {
                         ESP_LOGD(TAG, "🎹 BBQ20: Key mapped to NULL ASCII");

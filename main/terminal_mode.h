@@ -29,9 +29,16 @@ void terminal_mode_handle_key(terminal_mode_t *term, char key, uint8_t modifiers
 
 void terminal_mode_set_status(terminal_mode_t *term, const char *status);
 void terminal_mode_render(terminal_mode_t *term);
+bool terminal_mode_save_screenshot(terminal_mode_t *term);
 
 int terminal_mode_cols(const terminal_mode_t *term);
 int terminal_mode_rows(const terminal_mode_t *term);
+
+/* Keyboard normalization: converts hardware keys to terminal sequences
+ * Maps Fn+WASD to VT100 arrow keys, other keys pass through
+ * Returns pointer to output buffer and sets *out_len to byte count
+ */
+const char *terminal_mode_normalize_key(const event_t *event, size_t *out_len);
 
 #ifdef __cplusplus
 }
