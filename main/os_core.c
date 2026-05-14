@@ -84,21 +84,6 @@ static bool event_queue_pop(event_t *event) {
     return true;
 }
 
-static bool event_queue_peek(event_t *event) {
-    if (event_queue_tail == event_queue_head) {
-        return false;
-    }
-    *event = event_queue[event_queue_tail];
-    return true;
-}
-
-static size_t event_queue_size(void) {
-    if (event_queue_head >= event_queue_tail) {
-        return event_queue_head - event_queue_tail;
-    }
-    return EVENT_QUEUE_SIZE - event_queue_tail + event_queue_head;
-}
-
 // Filesystem initialization
 bool os_init_filesystem(void) {
     esp_vfs_spiffs_conf_t conf = {
@@ -189,19 +174,8 @@ void os_post_event(event_t *event) {
 void os_event_loop(void) {
     ESP_LOGI(TAG, "Starting event loop");
 
-    static int loop_count = 0;
-
     while (1) {
         event_t event;
-        loop_count++;
-
-        // Debug every 100 loops
-        if (loop_count % 100 == 0) {
-            ESP_LOGI(TAG, "Event loop tick %d, current_app: %s, subscriptions: 0x%X",
-                     loop_count,
-                     current_app ? current_app->name : "none",
-                     current_app ? current_app->subscriptions : 0);
-        }
 
         // Poll keyboard always so global OS shortcuts cannot be disabled by apps.
         if (keyboard_read_event(&event)) {
