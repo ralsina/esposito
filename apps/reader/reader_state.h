@@ -9,6 +9,7 @@
 #define MARGIN 2
 #define MAX_FILES 64
 #define MAX_PATH 256
+#define MAX_TOC_ENTRIES 64
 
 #define KEY_LAST_FILE "reader_last_file"
 #define KEY_LEGACY_LAST_FILE "reader_file"
@@ -19,7 +20,14 @@ typedef enum {
     MODE_FILE_LIST,
     MODE_READING,
     MODE_GOTO,
+    MODE_TOC,
 } reader_mode_t;
+
+typedef struct {
+    char title[64];
+    int page_number;
+    uint32_t file_offset;
+} toc_entry_t;
 
 typedef struct {
     reader_mode_t mode;
@@ -40,10 +48,16 @@ typedef struct {
     int screen_width;
     int content_rows;
     int page_number;
+    int total_pages;
 
     // Goto state
     char goto_buf[8];
     ui_text_input_widget_t goto_widget;
+
+    // TOC state
+    toc_entry_t toc[MAX_TOC_ENTRIES];
+    int toc_count;
+    int toc_selected;
 
     // File list touch button positions
     int btn_up_x;

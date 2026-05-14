@@ -2,6 +2,7 @@
 
 #include "checkpoint.h"
 #include "reader_md.h"
+#include "reader_toc.h"
 
 #include <dirent.h>
 #include <stdint.h>
@@ -75,6 +76,7 @@ void reader_close_current_file(reader_state_t *state) {
         state->file = NULL;
     }
 
+    reader_toc_clear(state);
     state->current_file[0] = '\0';
 }
 
@@ -106,6 +108,8 @@ int reader_open_file(reader_state_t *state, const char *path) {
     if (saved_page > 0) {
         state->page_number = saved_page;
     }
+
+    reader_toc_load_or_build(state);
 
     return 1;
 }

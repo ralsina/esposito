@@ -76,10 +76,14 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
     }
 
     char page_info[48];
-    snprintf(page_info, sizeof(page_info), "Page %d", state->page_number);
+    if (state->total_pages > 0) {
+        snprintf(page_info, sizeof(page_info), "Page %d/%d", state->page_number, state->total_pages);
+    } else {
+        snprintf(page_info, sizeof(page_info), "Page %d", state->page_number);
+    }
 
     for (int x = 0; x < cols; x++) {
-        text_mode_print_at_attr(x, 0, "-", TEXT_COLOR_CYAN, TEXT_ATTR_UNDERLINE);
+        text_mode_print_at_attr_bg(x, 0, " ", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE);
     }
     text_mode_print_at_attr(1, 0, file_name, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
 
@@ -87,7 +91,7 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
     if (info_x > 0) {
         text_mode_print_at_attr(info_x, 0, page_info, TEXT_COLOR_CYAN, TEXT_ATTR_UNDERLINE);
     }
-    text_mode_print_at_attr_bg(cols - 1, 0, "X", TEXT_COLOR_GREEN, TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
+    text_mode_print_at_attr_bg(cols - 2, 0, "<-", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
 
     for (int line_index = 0; line_index < state->line_count && line_index < state->content_rows; line_index++) {
         const rendered_line_t *rendered_line = &state->lines[line_index];
@@ -97,6 +101,51 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
         }
         draw_rich_line(MARGIN, 2 + line_index, rendered_line->text, rendered_line->color, TEXT_COLOR_BLACK, rendered_line->attr, bold_pending, underline_pending);
     }
+}
+
+void reader_view_draw_toc(reader_state_t *state) {
+    int rows = text_mode_get_rows();
+    int cols = text_mode_get_cols();
+    int list_rows = rows - 4;
+
+    ui_clear();
+    ui_window(0, 0, cols, rows, "Table of Contents");
+
+    if (state->toc_count == 0) {
+        ui_label(2, 2, "No headings found", TEXT_COLOR_YELLOW);
+    } else {
+        // Scroll window so selected entry is visible
+        int scroll = 0;
+        if (state->toc_selected >= list_rows) {
+            scroll = state->toc_selected - list_rows + 1;
+        }
+
+        for (int i = 0; i < list_rows && (i + scroll) < state->toc_count; i++) {
+            int idx = i + scroll;
+            const toc_entry_t *entry = &state->toc[idx];
+            char marker = (idx == state->toc_selected) ? '>' : ' ';
+            char pg[8];
+            snprintf(pg, sizeof(pg), "p.%d", entry->page_number);
+            int pg_len = (int)strlen(pg);
+            int title_max = cols - 6 - pg_len;
+
+            char title[64];
+            strncpy(title, entry->title, sizeof(title) - 1);
+            title[sizeof(title) - 1] = '\0';
+            if ((int)strlen(title) > title_max) {
+                title[title_max - 1] = '.';
+                title[title_max] = '\0';
+            }
+
+            uint8_t color = (idx == state->toc_selected) ? TEXT_COLOR_GREEN : TEXT_COLOR_WHITE;
+            char line[80];
+            snprintf(line, sizeof(line), "%c %s", marker, title);
+            text_mode_print_at_color(2, 2 + i, line, color);
+            text_mode_print_at_color(cols - 2 - pg_len, 2 + i, pg, TEXT_COLOR_CYAN);
+        }
+    }
+
+    ui_status_bar(rows - 2, "W/S Navigate  Enter Jump", "ESC Cancel");
 }
 
 void reader_view_draw_file_list(reader_state_t *state) {

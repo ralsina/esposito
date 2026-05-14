@@ -4,6 +4,7 @@
 #include "reader_core.h"
 #include "reader_md.h"
 #include "reader_nav.h"
+#include "reader_toc.h"
 #include "reader_view.h"
 #include "text_mode.h"
 
@@ -87,6 +88,17 @@ static void handle_reading_key(reader_state_t *state, char key, int *bold_pendin
         reader_nav_next_page(state, bold_pending, underline_pending);
     } else if (key == 'g' || key == 'G') {
         reader_nav_start_goto(state);
+    } else if (key == 't' || key == 'T') {
+        // Pre-select the closest TOC entry to current page
+        state->toc_selected = 0;
+        for (int i = 0; i < state->toc_count; i++) {
+            if (state->toc[i].page_number <= state->page_number) {
+                state->toc_selected = i;
+            }
+        }
+        state->mode = MODE_TOC;
+        reader_view_draw_toc(state);
+        text_mode_flush();
     } else if (key == 27) {
         exit_to_file_list(state);
     }
@@ -120,6 +132,46 @@ static void handle_reading_touch(reader_state_t *state, const event_t *event, in
     }
 }
 
+static void handle_toc_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
+    if (key == 27) {
+        state->mode = MODE_READING;
+        reader_view_draw_reading_page(state, bold_pending, underline_pending);
+        text_mode_flush();
+        return;
+    }
+    if (key == 'w' || key == 'W') {
+        if (state->toc_selected > 0) {
+            state->toc_selected--;
+            reader_view_draw_toc(state);
+            text_mode_flush();
+        }
+        return;
+    }
+    if (key == 's' || key == 'S') {
+        if (state->toc_selected < state->toc_count - 1) {
+            state->toc_selected++;
+            reader_view_draw_toc(state);
+            text_mode_flush();
+        }
+        return;
+    }
+    if (key == '\n' || key == '\r') {
+        if (state->toc_count > 0) {
+            const toc_entry_t *entry = &state->toc[state->toc_selected];
+            state->mode = MODE_READING;
+            md_clear_remainder();
+            fseek(state->file, entry->file_offset, SEEK_SET);
+            page_cache_init(&state->page_cache);
+            page_cache_set_start(&state->page_cache, entry->file_offset);
+            state->page_number = entry->page_number;
+            reader_load_current_page(state, bold_pending, underline_pending);
+            reader_view_draw_reading_page(state, bold_pending, underline_pending);
+            text_mode_flush();
+        }
+        return;
+    }
+}
+
 static char normalize_key_for_dispatch(const event_t *event) {
     char key = event->keyboard.key;
 
@@ -139,6 +191,9 @@ static void dispatch_keyboard(reader_state_t *state, const event_t *event, int *
             break;
         case MODE_GOTO:
             reader_nav_handle_goto_key(state, key, bold_pending, underline_pending);
+            break;
+        case MODE_TOC:
+            handle_toc_key(state, key, bold_pending, underline_pending);
             break;
         case MODE_READING:
             handle_reading_key(state, key, bold_pending, underline_pending);
