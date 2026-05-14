@@ -123,6 +123,22 @@ struct elf_handle {
     int section_count;
 };
 
+static bool read_exact_at(FILE *fp, long offset, void *buffer, size_t size) {
+    if (fseek(fp, offset, SEEK_SET) != 0) {
+        return false;
+    }
+    return fread(buffer, 1, size, fp) == size;
+}
+
+static loaded_section_t *find_loaded_section_by_vma(elf_handle_t *handle, uint32_t vma) {
+    for (int index = 0; index < handle->section_count; index++) {
+        if (handle->sections[index].vma == vma) {
+            return &handle->sections[index];
+        }
+    }
+    return NULL;
+}
+
 static uint32_t elf_resolve_local_symbol(elf_handle_t *handle, const elf32_sym_t *sym) {
     if (sym->st_shndx == 0 || sym->st_shndx == 0xFFF1 /* SHN_ABS */ || sym->st_value == 0) return sym->st_value;
     for (int i = 0; i < handle->section_count; i++) {
@@ -135,7 +151,7 @@ static uint32_t elf_resolve_local_symbol(elf_handle_t *handle, const elf32_sym_t
 }
 
 static bool elf_alloc_data_bss(elf_handle_t *handle,
-                                const uint8_t *elf_data,
+                                FILE *fp,
                                 const elf32_ehdr_t *ehdr,
                                 const elf32_shdr_t *shdrs) {
     handle->data_base = NULL;
@@ -176,8 +192,10 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
             if (!(sh->sh_flags & SHF_WRITE)) continue;
             if (sh->sh_type == SHT_NOBITS) continue;
 
-            memcpy((uint8_t *)handle->data_base + data_offset,
-                   elf_data + sh->sh_offset, sh->sh_size);
+            if (!read_exact_at(fp, sh->sh_offset, (uint8_t *)handle->data_base + data_offset, sh->sh_size)) {
+                ESP_LOGE(TAG, "Failed to read .data section at offset 0x%lx", (unsigned long)sh->sh_offset);
+                return false;
+            }
             data_offset += sh->sh_size;
 
             if (handle->section_count >= MAX_LOADED_SECTIONS) break;
@@ -218,6 +236,116 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
         }
     }
 
+    return true;
+}
+
+static bool apply_relocations_for_target(elf_handle_t *handle,
+                                         FILE *fp,
+                                         const elf32_ehdr_t *ehdr,
+                                         const elf32_shdr_t *shdrs,
+                                         const elf32_sym_t *symtab,
+                                         const char *strtab,
+                                         int target_section_idx,
+                                         void *patch_base,
+                                         bool target_is_dram,
+                                         int *patched_count) {
+    const elf32_shdr_t *target_sh = &shdrs[target_section_idx];
+
+    for (int section_index = 0; section_index < ehdr->e_shnum; section_index++) {
+        const elf32_shdr_t *rel_sh = &shdrs[section_index];
+        if (rel_sh->sh_type != SHT_RELA && rel_sh->sh_type != SHT_REL) {
+            continue;
+        }
+        if ((int)rel_sh->sh_info != target_section_idx || rel_sh->sh_size == 0) {
+            continue;
+        }
+
+        int rel_size = (rel_sh->sh_type == SHT_RELA) ? (int)sizeof(elf32_rela_t) : (int)sizeof(elf32_rel_t);
+        if (rel_size == 0) {
+            continue;
+        }
+
+        uint8_t *rel_buf = malloc(rel_sh->sh_size);
+        if (!rel_buf) {
+            ESP_LOGE(TAG, "Failed to allocate relocation buffer (%lu bytes)", (unsigned long)rel_sh->sh_size);
+            return false;
+        }
+        if (!read_exact_at(fp, rel_sh->sh_offset, rel_buf, rel_sh->sh_size)) {
+            ESP_LOGE(TAG, "Failed to read relocation section at offset 0x%lx", (unsigned long)rel_sh->sh_offset);
+            free(rel_buf);
+            return false;
+        }
+
+        int num_rels = rel_sh->sh_size / rel_size;
+
+        int symtab_link = rel_sh->sh_link;
+        const elf32_sym_t *rel_symtab = symtab;
+        const char *rel_strtab = strtab;
+        if (symtab_link > 0 && symtab_link < ehdr->e_shnum) {
+            const elf32_shdr_t *link_sh = &shdrs[symtab_link];
+            if (link_sh->sh_type == 2) {
+                rel_symtab = symtab;
+            }
+            if (link_sh->sh_link > 0 && link_sh->sh_link < ehdr->e_shnum) {
+                const elf32_shdr_t *str_sh = &shdrs[link_sh->sh_link];
+                if (str_sh->sh_type == 3) {
+                    rel_strtab = strtab;
+                }
+            }
+        }
+
+        for (int rel_index = 0; rel_index < num_rels; rel_index++) {
+            uint32_t r_offset, r_info, r_sym, r_type;
+            int32_t r_addend = 0;
+
+            if (rel_sh->sh_type == SHT_RELA) {
+                const elf32_rela_t *rel = (const elf32_rela_t *)(rel_buf + rel_index * rel_size);
+                r_offset = rel->r_offset;
+                r_info = rel->r_info;
+                r_addend = rel->r_addend;
+            } else {
+                const elf32_rel_t *rel = (const elf32_rel_t *)(rel_buf + rel_index * rel_size);
+                r_offset = rel->r_offset;
+                r_info = rel->r_info;
+            }
+
+            r_sym = r_info >> 8;
+            r_type = r_info & 0xFF;
+
+            if (r_type != R_XTENSA_32 || !rel_symtab || r_sym == 0) {
+                continue;
+            }
+
+            if (r_offset < target_sh->sh_addr || (r_offset - target_sh->sh_addr + sizeof(uint32_t)) > target_sh->sh_size) {
+                continue;
+            }
+
+            const elf32_sym_t *sym = &rel_symtab[r_sym];
+            uint32_t *patch_addr = (uint32_t *)((uint8_t *)patch_base + (r_offset - target_sh->sh_addr));
+            uint32_t old_val = *patch_addr;
+            uint32_t new_val;
+
+            if (sym->st_shndx == 0 || sym->st_shndx == 0xFFF1 /* SHN_ABS */) {
+                const char *sym_name = rel_strtab ? rel_strtab + sym->st_name : "?";
+                const os_symtab_entry_t *entry = os_symtab_lookup(sym_name);
+                if (!entry) {
+                    ESP_LOGW(TAG, "Undefined symbol: %s", sym_name);
+                    continue;
+                }
+                new_val = (uint32_t)(uintptr_t)entry->addr + r_addend;
+            } else {
+                uint32_t runtime_addr = elf_resolve_local_symbol(handle, sym);
+                new_val = old_val + (runtime_addr - sym->st_value);
+            }
+
+            *patch_addr = new_val;
+            (*patched_count)++;
+        }
+
+        free(rel_buf);
+    }
+
+    (void)target_is_dram;
     return true;
 }
 
@@ -286,50 +414,79 @@ elf_handle_t *elf_loader_load(const char *path) {
         return NULL;
     }
 
-    fseek(fp, 0, SEEK_END);
-    long file_size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    uint8_t *elf_data = malloc(file_size);
-    if (!elf_data) {
-        ESP_LOGE(TAG, "Failed to allocate %ld bytes for ELF", file_size);
+    elf32_ehdr_t ehdr_storage;
+    if (!read_exact_at(fp, 0, &ehdr_storage, sizeof(ehdr_storage))) {
+        ESP_LOGE(TAG, "Failed to read ELF header");
         fclose(fp);
         return NULL;
     }
+    const elf32_ehdr_t *ehdr = &ehdr_storage;
 
-    if (fread(elf_data, 1, file_size, fp) != (size_t)file_size) {
-        ESP_LOGE(TAG, "Failed to read ELF file");
-        free(elf_data);
-        fclose(fp);
-        return NULL;
-    }
-    fclose(fp);
-
-    const elf32_ehdr_t *ehdr = (const elf32_ehdr_t *)elf_data;
     if (ehdr->e_magic != ELF_MAGIC || ehdr->e_machine != EM_XTENSA) {
         ESP_LOGE(TAG, "Invalid ELF (magic=0x%x machine=%d)", ehdr->e_magic, ehdr->e_machine);
-        free(elf_data);
+        fclose(fp);
         return NULL;
     }
 
-    const elf32_shdr_t *shdrs = (const elf32_shdr_t *)(elf_data + ehdr->e_shoff);
-    const elf32_sym_t *symtab = NULL;
-    const char *strtab = NULL;
+    elf32_shdr_t *shdrs = malloc(sizeof(elf32_shdr_t) * ehdr->e_shnum);
+    if (!shdrs) {
+        ESP_LOGE(TAG, "Failed to allocate section headers");
+        fclose(fp);
+        return NULL;
+    }
+    if (!read_exact_at(fp, ehdr->e_shoff, shdrs, sizeof(elf32_shdr_t) * ehdr->e_shnum)) {
+        ESP_LOGE(TAG, "Failed to read section headers");
+        free(shdrs);
+        fclose(fp);
+        return NULL;
+    }
 
+    int symtab_section = -1;
     for (int i = 0; i < ehdr->e_shnum; i++) {
         if (shdrs[i].sh_type == 2) {
-            symtab = (const elf32_sym_t *)(elf_data + shdrs[i].sh_offset);
-            if (shdrs[i].sh_link < ehdr->e_shnum) {
-                const elf32_shdr_t *str_sh = &shdrs[shdrs[i].sh_link];
-                strtab = (const char *)(elf_data + str_sh->sh_offset);
-            }
+            symtab_section = i;
             break;
         }
+    }
+    if (symtab_section < 0) {
+        ESP_LOGE(TAG, "No symbol table in ELF");
+        free(shdrs);
+        fclose(fp);
+        return NULL;
+    }
+
+    const elf32_shdr_t *sym_sh = &shdrs[symtab_section];
+    const elf32_shdr_t *str_sh = NULL;
+    if (sym_sh->sh_link > 0 && sym_sh->sh_link < ehdr->e_shnum) {
+        str_sh = &shdrs[sym_sh->sh_link];
+    }
+
+    elf32_sym_t *symtab = malloc(sym_sh->sh_size);
+    char *strtab = str_sh ? malloc(str_sh->sh_size) : NULL;
+    if (!symtab || (str_sh && !strtab)) {
+        ESP_LOGE(TAG, "Failed to allocate symbol/string tables");
+        free(strtab);
+        free(symtab);
+        free(shdrs);
+        fclose(fp);
+        return NULL;
+    }
+    if (!read_exact_at(fp, sym_sh->sh_offset, symtab, sym_sh->sh_size) ||
+        (str_sh && !read_exact_at(fp, str_sh->sh_offset, strtab, str_sh->sh_size))) {
+        ESP_LOGE(TAG, "Failed to read symbol/string tables");
+        free(strtab);
+        free(symtab);
+        free(shdrs);
+        fclose(fp);
+        return NULL;
     }
 
     elf_handle_t *handle = calloc(1, sizeof(elf_handle_t));
     if (!handle) {
-        free(elf_data);
+        free(strtab);
+        free(symtab);
+        free(shdrs);
+        fclose(fp);
         return NULL;
     }
 
@@ -342,7 +499,10 @@ elf_handle_t *elf_loader_load(const char *path) {
                                                    APP_PARTITION_LABEL);
     if (!handle->flash_part) {
         ESP_LOGE(TAG, "App partition not found");
-        free(elf_data);
+        free(strtab);
+        free(symtab);
+        free(shdrs);
+        fclose(fp);
         free(handle);
         return NULL;
     }
@@ -350,7 +510,10 @@ elf_handle_t *elf_loader_load(const char *path) {
     esp_err_t ret = esp_partition_erase_range(handle->flash_part, 0, handle->flash_part->size);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to erase app partition: %s", esp_err_to_name(ret));
-        free(elf_data);
+        free(strtab);
+        free(symtab);
+        free(shdrs);
+        fclose(fp);
         free(handle);
         return NULL;
     }
@@ -378,7 +541,10 @@ elf_handle_t *elf_loader_load(const char *path) {
                               &handle->inst_mmap_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to mmap code: %s", esp_err_to_name(ret));
-        free(elf_data);
+        free(strtab);
+        free(symtab);
+        free(shdrs);
+        fclose(fp);
         elf_loader_unload(handle);
         return NULL;
     }
@@ -390,7 +556,10 @@ elf_handle_t *elf_loader_load(const char *path) {
                                   &handle->data_mmap_handle);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to mmap rodata: %s", esp_err_to_name(ret));
-            free(elf_data);
+            free(strtab);
+            free(symtab);
+            free(shdrs);
+            fclose(fp);
             elf_loader_unload(handle);
             return NULL;
         }
@@ -430,160 +599,101 @@ elf_handle_t *elf_loader_load(const char *path) {
 
 
     // Step 5: Allocate DRAM for data/bss NOW, so relocations can resolve their addresses
-    if (!elf_alloc_data_bss(handle, elf_data, ehdr, shdrs)) {
+    if (!elf_alloc_data_bss(handle, fp, ehdr, shdrs)) {
         ESP_LOGE(TAG, "Failed to allocate data/bss");
-        free(elf_data);
+        free(strtab);
+        free(symtab);
+        free(shdrs);
+        fclose(fp);
         elf_loader_unload(handle);
         return NULL;
     }
     ESP_LOGI(TAG, "DRAM: data=%p size=%d bss=%p size=%d",
              handle->data_base, handle->data_size, handle->bss_base, handle->bss_size);
 
-    // Step 6: Apply ALL relocations (section table now has code + rodata + data + bss)
+    // Step 6: Relocate + write flash sections one by one (no full ELF buffer)
     int total_patched = 0;
-    for (int rel_pass = 0; rel_pass < 2; rel_pass++) {
-        for (int i = 0; i < ehdr->e_shnum; i++) {
-            const elf32_shdr_t *sh = &shdrs[i];
-            if (sh->sh_type != SHT_RELA && sh->sh_type != SHT_REL) continue;
+    for (int pass = 0; pass < 2; pass++) {
+        size_t write_offset = (pass == 0) ? 0 : code_size;
+        for (int section_index = 0; section_index < ehdr->e_shnum; section_index++) {
+            const elf32_shdr_t *sh = &shdrs[section_index];
+            if (!(sh->sh_flags & SHF_ALLOC)) continue;
+            if (sh->sh_flags & SHF_WRITE) continue;
+            if (sh->sh_type == SHT_NOBITS || sh->sh_size == 0) continue;
 
-            int target_section_idx = sh->sh_info;
-            if (target_section_idx < 0 || target_section_idx >= ehdr->e_shnum) continue;
+            bool is_exec = (sh->sh_flags & SHF_EXECINSTR) != 0;
+            if ((pass == 0 && !is_exec) || (pass == 1 && is_exec)) continue;
 
-            const elf32_shdr_t *target_sh = &shdrs[target_section_idx];
-            if (!(target_sh->sh_flags & SHF_ALLOC)) continue;
-
-            // Pass 0: flash sections (.text, .rodata), Pass 1: DRAM sections (.data)
-            bool target_is_dram = (target_sh->sh_flags & SHF_WRITE) != 0;
-            if ((rel_pass == 0 && target_is_dram) || (rel_pass == 1 && !target_is_dram)) continue;
-
-            void *patch_base;
-            if (target_is_dram) {
-                // Find DRAM base for this target section
-                patch_base = NULL;
-                for (int s = 0; s < handle->section_count; s++) {
-                    if (handle->sections[s].vma == target_sh->sh_addr) {
-                        patch_base = (void *)handle->sections[s].load_addr;
-                        break;
-                    }
-                }
-                if (!patch_base) continue;
-            } else {
-                // Patch in the ELF data buffer (will be written to flash)
-                patch_base = elf_data + target_sh->sh_offset;
+            uint8_t *section_buf = malloc(sh->sh_size);
+            if (!section_buf) {
+                ESP_LOGE(TAG, "Failed to allocate section buffer (%lu bytes)", (unsigned long)sh->sh_size);
+                free(strtab);
+                free(symtab);
+                free(shdrs);
+                fclose(fp);
+                elf_loader_unload(handle);
+                return NULL;
             }
 
-            int symtab_link = sh->sh_link;
-            const elf32_sym_t *rel_symtab = symtab;
-            const char *rel_strtab = strtab;
-            if (symtab_link > 0 && symtab_link < ehdr->e_shnum) {
-                const elf32_shdr_t *link_sh = &shdrs[symtab_link];
-                if (link_sh->sh_type == 2)
-                    rel_symtab = (const elf32_sym_t *)(elf_data + link_sh->sh_offset);
-                if (link_sh->sh_link > 0) {
-                    const elf32_shdr_t *str_sh = &shdrs[link_sh->sh_link];
-                    rel_strtab = (const char *)(elf_data + str_sh->sh_offset);
-                }
+            if (!read_exact_at(fp, sh->sh_offset, section_buf, sh->sh_size)) {
+                ESP_LOGE(TAG, "Failed to read section data at offset 0x%lx", (unsigned long)sh->sh_offset);
+                free(section_buf);
+                free(strtab);
+                free(symtab);
+                free(shdrs);
+                fclose(fp);
+                elf_loader_unload(handle);
+                return NULL;
             }
 
-            int num_rels;
-            const void *rel_data;
-            int rel_size;
-            bool is_rela = (sh->sh_type == SHT_RELA);
-
-            if (is_rela) {
-                num_rels = sh->sh_size / sizeof(elf32_rela_t);
-                rel_data = elf_data + sh->sh_offset;
-                rel_size = sizeof(elf32_rela_t);
-            } else {
-                num_rels = sh->sh_size / sizeof(elf32_rel_t);
-                rel_data = elf_data + sh->sh_offset;
-                rel_size = sizeof(elf32_rel_t);
+            if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, strtab, section_index, section_buf, false, &total_patched)) {
+                free(section_buf);
+                free(strtab);
+                free(symtab);
+                free(shdrs);
+                fclose(fp);
+                elf_loader_unload(handle);
+                return NULL;
             }
 
-            for (int j = 0; j < num_rels; j++) {
-                uint32_t r_offset, r_info, r_sym, r_type;
-                int32_t r_addend = 0;
-
-                if (is_rela) {
-                    const elf32_rela_t *r = (const elf32_rela_t *)((const uint8_t *)rel_data + j * rel_size);
-                    r_offset = r->r_offset;
-                    r_info = r->r_info;
-                    r_sym = r_info >> 8;
-                    r_type = r_info & 0xFF;
-                    r_addend = r->r_addend;
-                } else {
-                    const elf32_rel_t *r = (const elf32_rel_t *)((const uint8_t *)rel_data + j * rel_size);
-                    r_offset = r->r_offset;
-                    r_info = r->r_info;
-                    r_sym = r_info >> 8;
-                    r_type = r_info & 0xFF;
-                }
-
-                if (r_type == R_XTENSA_32 && rel_symtab && r_sym > 0) {
-                    const elf32_sym_t *sym = &rel_symtab[r_sym];
-                    uint32_t old_val = *(uint32_t *)((uint8_t *)patch_base + (r_offset - target_sh->sh_addr));
-                    uint32_t new_val;
-
-                    if (sym->st_shndx == 0 || sym->st_shndx == 0xFFF1 /* SHN_ABS */) {
-                        const char *sym_name = rel_strtab ? rel_strtab + sym->st_name : "?";
-                        const os_symtab_entry_t *entry = os_symtab_lookup(sym_name);
-                        if (!entry) {
-                            ESP_LOGW(TAG, "Undefined symbol: %s", sym_name);
-                            continue;
-                        }
-                        new_val = (uint32_t)(uintptr_t)entry->addr + r_addend;
-                    } else {
-                        uint32_t runtime_addr = elf_resolve_local_symbol(handle, sym);
-                        // R_XTENSA_32: new = old + (runtime_addr - st_value)
-                        // This correctly handles both section symbols (.text, .rodata, .bss)
-                        // and regular symbols. For section symbols, the linker may place
-                        // the target VMA (not section_base+addend) in the old value,
-                        // so computing runtime_addr + r_addend would be wrong.
-                        new_val = old_val + (runtime_addr - sym->st_value);
-                    }
-
-                    uint32_t *patch_addr = (uint32_t *)((uint8_t *)patch_base + (r_offset - target_sh->sh_addr));
-                    if (old_val != new_val) {
-                        const char *sym_name = rel_strtab ? rel_strtab + sym->st_name : "?";
-                        ESP_LOGD(TAG, "  patch[%d] sym=%s target=%s 0x%lx -> 0x%lx",
-                                 total_patched, sym_name,
-                                 target_is_dram ? "DRAM" : "FLASH",
-                                 (unsigned long)old_val, (unsigned long)new_val);
-                    }
-                    *patch_addr = new_val;
-                    total_patched++;
-                }
+            ret = esp_partition_write(handle->flash_part, write_offset, section_buf, sh->sh_size);
+            free(section_buf);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to write to flash: %s", esp_err_to_name(ret));
+                free(strtab);
+                free(symtab);
+                free(shdrs);
+                fclose(fp);
+                elf_loader_unload(handle);
+                return NULL;
             }
+
+            write_offset += (sh->sh_size + 3) & ~3;
         }
     }
+
+    // Step 7: Apply relocations to DRAM targets (.data/.bss)
+    for (int section_index = 0; section_index < ehdr->e_shnum; section_index++) {
+        const elf32_shdr_t *target_sh = &shdrs[section_index];
+        if (!(target_sh->sh_flags & SHF_ALLOC)) continue;
+        if (!(target_sh->sh_flags & SHF_WRITE)) continue;
+
+        loaded_section_t *ls = find_loaded_section_by_vma(handle, target_sh->sh_addr);
+        if (!ls) {
+            continue;
+        }
+
+        if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, strtab, section_index, (void *)ls->load_addr, true, &total_patched)) {
+            free(strtab);
+            free(symtab);
+            free(shdrs);
+            fclose(fp);
+            elf_loader_unload(handle);
+            return NULL;
+        }
+    }
+
     ESP_LOGI(TAG, "Patched %d relocations", total_patched);
-
-    // Step 7: Write patched code/rodata to flash — code at offset 0, rodata at code_size
-    {
-        size_t w_off = 0;
-        for (int pass = 0; pass < 2; pass++) {
-            if (pass == 1) w_off = code_size;
-            for (int i = 0; i < ehdr->e_shnum; i++) {
-                const elf32_shdr_t *sh = &shdrs[i];
-                if (!(sh->sh_flags & SHF_ALLOC)) continue;
-                if (sh->sh_flags & SHF_WRITE) continue;
-                if (sh->sh_type == SHT_NOBITS || sh->sh_size == 0) continue;
-
-                bool is_exec = (sh->sh_flags & SHF_EXECINSTR) != 0;
-                if ((pass == 0 && !is_exec) || (pass == 1 && is_exec)) continue;
-
-                ret = esp_partition_write(handle->flash_part, w_off,
-                                           elf_data + sh->sh_offset, sh->sh_size);
-                if (ret != ESP_OK) {
-                    ESP_LOGE(TAG, "Failed to write to flash: %s", esp_err_to_name(ret));
-                    free(elf_data);
-                    elf_loader_unload(handle);
-                    return NULL;
-                }
-                w_off += (sh->sh_size + 3) & ~3;
-            }
-        }
-    }
 
     // Step 8: Invalidate cache for both IROM and DROM mappings
     esp_cache_msync(handle->inst_base, code_size, ESP_CACHE_MSYNC_FLAG_INVALIDATE);
@@ -594,12 +704,18 @@ elf_handle_t *elf_loader_load(const char *path) {
     // Step 9: Resolve entry points
     if (!elf_resolve_entry_points(handle, ehdr, shdrs, symtab, strtab)) {
         ESP_LOGE(TAG, "Failed to resolve entry points");
-        free(elf_data);
+        free(strtab);
+        free(symtab);
+        free(shdrs);
+        fclose(fp);
         elf_loader_unload(handle);
         return NULL;
     }
 
-    free(elf_data);
+    free(strtab);
+    free(symtab);
+    free(shdrs);
+    fclose(fp);
     ESP_LOGI(TAG, "ELF loaded: %s", handle->name);
     return handle;
 }

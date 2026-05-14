@@ -69,10 +69,10 @@ SYMBOLS=(
     strchr
     strrchr
     strstr
-    malloc
-    calloc
-    realloc
-    free
+    malloc:app_malloc
+    calloc:app_calloc
+    realloc:app_realloc
+    free:app_free
     atoi
     atol
     abs
@@ -101,19 +101,40 @@ SYMBOLS=(
     fseek
     ftell
     fgets
+    config_open_read
+    config_open_write
+    config_exists
+    config_delete
+    config_read_all_alloc
+    config_free
+    config_get_int
+    config_get_float
+    config_get_bool
+    config_get_string
+    config_set_int
+    config_set_float
+    config_set_bool
+    config_set_string
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"
 echo "/* Generated from: $FIRMWARE_ELF */" >> "$OUTPUT_LD"
 echo "" >> "$OUTPUT_LD"
 
-for sym in "${SYMBOLS[@]}"; do
-    addr=$("${TOOLCHAIN_PREFIX}-nm" "$FIRMWARE_ELF" 2>/dev/null | grep " [TDWAi] $sym$" | head -1 | awk '{print $1}')
+for sym_spec in "${SYMBOLS[@]}"; do
+    export_name="$sym_spec"
+    provider_name="$sym_spec"
+    if [[ "$sym_spec" == *:* ]]; then
+        export_name="${sym_spec%%:*}"
+        provider_name="${sym_spec##*:}"
+    fi
+
+    addr=$("${TOOLCHAIN_PREFIX}-nm" "$FIRMWARE_ELF" 2>/dev/null | grep " [TDWAi] $provider_name$" | head -1 | awk '{print $1}')
     if [ -n "$addr" ]; then
-        echo "PROVIDE($sym = 0x$addr);" >> "$OUTPUT_LD"
+        echo "PROVIDE($export_name = 0x$addr);" >> "$OUTPUT_LD"
     else
-        echo "/* WARNING: $sym not found in firmware ELF */" >> "$OUTPUT_LD"
-        echo "PROVIDE($sym = 0);" >> "$OUTPUT_LD"
+        echo "/* WARNING: $export_name ($provider_name) not found in firmware ELF */" >> "$OUTPUT_LD"
+        echo "PROVIDE($export_name = 0);" >> "$OUTPUT_LD"
     fi
 done
 

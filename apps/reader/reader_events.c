@@ -1,6 +1,6 @@
 #include "reader_events.h"
 
-#include "checkpoint.h"
+#include "app_config.h"
 #include "reader_core.h"
 #include "reader_md.h"
 #include "reader_nav.h"
@@ -68,7 +68,7 @@ static void exit_to_file_list(reader_state_t *state) {
     reader_scan_md_files(state);
     int selected_index = reader_find_file_index_by_path(state, last_path);
     state->file_selected = (selected_index >= 0) ? selected_index : 0;
-    checkpoint_save_string(KEY_LAST_FILE, "");
+    config_set_string(KEY_LAST_FILE, "");
     reader_view_draw_file_list(state);
 }
 
@@ -83,6 +83,10 @@ static void handle_file_list_key(reader_state_t *state, char key, int *bold_pend
 }
 
 static void enter_toc_mode(reader_state_t *state) {
+    if (state->toc_count == 0) {
+        reader_toc_load_or_build(state);
+    }
+
     // Pre-select the closest TOC entry to current page
     state->toc_selected = 0;
     for (int i = 0; i < state->toc_count; i++) {
@@ -119,7 +123,7 @@ static void handle_file_list_touch(reader_state_t *state, int x_col, int *bold_p
         change_file_selection(state, 1);
     } else if (x_col >= state->btn_exit_x && x_col < state->btn_exit_x + state->btn_w) {
         reader_close_current_file(state);
-        checkpoint_save_string(KEY_LAST_FILE, "");
+        config_set_string(KEY_LAST_FILE, "");
         launch_app_list();
     }
 }

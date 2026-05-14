@@ -10,6 +10,9 @@
 // Should be called after reader_open_file().
 void reader_toc_load_or_build(reader_state_t *state);
 
+// Load cached total pages only; does not load TOC entries or trigger a scan.
+void reader_toc_load_total_pages(reader_state_t *state);
+
 // Clear the TOC in state (called on file close).
 void reader_toc_clear(reader_state_t *state);
 

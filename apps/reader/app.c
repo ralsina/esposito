@@ -1,5 +1,4 @@
 #include "os_core.h"
-#include "checkpoint.h"
 #include "text_mode.h"
 #include "reader_state.h"
 #include "reader_core.h"
@@ -30,6 +29,6 @@ void app_checkpoint(app_context_t *ctx) {
 
 void app_close(app_context_t *ctx) {
     reader_close_current_file(&state);
-    checkpoint_close();
+    reader_free_file_list(&state);
     text_mode_clear(TEXT_COLOR_BLACK);
 }

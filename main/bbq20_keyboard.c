@@ -309,7 +309,7 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
             uint8_t key_count = status & 0x1F; // Lower 5 bits
 
             if (key_count > 0) {
-                ESP_LOGI(TAG, "🎹 BBQ20: %d keys in FIFO, status=0x%02X", key_count, status);
+                ESP_LOGD(TAG, "🎹 BBQ20: %d keys in FIFO, status=0x%02X", key_count, status);
 
                 // Read FIFO (16-bit values: key_code | state << 8)
                 uint8_t fifo_data[2];
@@ -320,7 +320,7 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
                     uint8_t key_code = fifo_data[1];  // High byte is key code
                     uint8_t key_state = fifo_data[0]; // Low byte is key state
 
-                    ESP_LOGI(TAG, "🎹 BBQ20: Raw key_code=0x%02X, key_state=0x%02X", key_code, key_state);
+                    ESP_LOGD(TAG, "🎹 BBQ20: Raw key_code=0x%02X, key_state=0x%02X", key_code, key_state);
 
                     // Update modifier key states first (before processing)
                     update_modifier_state(key_code, key_state);
@@ -336,16 +336,16 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
                     if (ascii) {
                         // For control characters (0x00-0x1F), show them as '^X' format in logs
                         if (ascii < 0x20) {
-                            ESP_LOGI(TAG, "🎹 BBQ20 REAL key: ^%c (code:0x%02X state:0x%02X mods:0x%02X)",
+                            ESP_LOGD(TAG, "🎹 BBQ20 REAL key: ^%c (code:0x%02X state:0x%02X mods:0x%02X)",
                                     ascii + 0x40, key_code, key_state, event->modifiers);
                         } else {
-                            ESP_LOGI(TAG, "🎹 BBQ20 REAL key: %c (code:0x%02X state:0x%02X mods:0x%02X)",
+                            ESP_LOGD(TAG, "🎹 BBQ20 REAL key: %c (code:0x%02X state:0x%02X mods:0x%02X)",
                                     ascii, key_code, key_state, event->modifiers);
                         }
                         event->key_code = ascii;
                         return true;
                     } else {
-                        ESP_LOGI(TAG, "🎹 BBQ20: Key mapped to NULL ASCII");
+                        ESP_LOGD(TAG, "🎹 BBQ20: Key mapped to NULL ASCII");
                     }
                 } else {
                     ESP_LOGW(TAG, "🎹 BBQ20: FIFO read failed: %s", esp_err_to_name(ret));

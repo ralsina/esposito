@@ -34,10 +34,10 @@ typedef struct {
     reader_mode_t mode;
 
     // File list state
+    char (*file_names)[64];
+    char (*file_paths)[MAX_PATH];
+    const char **file_ptrs;
     int file_count;
-    char file_names[MAX_FILES][64];
-    char file_paths[MAX_FILES][MAX_PATH];
-    const char *file_ptrs[MAX_FILES];
     int file_selected;
 
     // Reading state
@@ -56,7 +56,7 @@ typedef struct {
     ui_text_input_widget_t goto_widget;
 
     // TOC state
-    toc_entry_t toc[MAX_TOC_ENTRIES];
+    toc_entry_t *toc;
     int toc_count;
     int toc_selected;
 

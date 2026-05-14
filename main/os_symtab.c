@@ -1,4 +1,6 @@
 #include "os_symtab.h"
+#include "app_heap.h"
+#include "app_config.h"
 #include "os_core.h"
 #include "hardware.h"
 #include "checkpoint.h"
@@ -65,10 +67,10 @@ static const os_symtab_entry_t symtab[] = {
     {"strchr",                  strchr},
     {"strrchr",                 strrchr},
     {"strstr",                  strstr},
-    {"malloc",                  malloc},
-    {"calloc",                  calloc},
-    {"realloc",                 realloc},
-    {"free",                    free},
+    {"malloc",                  app_malloc},
+    {"calloc",                  app_calloc},
+    {"realloc",                 app_realloc},
+    {"free",                    app_free},
     {"atoi",                    atoi},
     {"atol",                    atol},
     {"abs",                     abs},
@@ -97,6 +99,20 @@ static const os_symtab_entry_t symtab[] = {
     {"fseek",                   fseek},
     {"ftell",                   ftell},
     {"fgets",                   fgets},
+    {"config_open_read",        config_open_read},
+    {"config_open_write",       config_open_write},
+    {"config_exists",           config_exists},
+    {"config_delete",           config_delete},
+    {"config_read_all_alloc",   config_read_all_alloc},
+    {"config_free",             config_free},
+    {"config_get_int",          config_get_int},
+    {"config_get_float",        config_get_float},
+    {"config_get_bool",         config_get_bool},
+    {"config_get_string",       config_get_string},
+    {"config_set_int",          config_set_int},
+    {"config_set_float",        config_set_float},
+    {"config_set_bool",         config_set_bool},
+    {"config_set_string",       config_set_string},
     {NULL, NULL}
 };
 

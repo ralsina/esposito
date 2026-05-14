@@ -1,4 +1,6 @@
 #include "os_core.h"
+#include "app_heap.h"
+#include "app_config.h"
 #include "app_loader.h"
 #include "app_launcher.h"
 #include "elf_loader.h"
@@ -7,6 +9,7 @@
 #include "text_mode.h"
 #include "touchscreen.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "esp_spiffs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -16,6 +19,21 @@
 #include <stdarg.h>
 
 static const char *TAG = "os_core";
+
+static void os_log_global_heap_stats(const char *label) {
+    size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    size_t largest_8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    size_t largest_internal = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+
+    ESP_LOGI(TAG,
+             "%s: heap free=%u largest=%u internal_free=%u internal_largest=%u",
+             label,
+             (unsigned)free_8bit,
+             (unsigned)largest_8bit,
+             (unsigned)free_internal,
+             (unsigned)largest_internal);
+}
 
 void os_log(const char *tag, const char *fmt, ...) {
     va_list args;
@@ -127,6 +145,8 @@ void os_set_current_app(app_context_t *app) {
 
 void os_unload_app(void) {
     if (current_app) {
+        os_log_global_heap_stats("before unload");
+        app_heap_log_stats("before unload");
         if (current_app->close) {
             current_app->close(current_app);
         }
@@ -135,6 +155,10 @@ void os_unload_app(void) {
         }
         free(current_app);
         current_app = NULL;
+        config_unbind_app();
+        app_heap_release();
+        os_log_global_heap_stats("after unload");
+        app_heap_log_stats("after unload");
     }
     // Deinit serial (teardown driver, clear ring buffer)
     serial_deinit();
@@ -142,6 +166,9 @@ void os_unload_app(void) {
 }
 
 bool os_load_app(const char *app_name) {
+    os_log_global_heap_stats("before load");
+    app_heap_log_stats("before load");
+
     // Checkpoint and close current app
     if (current_app) {
         if (current_app->checkpoint) {
@@ -162,6 +189,8 @@ bool os_load_app(const char *app_name) {
 
     ESP_LOGI(TAG, "App %s loaded successfully with subscriptions 0x%lX",
              app_name, (unsigned long)current_app->subscriptions);
+    os_log_global_heap_stats("after load");
+    app_heap_log_stats("after load");
     return true;
 }
 
@@ -190,7 +219,7 @@ void os_event_loop(void) {
 
             if (wants_keyboard || is_ctrl_esc || is_fn_esc) {
                 event_queue_push(&event);
-                ESP_LOGI(TAG, "Keyboard event added to queue");
+                ESP_LOGD(TAG, "Keyboard event added to queue");
             }
         }
 
@@ -306,7 +335,7 @@ void os_event_loop(void) {
             // Deliver to current app if subscribed
             if (current_app && (current_app->subscriptions & event.type)) {
                 if (current_app->event_fn) {
-                    ESP_LOGI(TAG, "Delivering event to app %s", current_app->name);
+                    ESP_LOGD(TAG, "Delivering event to app %s", current_app->name);
                     current_app->event_fn(current_app, &event);
                 }
             }

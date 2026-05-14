@@ -1,5 +1,5 @@
 #include "os_core.h"
-#include "checkpoint.h"
+#include "app_config.h"
 #include "hardware.h"
 #include "paint_state.h"
 #include "paint_render.h"
@@ -28,10 +28,9 @@ void app_init(app_context_t *ctx) {
     strncpy(state.project_path, "/sdcard/paint_last.pt16", sizeof(state.project_path) - 1);
     state.project_path[sizeof(state.project_path) - 1] = '\0';
 
-    checkpoint_open("paint");
-
-    const char *saved_path = checkpoint_load_string("project_path");
-    if (saved_path && saved_path[0]) {
+    char saved_path[sizeof(state.project_path)];
+    size_t saved_len = config_get_string("project_path", "", saved_path, sizeof(saved_path));
+    if (saved_len > 0 && saved_path[0]) {
         strncpy(state.project_path, saved_path, sizeof(state.project_path) - 1);
         state.project_path[sizeof(state.project_path) - 1] = '\0';
     }
@@ -86,9 +85,9 @@ void app_checkpoint(app_context_t *ctx) {
         return;
     }
 
-    checkpoint_save_string("project_path", state.project_path);
-    checkpoint_save_int("tool", (int)state.tool);
-    checkpoint_save_int("color", (int)state.current_color);
+    config_set_string("project_path", state.project_path);
+    config_set_int("tool", (int)state.tool);
+    config_set_int("color", (int)state.current_color);
     paint_storage_save(&state, state.project_path);
 }
 
@@ -114,6 +113,5 @@ void app_close(app_context_t *ctx) {
         state.preview_points_y = NULL;
     }
 
-    checkpoint_close();
     display_clear(0x0000);
 }

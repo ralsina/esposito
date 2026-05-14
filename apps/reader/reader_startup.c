@@ -1,6 +1,6 @@
 #include "reader_startup.h"
 
-#include "checkpoint.h"
+#include "app_config.h"
 #include "reader_events.h"
 #include "text_mode.h"
 
@@ -9,14 +9,14 @@
 
 void reader_startup_init(reader_state_t *state, int *bold_pending, int *underline_pending) {
     text_mode_init();
-    checkpoint_open("reader");
 
-    const char *saved_file = checkpoint_load_string(KEY_LAST_FILE);
-    if (!saved_file || !saved_file[0]) {
-        saved_file = checkpoint_load_string(KEY_LEGACY_LAST_FILE);
+    char saved_file[MAX_PATH];
+    size_t saved_len = config_get_string(KEY_LAST_FILE, "", saved_file, sizeof(saved_file));
+    if (saved_len == 0) {
+        saved_len = config_get_string(KEY_LEGACY_LAST_FILE, "", saved_file, sizeof(saved_file));
     }
 
-    if (saved_file && saved_file[0]) {
+    if (saved_len > 0 && saved_file[0]) {
         struct stat st;
         if (stat(saved_file, &st) == 0 && S_ISREG(st.st_mode)) {
             if (reader_events_open_book(state, saved_file, bold_pending, underline_pending)) {

@@ -1,6 +1,6 @@
 #include "reader_toc.h"
 
-#include "checkpoint.h"
+#include "app_config.h"
 #include "reader_md.h"
 #include "reader_page.h"
 #include "text_mode.h"
@@ -19,6 +19,16 @@
 // Field and record separators for serialized TOC
 #define TOC_FIELD_SEP '\x01'
 #define TOC_REC_SEP   '\x02'
+
+static int is_safe_path_char(char ch) {
+    if ((ch >= 'a' && ch <= 'z') ||
+        (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9') ||
+        ch == '_' || ch == '-' || ch == '.') {
+        return 1;
+    }
+    return 0;
+}
 
 static void draw_scan_progress(const char *path, long scanned, long total, int page, int toc_count, int force) {
     static int last_percent = -1;
@@ -101,7 +111,20 @@ static void draw_scan_progress(const char *path, long scanned, long total, int p
 }
 
 static void build_toc_key(char *out, size_t out_size, const char *prefix, const char *path) {
-    snprintf(out, out_size, "%s:%s", prefix, path);
+    char safe_path[240];
+    size_t out_index = 0;
+
+    for (size_t index = 0; path[index] && out_index < sizeof(safe_path) - 1; index++) {
+        char ch = path[index];
+        if (is_safe_path_char(ch)) {
+            safe_path[out_index++] = ch;
+        } else {
+            safe_path[out_index++] = '_';
+        }
+    }
+    safe_path[out_index] = '\0';
+
+    snprintf(out, out_size, "%s/%s", prefix, safe_path);
 }
 
 // Strip markdown formatting markers from rendered text to get a clean title
@@ -124,6 +147,13 @@ static void strip_markers(const char *src, char *dst, size_t dst_size) {
 static void scan_and_build(reader_state_t *state) {
     state->toc_count = 0;
     state->total_pages = 0;
+
+    if (!state->toc) {
+        state->toc = malloc(sizeof(toc_entry_t) * MAX_TOC_ENTRIES);
+        if (!state->toc) {
+            return;
+        }
+    }
 
     if (!state->file) return;
 
@@ -220,19 +250,19 @@ static void save_toc_to_checkpoint(const reader_state_t *state, long mtime) {
     build_toc_key(ver_key, sizeof(ver_key), KEY_TOC_VER_PREFIX, state->current_file);
     build_toc_key(total_key, sizeof(total_key), KEY_TOC_TOTAL_PREFIX, state->current_file);
 
-    checkpoint_save_int(mtime_key, (int)mtime);
-    checkpoint_save_int(ver_key, TOC_CACHE_VERSION);
-    checkpoint_save_int(total_key, state->total_pages);
+    config_set_int(mtime_key, (int)mtime);
+    config_set_int(ver_key, TOC_CACHE_VERSION);
+    config_set_int(total_key, state->total_pages);
 
     if (state->toc_count == 0) {
-        checkpoint_save_string(key, "");
+        config_set_string(key, "");
         return;
     }
 
     // Serialize: title\x01level\x01page\x01offset\x02...
     char *serialize_buf = malloc(2048);
     if (!serialize_buf) {
-        checkpoint_save_string(key, "");
+        config_set_string(key, "");
         return;
     }
 
@@ -252,7 +282,7 @@ static void save_toc_to_checkpoint(const reader_state_t *state, long mtime) {
     }
     serialize_buf[pos] = '\0';
 
-    checkpoint_save_string(key, serialize_buf);
+    config_set_string(key, serialize_buf);
     free(serialize_buf);
 }
 
@@ -266,33 +296,46 @@ static int load_toc_from_checkpoint(reader_state_t *state, long file_mtime) {
     build_toc_key(ver_key, sizeof(ver_key), KEY_TOC_VER_PREFIX, state->current_file);
     build_toc_key(total_key, sizeof(total_key), KEY_TOC_TOTAL_PREFIX, state->current_file);
 
-    int saved_ver = checkpoint_load_int(ver_key);
+    int saved_ver = config_get_int(ver_key, 0);
     if (saved_ver != TOC_CACHE_VERSION) {
         return 0;
     }
 
-    int saved_mtime = checkpoint_load_int(mtime_key);
+    int saved_mtime = config_get_int(mtime_key, 0);
     if (saved_mtime != (int)file_mtime) {
         return 0;  // Stale or missing
     }
 
-    state->total_pages = checkpoint_load_int(total_key);
+    state->total_pages = config_get_int(total_key, 0);
     if (state->total_pages < 0) {
         state->total_pages = 0;
     }
 
-    const char *buf = checkpoint_load_string(key);
+    size_t buf_len = 0;
+    char *buf = config_read_all_alloc(key, &buf_len);
     if (!buf || !buf[0]) {
+        if (buf) {
+            config_free(buf);
+        }
         return saved_mtime == (int)file_mtime;  // Empty TOC is valid if mtime matches
+    }
+
+    if (!state->toc) {
+        state->toc = malloc(sizeof(toc_entry_t) * MAX_TOC_ENTRIES);
+        if (!state->toc) {
+            return 0;
+        }
     }
 
     state->toc_count = 0;
     size_t parse_len = strlen(buf);
     char *parse_buf = malloc(parse_len + 1);
     if (!parse_buf) {
+        config_free(buf);
         return 0;
     }
     memcpy(parse_buf, buf, parse_len + 1);
+    config_free(buf);
 
     char *rec = parse_buf;
     while (*rec && state->toc_count < MAX_TOC_ENTRIES) {
@@ -331,7 +374,6 @@ static int load_toc_from_checkpoint(reader_state_t *state, long file_mtime) {
 void reader_toc_load_or_build(reader_state_t *state) {
     state->toc_count = 0;
     state->toc_selected = 0;
-    state->total_pages = 0;
 
     if (!state->file || !state->current_file[0]) return;
 
@@ -349,7 +391,43 @@ void reader_toc_load_or_build(reader_state_t *state) {
     save_toc_to_checkpoint(state, mtime);
 }
 
+void reader_toc_load_total_pages(reader_state_t *state) {
+    state->total_pages = 0;
+
+    if (!state->current_file[0]) {
+        return;
+    }
+
+    char mtime_key[320];
+    char ver_key[320];
+    char total_key[320];
+    build_toc_key(mtime_key, sizeof(mtime_key), KEY_TOC_MTIME_PREFIX, state->current_file);
+    build_toc_key(ver_key, sizeof(ver_key), KEY_TOC_VER_PREFIX, state->current_file);
+    build_toc_key(total_key, sizeof(total_key), KEY_TOC_TOTAL_PREFIX, state->current_file);
+
+    struct stat st;
+    long mtime = 0;
+    if (stat(state->current_file, &st) == 0) {
+        mtime = (long)st.st_mtime;
+    }
+
+    int saved_ver = config_get_int(ver_key, 0);
+    int saved_mtime = config_get_int(mtime_key, 0);
+    if (saved_ver != TOC_CACHE_VERSION || saved_mtime != (int)mtime) {
+        return;
+    }
+
+    int total = config_get_int(total_key, 0);
+    if (total > 0) {
+        state->total_pages = total;
+    }
+}
+
 void reader_toc_clear(reader_state_t *state) {
+    if (state->toc) {
+        free(state->toc);
+        state->toc = NULL;
+    }
     state->toc_count = 0;
     state->toc_selected = 0;
     state->total_pages = 0;
