@@ -48,6 +48,8 @@ bool serial_init(int baud, int data_bits, char parity, int stop_bits);
 void serial_deinit(void);
 size_t serial_read(char *buffer, size_t max_len);
 size_t serial_write(const char *data, size_t len);
+void serial_log_output_set_enabled(bool enabled);
+bool serial_log_output_is_enabled(void);
 
 #ifdef __cplusplus
 }

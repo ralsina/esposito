@@ -13,6 +13,8 @@ idf_component_register(
         "bbq20_keyboard.c"
         "sd_card.c"
         "touchscreen.c"
+        "terminal_vt100.c"
+        "terminal_mode.c"
         "text_mode.cpp"
         "wifi.cpp"
         "../libs/ui/ui.c"

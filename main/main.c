@@ -3,11 +3,13 @@
 #include "esp_system.h"
 #include "os_core.h"
 #include "boot.h"
+#include "hardware.h"
 
 static const char *TAG = "esposito";
 
 void app_main(void)
 {
+    serial_log_output_set_enabled(false);
     ESP_LOGI(TAG, "Esposito OS v0.1.0-alpha");
     ESP_LOGI(TAG, "Starting boot sequence...");
 

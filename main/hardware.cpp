@@ -206,7 +206,8 @@ void timer_set_interval(uint32_t interval_ms) {
 
 // Serial
 static bool serial_initialized = false;
-static vprintf_like_t saved_vprintf = NULL;
+static vprintf_like_t default_vprintf = NULL;
+static bool serial_log_output_enabled = true;
 
 static int noop_vprintf(const char *fmt, va_list args) {
     (void)fmt;
@@ -239,15 +240,10 @@ static uart_stop_bits_t serial_stop_bits_map(int stop_bits) {
 }
 
 bool serial_init(int baud, int data_bits, char parity, int stop_bits) {
-    // Redirect logging away from UART to prevent log spam on the terminal line
-    saved_vprintf = esp_log_set_vprintf(noop_vprintf);
-
     esp_err_t ret = uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
     if (ret == ESP_ERR_INVALID_STATE) {
         // Driver already installed, still fine
     } else if (ret != ESP_OK) {
-        esp_log_set_vprintf(saved_vprintf);
-        saved_vprintf = NULL;
         return false;
     }
 
@@ -261,8 +257,6 @@ bool serial_init(int baud, int data_bits, char parity, int stop_bits) {
     uart_config.source_clk = UART_SCLK_DEFAULT;
     ret = uart_param_config(UART_NUM_0, &uart_config);
     if (ret != ESP_OK) {
-        esp_log_set_vprintf(saved_vprintf);
-        saved_vprintf = NULL;
         return false;
     }
     uart_set_pin(UART_NUM_0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE,
@@ -281,10 +275,6 @@ void serial_deinit(void) {
         serial_initialized = false;
         uart_driver_delete(UART_NUM_0);
     }
-    if (saved_vprintf) {
-        esp_log_set_vprintf(saved_vprintf);
-        saved_vprintf = NULL;
-    }
 }
 
 size_t serial_read(char *buffer, size_t max_len) {
@@ -301,4 +291,24 @@ size_t serial_write(const char *data, size_t len) {
     if (!serial_initialized || !data || len == 0) return 0;
     int written = uart_write_bytes(UART_NUM_0, data, len);
     return written > 0 ? (size_t)written : 0;
+}
+
+void serial_log_output_set_enabled(bool enabled) {
+    if (enabled == serial_log_output_enabled) {
+        return;
+    }
+
+    if (!enabled) {
+        default_vprintf = esp_log_set_vprintf(noop_vprintf);
+        serial_log_output_enabled = false;
+    } else {
+        if (default_vprintf) {
+            esp_log_set_vprintf(default_vprintf);
+        }
+        serial_log_output_enabled = true;
+    }
+}
+
+bool serial_log_output_is_enabled(void) {
+    return serial_log_output_enabled;
 }

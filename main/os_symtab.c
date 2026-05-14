@@ -5,6 +5,7 @@
 #include "hardware.h"
 #include "checkpoint.h"
 #include "app_launcher.h"
+#include "terminal_mode.h"
 #include "text_mode.h"
 #include "fonts.h"
 #include "wifi.h"
@@ -79,9 +80,22 @@ static const os_symtab_entry_t symtab[] = {
     {"closedir",                closedir},
     {"stat",                    stat},
     {"os_log",                  os_log},
+    {"terminal_mode_default",   terminal_mode_default},
+    {"terminal_mode_init",      terminal_mode_init},
+    {"terminal_mode_reset",     terminal_mode_reset},
+    {"terminal_mode_set_write_callback", terminal_mode_set_write_callback},
+    {"terminal_mode_set_title_callback", terminal_mode_set_title_callback},
+    {"terminal_mode_process_bytes", terminal_mode_process_bytes},
+    {"terminal_mode_handle_key", terminal_mode_handle_key},
+    {"terminal_mode_set_status", terminal_mode_set_status},
+    {"terminal_mode_render",    terminal_mode_render},
+    {"terminal_mode_cols",      terminal_mode_cols},
+    {"terminal_mode_rows",      terminal_mode_rows},
     {"serial_init",             serial_init},
     {"serial_deinit",           serial_deinit},
     {"serial_write",            serial_write},
+    {"serial_log_output_set_enabled", serial_log_output_set_enabled},
+    {"serial_log_output_is_enabled", serial_log_output_is_enabled},
     {"wifi_init",               wifi_init},
     {"wifi_is_connected",       wifi_is_connected},
     {"wifi_get_ip",             wifi_get_ip},

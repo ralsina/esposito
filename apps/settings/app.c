@@ -2,6 +2,8 @@
 #include "text_mode.h"
 #include "ui.h"
 #include "wifi.h"
+#include "app_config.h"
+#include "hardware.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -31,13 +33,14 @@ static void set_status(const char *msg) {
     msg_timer = 150;
 }
 
-#define MENU_ITEMS 5
+#define MENU_ITEMS 6
 static const char *menu_labels[MENU_ITEMS] = {
     "Scan for networks",
     "Enter SSID",
     "Enter Password",
     "Save && Connect",
     "Disconnect",
+    "Serial logs to UART",
 };
 
 static void draw_main(void) {
@@ -55,6 +58,12 @@ static void draw_main(void) {
     } else {
         ui_label_attr(3, y++, "Status: Disconnected", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
     }
+
+    ui_label_attr(3,
+                  y++,
+                  serial_log_output_is_enabled() ? "Serial logs: Enabled" : "Serial logs: Disabled",
+                  serial_log_output_is_enabled() ? TEXT_COLOR_YELLOW : TEXT_COLOR_GREEN,
+                  TEXT_ATTR_NORMAL);
 
     ui_separator(y++);
     ui_menu_draw(5, y, MENU_ITEMS, menu_labels, MENU_ITEMS, selected);
@@ -153,6 +162,8 @@ void app_init(app_context_t *ctx) {
     selected = 0;
     scan_selected = 0;
 
+    serial_log_output_set_enabled(config_get_bool("serial_log_output", false));
+
     ssid_input.title = "Enter SSID";
     ssid_input.label = "SSID:";
     ssid_input.buffer = input_ssid;
@@ -226,6 +237,14 @@ static void handle_main_key(char key) {
                 wifi_disconnect();
                 set_status("Disconnected");
                 break;
+            case 5: {
+                bool enabled = !serial_log_output_is_enabled();
+                serial_log_output_set_enabled(enabled);
+                config_set_bool("serial_log_output", enabled);
+                set_status(enabled ? "Serial log output enabled" : "Serial log output disabled");
+                render();
+                break;
+            }
         }
     } else if (key == 27) {
         return;
