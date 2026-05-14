@@ -12,6 +12,7 @@
 #define PAINT_PALETTE_H 20
 #define PAINT_BUTTON_W 35
 #define PAINT_BUTTON_COUNT 9
+#define PAINT_PREVIEW_MAX_POINTS 1536
 
 typedef enum {
     PAINT_TOOL_PENCIL = 0,
@@ -23,6 +24,8 @@ typedef enum {
 typedef struct {
     uint8_t *canvas;
     uint8_t *undo;
+    int16_t *preview_points_x;
+    int16_t *preview_points_y;
     bool has_undo;
     bool touch_active;
     int stroke_last_x;
@@ -33,6 +36,7 @@ typedef struct {
     int shape_start_x;
     int shape_start_y;
     bool preview_active;
+    int preview_point_count;
     int preview_x;
     int preview_y;
     char project_path[128];

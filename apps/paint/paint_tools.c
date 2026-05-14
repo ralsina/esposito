@@ -2,9 +2,98 @@
 
 #include "paint_render.h"
 #include "paint_storage.h"
+#include "hardware.h"
 
 #include <string.h>
-#include <stdio.h>
+
+static void preview_reset(paint_state_t *state) {
+    state->preview_point_count = 0;
+}
+
+static void preview_restore_previous(paint_state_t *state) {
+    if (!state || !state->preview_points_x || !state->preview_points_y) {
+        return;
+    }
+
+    for (int index = 0; index < state->preview_point_count; index++) {
+        int x = state->preview_points_x[index];
+        int y = state->preview_points_y[index];
+        paint_render_pixel(state, x, y);
+    }
+
+    preview_reset(state);
+}
+
+static void preview_add_point(paint_state_t *state, int x, int y) {
+    if (!state || !state->preview_points_x || !state->preview_points_y) {
+        return;
+    }
+    if (x < 0 || x >= PAINT_WIDTH || y < 0 || y >= PAINT_HEIGHT) {
+        return;
+    }
+    if (state->preview_point_count >= PAINT_PREVIEW_MAX_POINTS) {
+        return;
+    }
+
+    state->preview_points_x[state->preview_point_count] = (int16_t)x;
+    state->preview_points_y[state->preview_point_count] = (int16_t)y;
+    state->preview_point_count++;
+    display_draw_pixel(x, y, 0xFFFF);
+}
+
+static void preview_draw_line(paint_state_t *state, int x0, int y0, int x1, int y1) {
+    int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
+    int sx = (x0 < x1) ? 1 : -1;
+    int dy = -((y1 > y0) ? (y1 - y0) : (y0 - y1));
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx + dy;
+
+    for (;;) {
+        preview_add_point(state, x0, y0);
+        if (x0 == x1 && y0 == y1) {
+            break;
+        }
+        int e2 = 2 * err;
+        if (e2 >= dy) {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+static void preview_draw_rect(paint_state_t *state, int x0, int y0, int x1, int y1) {
+    int left = (x0 < x1) ? x0 : x1;
+    int right = (x0 > x1) ? x0 : x1;
+    int top = (y0 < y1) ? y0 : y1;
+    int bottom = (y0 > y1) ? y0 : y1;
+
+    for (int x = left; x <= right; x++) {
+        preview_add_point(state, x, top);
+        preview_add_point(state, x, bottom);
+    }
+    for (int y = top; y <= bottom; y++) {
+        preview_add_point(state, left, y);
+        preview_add_point(state, right, y);
+    }
+}
+
+static void preview_draw_shape(paint_state_t *state) {
+    if (!state || !state->shape_pending || !state->preview_active) {
+        return;
+    }
+
+    if (state->tool == PAINT_TOOL_LINE) {
+        preview_draw_line(state, state->shape_start_x, state->shape_start_y,
+                          state->preview_x, state->preview_y);
+    } else if (state->tool == PAINT_TOOL_RECT) {
+        preview_draw_rect(state, state->shape_start_x, state->shape_start_y,
+                          state->preview_x, state->preview_y);
+    }
+}
 
 uint8_t paint_canvas_get(const paint_state_t *state, int x, int y) {
     if (!state || !state->canvas || x < 0 || x >= PAINT_WIDTH || y < 0 || y >= PAINT_HEIGHT) {
@@ -104,7 +193,50 @@ static void draw_rect_on_canvas(paint_state_t *state, int x0, int y0, int x1, in
     }
 }
 
+static void render_line_from_canvas(const paint_state_t *state, int x0, int y0, int x1, int y1) {
+    int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
+    int sx = (x0 < x1) ? 1 : -1;
+    int dy = -((y1 > y0) ? (y1 - y0) : (y0 - y1));
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx + dy;
+
+    for (;;) {
+        paint_render_pixel(state, x0, y0);
+        if (x0 == x1 && y0 == y1) {
+            break;
+        }
+        int e2 = 2 * err;
+        if (e2 >= dy) {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+static void render_rect_from_canvas(const paint_state_t *state, int x0, int y0, int x1, int y1) {
+    int left = (x0 < x1) ? x0 : x1;
+    int right = (x0 > x1) ? x0 : x1;
+    int top = (y0 < y1) ? y0 : y1;
+    int bottom = (y0 > y1) ? y0 : y1;
+
+    for (int x = left; x <= right; x++) {
+        paint_render_pixel(state, x, top);
+        paint_render_pixel(state, x, bottom);
+    }
+    for (int y = top; y <= bottom; y++) {
+        paint_render_pixel(state, left, y);
+        paint_render_pixel(state, right, y);
+    }
+}
+
 static void handle_toolbar_touch(paint_state_t *state, int x, void (*launch_app_list)(void)) {
+    preview_restore_previous(state);
+    state->preview_active = false;
+
     int button = x / PAINT_BUTTON_W;
     if (button < 0) {
         return;
@@ -175,6 +307,8 @@ static void handle_toolbar_touch(paint_state_t *state, int x, void (*launch_app_
 static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed) {
     if (x < 0 || x >= PAINT_WIDTH || y < 0 || y >= PAINT_HEIGHT) {
         if (!pressed) {
+            preview_restore_previous(state);
+            state->preview_active = false;
             state->touch_active = false;
         }
         return;
@@ -224,18 +358,23 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
     }
 
     if (!pressed) {
+        preview_restore_previous(state);
         state->preview_active = false;
         if (state->shape_pending && state->touch_active) {
             if (state->tool == PAINT_TOOL_LINE) {
                 draw_line_on_canvas(state, state->shape_start_x, state->shape_start_y, 
                                   state->preview_x, state->preview_y, state->current_color);
-                paint_render_all(state);
-                paint_render_status(state, "Line drawn");
+                render_line_from_canvas(state, state->shape_start_x, state->shape_start_y,
+                                        state->preview_x, state->preview_y);
+                strncpy(state->status, "Line drawn", sizeof(state->status) - 1);
+                state->status[sizeof(state->status) - 1] = '\0';
             } else if (state->tool == PAINT_TOOL_RECT) {
                 draw_rect_on_canvas(state, state->shape_start_x, state->shape_start_y,
                                   state->preview_x, state->preview_y, state->current_color);
-                paint_render_all(state);
-                paint_render_status(state, "Rectangle drawn");
+                render_rect_from_canvas(state, state->shape_start_x, state->shape_start_y,
+                                        state->preview_x, state->preview_y);
+                strncpy(state->status, "Rectangle drawn", sizeof(state->status) - 1);
+                state->status[sizeof(state->status) - 1] = '\0';
             }
             state->shape_pending = false;
         }
@@ -245,11 +384,11 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
 
     if (state->shape_pending) {
         if (x >= 0 && x < PAINT_WIDTH && y >= 0 && y < PAINT_HEIGHT) {
+            preview_restore_previous(state);
             state->preview_x = x;
             state->preview_y = y;
             state->preview_active = true;
-            paint_render_canvas(state);
-            paint_render_preview_line(state);
+            preview_draw_shape(state);
         }
         return;
     }
@@ -264,6 +403,7 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
     state->shape_start_x = x;
     state->shape_start_y = y;
     state->preview_active = false;
+    preview_reset(state);
     paint_render_status(state, "Drag to preview shape");
 }
 

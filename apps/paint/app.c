@@ -21,6 +21,8 @@ void app_init(app_context_t *ctx) {
 
     state.canvas = (uint8_t *)malloc(PAINT_CANVAS_BYTES);
     state.undo = (uint8_t *)malloc(PAINT_CANVAS_BYTES);
+    state.preview_points_x = (int16_t *)malloc(sizeof(int16_t) * PAINT_PREVIEW_MAX_POINTS);
+    state.preview_points_y = (int16_t *)malloc(sizeof(int16_t) * PAINT_PREVIEW_MAX_POINTS);
     state.current_color = 15;
     state.tool = PAINT_TOOL_PENCIL;
     strncpy(state.project_path, "/sdcard/paint_last.pt16", sizeof(state.project_path) - 1);
@@ -34,7 +36,7 @@ void app_init(app_context_t *ctx) {
         state.project_path[sizeof(state.project_path) - 1] = '\0';
     }
 
-    if (!state.canvas || !state.undo) {
+    if (!state.canvas || !state.undo || !state.preview_points_x || !state.preview_points_y) {
         if (state.canvas) {
             free(state.canvas);
             state.canvas = NULL;
@@ -42,6 +44,14 @@ void app_init(app_context_t *ctx) {
         if (state.undo) {
             free(state.undo);
             state.undo = NULL;
+        }
+        if (state.preview_points_x) {
+            free(state.preview_points_x);
+            state.preview_points_x = NULL;
+        }
+        if (state.preview_points_y) {
+            free(state.preview_points_y);
+            state.preview_points_y = NULL;
         }
         display_clear(0x0000);
         display_draw_text(4, 4, "Paint app: out of memory", 0xF800);
@@ -94,6 +104,14 @@ void app_close(app_context_t *ctx) {
     if (state.undo) {
         free(state.undo);
         state.undo = NULL;
+    }
+    if (state.preview_points_x) {
+        free(state.preview_points_x);
+        state.preview_points_x = NULL;
+    }
+    if (state.preview_points_y) {
+        free(state.preview_points_y);
+        state.preview_points_y = NULL;
     }
 
     checkpoint_close();
