@@ -45,3 +45,7 @@ Then copy the generated ELF to:
 ```text
 /sdcard/apps/snake/program.elf
 ```
+
+## Code Documentation
+
+See [app.md](app.md) for literate documentation of the source code.
