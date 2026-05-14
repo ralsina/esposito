@@ -13,6 +13,8 @@
 #define FILE_LIST_BTN_OPEN_LABEL " OPEN "
 #define FILE_LIST_BTN_DOWN_LABEL " DOWN "
 #define FILE_LIST_BTN_EXIT_LABEL " EXIT "
+#define TOC_BTN_JUMP_LABEL " JUMP "
+#define TOC_BTN_BACK_LABEL " BACK "
 
 static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t bg, uint8_t base_attr, int *bold_pending, int *underline_pending) {
     int cur_x = x;
@@ -87,11 +89,15 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
     }
     text_mode_print_at_attr(1, 0, file_name, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
 
-    int info_x = cols - 3 - (int)strlen(page_info);
+    int toc_btn_x = cols - 10;
+    int back_btn_x = cols - 5;
+
+    int info_x = toc_btn_x - 2 - (int)strlen(page_info);
     if (info_x > 0) {
         text_mode_print_at_attr(info_x, 0, page_info, TEXT_COLOR_CYAN, TEXT_ATTR_UNDERLINE);
     }
-    text_mode_print_at_attr_bg(cols - 2, 0, "<-", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
+    text_mode_print_at_attr_bg(toc_btn_x, 0, "[TOC]", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
+    text_mode_print_at_attr_bg(back_btn_x, 0, "[<<<]", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
 
     for (int line_index = 0; line_index < state->line_count && line_index < state->content_rows; line_index++) {
         const rendered_line_t *rendered_line = &state->lines[line_index];
@@ -106,7 +112,7 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
 void reader_view_draw_toc(reader_state_t *state) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();
-    int list_rows = rows - 4;
+    int list_rows = rows - 5;
 
     ui_clear();
     ui_window(0, 0, cols, rows, "Table of Contents");
@@ -155,6 +161,37 @@ void reader_view_draw_toc(reader_state_t *state) {
             text_mode_print_at_color(cols - 2 - pg_len, 2 + i, pg, TEXT_COLOR_CYAN);
         }
     }
+
+    int button_row = rows - 3;
+    int button_width = FILE_LIST_BTN_WIDTH;
+
+    char spacer[64];
+    memset(spacer, ' ', button_width);
+    spacer[button_width] = '\0';
+
+    int up_x = 2;
+    int jump_x = up_x + button_width + FILE_LIST_BTN_GAP;
+    int down_x = jump_x + button_width + FILE_LIST_BTN_GAP;
+    int back_x = down_x + button_width + FILE_LIST_BTN_GAP;
+
+    text_mode_print_at_attr_bg(up_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(up_x + (button_width - 6) / 2, button_row, FILE_LIST_BTN_UP_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+
+    text_mode_print_at_attr_bg(jump_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(jump_x + (button_width - 6) / 2, button_row, TOC_BTN_JUMP_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
+
+    text_mode_print_at_attr_bg(down_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(down_x + (button_width - 6) / 2, button_row, FILE_LIST_BTN_DOWN_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+
+    text_mode_print_at_attr_bg(back_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(back_x + (button_width - 6) / 2, button_row, TOC_BTN_BACK_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+
+    state->btn_up_x = up_x;
+    state->btn_open_x = jump_x;
+    state->btn_down_x = down_x;
+    state->btn_exit_x = back_x;
+    state->btn_row = button_row;
+    state->btn_w = button_width;
 
     ui_status_bar(rows - 2, "W/S Navigate  Enter Jump", "ESC Cancel");
 }

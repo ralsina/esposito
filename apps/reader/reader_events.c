@@ -11,7 +11,8 @@
 #include <string.h>
 
 #define TOUCH_PAGE_SPLIT_X 160
-#define READING_CLOSE_BUTTON_WIDTH 4
+#define READING_TOC_BUTTON_WIDTH 5
+#define READING_BACK_BUTTON_WIDTH 5
 
 static int load_current_page(reader_state_t *state, int *bold_pending, int *underline_pending) {
     return reader_load_current_page(state, bold_pending, underline_pending);
@@ -81,6 +82,20 @@ static void handle_file_list_key(reader_state_t *state, char key, int *bold_pend
     }
 }
 
+static void enter_toc_mode(reader_state_t *state) {
+    // Pre-select the closest TOC entry to current page
+    state->toc_selected = 0;
+    for (int i = 0; i < state->toc_count; i++) {
+        if (state->toc[i].page_number <= state->page_number) {
+            state->toc_selected = i;
+        }
+    }
+
+    state->mode = MODE_TOC;
+    reader_view_draw_toc(state);
+    text_mode_flush();
+}
+
 static void handle_reading_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
     if (key == 'w' || key == 'W') {
         reader_nav_prev_page(state, bold_pending, underline_pending);
@@ -89,16 +104,7 @@ static void handle_reading_key(reader_state_t *state, char key, int *bold_pendin
     } else if (key == 'g' || key == 'G') {
         reader_nav_start_goto(state);
     } else if (key == 't' || key == 'T') {
-        // Pre-select the closest TOC entry to current page
-        state->toc_selected = 0;
-        for (int i = 0; i < state->toc_count; i++) {
-            if (state->toc[i].page_number <= state->page_number) {
-                state->toc_selected = i;
-            }
-        }
-        state->mode = MODE_TOC;
-        reader_view_draw_toc(state);
-        text_mode_flush();
+        enter_toc_mode(state);
     } else if (key == 27) {
         exit_to_file_list(state);
     }
@@ -122,9 +128,13 @@ static void handle_reading_touch(reader_state_t *state, const event_t *event, in
     int char_width = text_mode_get_char_width();
     int char_height = text_mode_get_char_height();
     int cols = text_mode_get_cols();
+    int toc_x_start = (cols - (READING_TOC_BUTTON_WIDTH + READING_BACK_BUTTON_WIDTH)) * char_width;
+    int back_x_start = (cols - READING_BACK_BUTTON_WIDTH) * char_width;
 
-    if (event->touch.x >= (cols - READING_CLOSE_BUTTON_WIDTH) * char_width && event->touch.y < char_height * 2) {
+    if (event->touch.y < char_height * 2 && event->touch.x >= back_x_start) {
         exit_to_file_list(state);
+    } else if (event->touch.y < char_height * 2 && event->touch.x >= toc_x_start && event->touch.x < back_x_start) {
+        enter_toc_mode(state);
     } else if (event->touch.x < TOUCH_PAGE_SPLIT_X) {
         reader_nav_prev_page(state, bold_pending, underline_pending);
     } else {
@@ -132,43 +142,67 @@ static void handle_reading_touch(reader_state_t *state, const event_t *event, in
     }
 }
 
+static void toc_return_to_reading(reader_state_t *state, int *bold_pending, int *underline_pending) {
+    state->mode = MODE_READING;
+    reader_view_draw_reading_page(state, bold_pending, underline_pending);
+    text_mode_flush();
+}
+
+static void toc_move_selection(reader_state_t *state, int delta) {
+    int next = state->toc_selected + delta;
+    if (next < 0 || next >= state->toc_count) {
+        return;
+    }
+    state->toc_selected = next;
+    reader_view_draw_toc(state);
+    text_mode_flush();
+}
+
+static void toc_jump_to_selected(reader_state_t *state, int *bold_pending, int *underline_pending) {
+    if (state->toc_count <= 0) {
+        return;
+    }
+
+    const toc_entry_t *entry = &state->toc[state->toc_selected];
+    state->mode = MODE_READING;
+    md_clear_remainder();
+    fseek(state->file, entry->file_offset, SEEK_SET);
+    page_cache_init(&state->page_cache);
+    page_cache_set_start(&state->page_cache, entry->file_offset);
+    state->page_number = entry->page_number;
+    reader_load_current_page(state, bold_pending, underline_pending);
+    reader_view_draw_reading_page(state, bold_pending, underline_pending);
+    text_mode_flush();
+}
+
 static void handle_toc_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
     if (key == 27) {
-        state->mode = MODE_READING;
-        reader_view_draw_reading_page(state, bold_pending, underline_pending);
-        text_mode_flush();
+        toc_return_to_reading(state, bold_pending, underline_pending);
         return;
     }
     if (key == 'w' || key == 'W') {
-        if (state->toc_selected > 0) {
-            state->toc_selected--;
-            reader_view_draw_toc(state);
-            text_mode_flush();
-        }
+        toc_move_selection(state, -1);
         return;
     }
     if (key == 's' || key == 'S') {
-        if (state->toc_selected < state->toc_count - 1) {
-            state->toc_selected++;
-            reader_view_draw_toc(state);
-            text_mode_flush();
-        }
+        toc_move_selection(state, 1);
         return;
     }
     if (key == '\n' || key == '\r') {
-        if (state->toc_count > 0) {
-            const toc_entry_t *entry = &state->toc[state->toc_selected];
-            state->mode = MODE_READING;
-            md_clear_remainder();
-            fseek(state->file, entry->file_offset, SEEK_SET);
-            page_cache_init(&state->page_cache);
-            page_cache_set_start(&state->page_cache, entry->file_offset);
-            state->page_number = entry->page_number;
-            reader_load_current_page(state, bold_pending, underline_pending);
-            reader_view_draw_reading_page(state, bold_pending, underline_pending);
-            text_mode_flush();
-        }
+        toc_jump_to_selected(state, bold_pending, underline_pending);
         return;
+    }
+}
+
+static void handle_toc_touch(reader_state_t *state, int x_col, int *bold_pending, int *underline_pending) {
+    if (x_col >= state->btn_up_x && x_col < state->btn_up_x + state->btn_w) {
+        toc_move_selection(state, -1);
+    } else if (x_col >= state->btn_open_x && x_col < state->btn_open_x + state->btn_w) {
+        toc_jump_to_selected(state, bold_pending, underline_pending);
+    } else if (x_col >= state->btn_down_x && x_col < state->btn_down_x + state->btn_w) {
+        toc_move_selection(state, 1);
+    } else if (x_col >= state->btn_exit_x && x_col < state->btn_exit_x + state->btn_w) {
+        toc_return_to_reading(state, bold_pending, underline_pending);
     }
 }
 
@@ -207,7 +241,7 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
         return;
     }
 
-    if (state->mode != MODE_FILE_LIST) {
+    if (state->mode != MODE_FILE_LIST && state->mode != MODE_TOC) {
         return;
     }
 
@@ -218,7 +252,11 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
     }
 
     int x_col = event->touch.x / char_width;
-    handle_file_list_touch(state, x_col, bold_pending, underline_pending, launch_app_list);
+    if (state->mode == MODE_FILE_LIST) {
+        handle_file_list_touch(state, x_col, bold_pending, underline_pending, launch_app_list);
+    } else {
+        handle_toc_touch(state, x_col, bold_pending, underline_pending);
+    }
 }
 
 void reader_events_handle_event(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending, void (*launch_app_list)(void)) {
