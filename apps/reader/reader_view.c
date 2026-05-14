@@ -148,6 +148,24 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
     text_mode_print_at_attr_bg(toc_btn_x, 0, "[TOC]", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
     text_mode_print_at_attr_bg(back_btn_x, 0, "[<<<]", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
 
+    if (state->search_status[0]) {
+        int status_len = (int)strlen(state->search_status);
+        if (status_len > cols - 2) {
+            status_len = cols - 2;
+        }
+        char status[96];
+        strncpy(status, state->search_status, sizeof(status) - 1);
+        status[sizeof(status) - 1] = '\0';
+        if ((int)strlen(status) > status_len) {
+            status[status_len] = '\0';
+        }
+
+        for (int x = 0; x < cols; x++) {
+            text_mode_print_at_color(x, 1, " ", TEXT_COLOR_CYAN);
+        }
+        text_mode_print_at_color(1, 1, status, TEXT_COLOR_CYAN);
+    }
+
     for (int line_index = 0; line_index < state->line_count && line_index < state->content_rows; line_index++) {
         const rendered_line_t *rendered_line = &state->lines[line_index];
         if (rendered_line->text[0] == '\0') {

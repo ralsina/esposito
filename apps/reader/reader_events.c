@@ -107,6 +107,8 @@ static void handle_reading_key(reader_state_t *state, char key, int *bold_pendin
         reader_nav_next_page(state, bold_pending, underline_pending);
     } else if (key == 'g' || key == 'G') {
         reader_nav_start_goto(state);
+    } else if (key == '/') {
+        reader_nav_start_search(state);
     } else if (key == 't' || key == 'T') {
         enter_toc_mode(state);
     } else if (key == 27) {
@@ -236,6 +238,9 @@ static void dispatch_keyboard(reader_state_t *state, const event_t *event, int *
             break;
         case MODE_GOTO:
             reader_nav_handle_goto_key(state, key, bold_pending, underline_pending);
+            break;
+        case MODE_SEARCH:
+            reader_nav_handle_search_key(state, key, bold_pending, underline_pending);
             break;
         case MODE_TOC:
             handle_toc_key(state, key, bold_pending, underline_pending);

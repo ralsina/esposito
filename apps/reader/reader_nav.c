@@ -9,6 +9,43 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+static char ascii_lower(char ch) {
+    if (ch >= 'A' && ch <= 'Z') {
+        return (char)(ch + ('a' - 'A'));
+    }
+    return ch;
+}
+
+static int contains_substring_nocase(const char *text, const char *needle) {
+    if (!needle || !needle[0]) {
+        return 0;
+    }
+
+    size_t needle_len = strlen(needle);
+    for (size_t start = 0; text[start]; start++) {
+        size_t index = 0;
+        while (index < needle_len && text[start + index] &&
+               ascii_lower(text[start + index]) == ascii_lower(needle[index])) {
+            index++;
+        }
+        if (index == needle_len) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int page_contains_query(const reader_state_t *state, const char *query) {
+    for (int index = 0; index < state->line_count; index++) {
+        if (contains_substring_nocase(state->lines[index].text, query)) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pending, int *underline_pending) {
     if (target < 1) {
@@ -167,4 +204,83 @@ void reader_nav_handle_goto_key(reader_state_t *state, char key, int *bold_pendi
         reader_view_draw_reading_page(state, bold_pending, underline_pending);
     }
     // result == 0 means still editing, widget handles redraw
+}
+
+void reader_nav_start_search(reader_state_t *state) {
+    state->mode = MODE_SEARCH;
+
+    state->search_widget.title = "Search Forward";
+    state->search_widget.label = "Text:";
+    state->search_widget.buffer = state->search_buf;
+    state->search_widget.max_len = sizeof(state->search_buf);
+    state->search_widget.mask_input = false;
+    state->search_widget.hint_left = "Type text  Enter Search";
+    state->search_widget.hint_right = "ESC Cancel";
+
+    ui_text_input_widget_draw(&state->search_widget);
+    text_mode_flush();
+}
+
+static void reader_nav_search_forward(reader_state_t *state, const char *query, int *bold_pending, int *underline_pending) {
+    if (!query || !query[0] || !state->file) {
+        snprintf(state->search_status, sizeof(state->search_status), "Search text is empty");
+        reader_view_draw_reading_page(state, bold_pending, underline_pending);
+        return;
+    }
+
+    uint32_t start_offset = page_cache_current_offset(&state->page_cache);
+    int start_page = state->page_number;
+
+    md_clear_remainder();
+    fseek(state->file, start_offset, SEEK_SET);
+
+    int page = start_page;
+    while (1) {
+        uint32_t page_offset = (uint32_t)ftell(state->file);
+        int line_count = md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
+        if (line_count == 0) {
+            break;
+        }
+
+        state->line_count = line_count;
+        if (page_contains_query(state, query)) {
+            page_cache_init(&state->page_cache);
+            page_cache_set_start(&state->page_cache, page_offset);
+            state->page_number = page;
+            md_clear_remainder();
+            reader_load_current_page(state, bold_pending, underline_pending);
+            snprintf(state->search_status, sizeof(state->search_status), "Found \"%s\" on page %d", query, page);
+            reader_view_draw_reading_page(state, bold_pending, underline_pending);
+            return;
+        }
+
+        page++;
+    }
+
+    md_clear_remainder();
+    fseek(state->file, start_offset, SEEK_SET);
+    state->page_number = start_page;
+    reader_load_current_page(state, bold_pending, underline_pending);
+    snprintf(state->search_status, sizeof(state->search_status), "Not found: \"%s\"", query);
+    reader_view_draw_reading_page(state, bold_pending, underline_pending);
+}
+
+void reader_nav_handle_search_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
+    event_t event = {
+        .type = EVENT_KEYBOARD,
+        .keyboard = {
+            .key = key,
+            .pressed = 1,
+            .modifiers = 0
+        }
+    };
+
+    int result = ui_text_input_widget_handle_event(&state->search_widget, &event);
+    if (result == 1) {
+        state->mode = MODE_READING;
+        reader_nav_search_forward(state, state->search_buf, bold_pending, underline_pending);
+    } else if (result == -1) {
+        state->mode = MODE_READING;
+        reader_view_draw_reading_page(state, bold_pending, underline_pending);
+    }
 }

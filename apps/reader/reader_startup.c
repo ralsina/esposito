@@ -9,6 +9,8 @@
 
 void reader_startup_init(reader_state_t *state, int *bold_pending, int *underline_pending) {
     text_mode_init();
+    state->search_buf[0] = '\0';
+    state->search_status[0] = '\0';
 
     char saved_file[MAX_PATH];
     size_t saved_len = config_get_string(KEY_LAST_FILE, "", saved_file, sizeof(saved_file));
