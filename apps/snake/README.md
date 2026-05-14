@@ -16,9 +16,10 @@ A simple Snake game for Esposito OS, built as a single-file dynamic app for ESP3
   - `W/A/S/D` or arrows to move
   - `Enter` or `Space` to restart after game over
 - Touch:
-  - On-screen directional buttons at the bottom of the screen:
-    - `[UP]`
-    - `[LEFT] [DOWN] [RIGHT]`
+  - Tap top half of screen to move UP
+  - Tap bottom half of screen to move DOWN (also restarts after game over)
+  - Tap left third to move LEFT
+  - Tap right third to move RIGHT
 
 ## Difficulty / Speed Ramp
 
