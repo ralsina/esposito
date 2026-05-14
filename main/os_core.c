@@ -234,19 +234,44 @@ void os_event_loop(void) {
         // Poll for touchscreen events if current app is subscribed or launcher is active
         {
             static bool touch_was_pressed = false;
-            if ((current_app && (current_app->subscriptions & EVENT_TOUCH)) || app_launcher_is_active()) {
+            static uint16_t last_touch_x = 0;
+            static uint16_t last_touch_y = 0;
+
+            bool wants_touch_edge = (current_app && (current_app->subscriptions & EVENT_TOUCH));
+            bool wants_touch_stream = (current_app && (current_app->subscriptions & EVENT_TOUCH_CONTINUOUS));
+
+            if (wants_touch_edge || wants_touch_stream || app_launcher_is_active()) {
                 uint16_t x, y;
                 bool pressed;
                 if (touchscreen_get_position(&x, &y, &pressed)) {
-                    if (pressed && !touch_was_pressed) {
+                    last_touch_x = x;
+                    last_touch_y = y;
+
+                    if (pressed && !touch_was_pressed && (wants_touch_edge || app_launcher_is_active())) {
                         event.type = EVENT_TOUCH;
                         event.touch.x = x;
                         event.touch.y = y;
                         event.touch.pressed = true;
                         event_queue_push(&event);
                     }
+
+                    if (pressed && wants_touch_stream) {
+                        event.type = EVENT_TOUCH_CONTINUOUS;
+                        event.touch.x = x;
+                        event.touch.y = y;
+                        event.touch.pressed = true;
+                        event_queue_push(&event);
+                    }
+
                     touch_was_pressed = pressed;
                 } else {
+                    if (touch_was_pressed && wants_touch_stream) {
+                        event.type = EVENT_TOUCH_CONTINUOUS;
+                        event.touch.x = last_touch_x;
+                        event.touch.y = last_touch_y;
+                        event.touch.pressed = false;
+                        event_queue_push(&event);
+                    }
                     touch_was_pressed = false;
                 }
             }

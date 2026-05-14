@@ -18,6 +18,7 @@ TOOLCHAIN_PREFIX="${TOOLCHAIN_PREFIX:-xtensa-esp32-elf}"
 SYMBOLS=(
     display_clear
     display_draw_text
+    display_draw_text_bg
     display_draw_pixel
     display_fill_rect
     display_draw_char_at
@@ -95,6 +96,7 @@ SYMBOLS=(
     font_lookup_by_name
     fopen
     fread
+    fwrite
     fclose
     fseek
     ftell

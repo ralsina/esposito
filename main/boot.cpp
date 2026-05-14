@@ -5,6 +5,7 @@
 #include "app_launcher.h"
 #include "text_mode.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "lovgfx_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -36,6 +37,23 @@ static const char* boot_stage_names[] = {
     "Boot Complete",
     "Boot Failed"
 };
+
+static void boot_report_app_memory(void) {
+    size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    size_t largest_8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    size_t largest_internal = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+
+    ESP_LOGI(TAG, "App memory budget:");
+    ESP_LOGI(TAG, "  Heap free (8-bit): %u bytes (%.1f KiB)",
+             (unsigned)free_8bit, (double)free_8bit / 1024.0);
+    ESP_LOGI(TAG, "  Largest block (8-bit): %u bytes (%.1f KiB)",
+             (unsigned)largest_8bit, (double)largest_8bit / 1024.0);
+    ESP_LOGI(TAG, "  Internal heap free: %u bytes (%.1f KiB)",
+             (unsigned)free_internal, (double)free_internal / 1024.0);
+    ESP_LOGI(TAG, "  Largest internal block: %u bytes (%.1f KiB)",
+             (unsigned)largest_internal, (double)largest_internal / 1024.0);
+}
 
 void boot_display_progress(boot_stage_t stage, bool success, const char *message) {
     // Update boot status
@@ -212,6 +230,7 @@ void boot_sequence(void) {
         return;
     }
     boot_display_progress(BOOT_STAGE_APP_LOADER_INIT, true, "App loader ready");
+    boot_report_app_memory();
 
     // Stage 6: Show launcher
     boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, "Starting app launcher");

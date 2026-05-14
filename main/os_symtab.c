@@ -92,6 +92,7 @@ static const os_symtab_entry_t symtab[] = {
     {"wifi_save_config",        wifi_save_config},
     {"fopen",                   fopen},
     {"fread",                   fread},
+    {"fwrite",                  fwrite},
     {"fclose",                  fclose},
     {"fseek",                   fseek},
     {"ftell",                   ftell},

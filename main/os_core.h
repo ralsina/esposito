@@ -12,6 +12,7 @@ typedef enum {
     EVENT_SERIAL = 1 << 2,
     EVENT_KEYBOARD = 1 << 3,
     EVENT_KEY_COMBO = 1 << 4,
+    EVENT_TOUCH_CONTINUOUS = 1 << 5,
 } event_type_t;
 
 // Keyboard modifier flags
