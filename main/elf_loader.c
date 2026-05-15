@@ -117,8 +117,10 @@ struct elf_handle {
 
     void *data_base;
     size_t data_size;
+    bool data_base_from_app_heap;
     void *bss_base;
     size_t bss_size;
+    bool bss_base_from_app_heap;
 
     loaded_section_t sections[MAX_LOADED_SECTIONS];
     int section_count;
@@ -157,8 +159,10 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
                                 const elf32_shdr_t *shdrs) {
     handle->data_base = NULL;
     handle->data_size = 0;
+    handle->data_base_from_app_heap = false;
     handle->bss_base = NULL;
     handle->bss_size = 0;
+    handle->bss_base_from_app_heap = false;
 
     uint32_t data_load = 0, bss_size = 0;
     const elf32_shdr_t *first_data_shdr = NULL;
@@ -178,7 +182,13 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
     }
 
     if (data_load > 0) {
-        handle->data_base = malloc(data_load);
+        handle->data_base = app_malloc(data_load);
+        if (handle->data_base) {
+            handle->data_base_from_app_heap = true;
+        } else {
+            handle->data_base = malloc(data_load);
+            handle->data_base_from_app_heap = false;
+        }
         if (!handle->data_base) {
             ESP_LOGE(TAG, "Failed to allocate %d bytes for .data", data_load);
             return false;
@@ -212,7 +222,13 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
     }
 
     if (bss_size > 0) {
-        handle->bss_base = calloc(1, bss_size);
+        handle->bss_base = app_calloc(1, bss_size);
+        if (handle->bss_base) {
+            handle->bss_base_from_app_heap = true;
+        } else {
+            handle->bss_base = calloc(1, bss_size);
+            handle->bss_base_from_app_heap = false;
+        }
         if (!handle->bss_base) {
             ESP_LOGE(TAG, "Failed to allocate %d bytes for .bss", bss_size);
             return false;
@@ -732,10 +748,18 @@ void elf_loader_unload(elf_handle_t *handle) {
         handle->data_mmap_handle = 0;
     }
     if (handle->data_base) {
-        free(handle->data_base);
+        if (handle->data_base_from_app_heap) {
+            app_free(handle->data_base);
+        } else {
+            free(handle->data_base);
+        }
     }
     if (handle->bss_base) {
-        free(handle->bss_base);
+        if (handle->bss_base_from_app_heap) {
+            app_free(handle->bss_base);
+        } else {
+            free(handle->bss_base);
+        }
     }
     free(handle);
 }
