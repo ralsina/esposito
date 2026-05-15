@@ -473,4 +473,4 @@ void app_event(app_context_t *ctx, event_t *event) {
     if (key == 'd' || key == 'D') set_direction(1, 0);
 }
 
-// And this is the tail of the snake and that is the whole thing!
+// And this is the tail of the snake and that is the whole thing! oooo>
