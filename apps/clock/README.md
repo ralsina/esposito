@@ -20,6 +20,8 @@ The app uses the OS time API, so it reflects the current system clock state:
 - If WiFi is connected and NTP synced during this boot, time is marked trusted.
 - If not, the app still shows the current system clock, but labels it untrusted.
 
+Weather requests currently use plain HTTP to avoid TLS setup issues on device; HTTPS support can be re-enabled once TLS configuration is tuned.
+
 ## Controls
 
 The display updates automatically every second.

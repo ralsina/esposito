@@ -8,7 +8,7 @@
 
 static const char *TAG = "clock";
 
-#define WEATHER_URL "https://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current=temperature_2m,weather_code&timezone=UTC"
+#define WEATHER_URL "http://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current=temperature_2m,weather_code&timezone=UTC"
 #define WEATHER_REFRESH_SECONDS 600
 
 #define CLOCK_DIGIT_W 3
