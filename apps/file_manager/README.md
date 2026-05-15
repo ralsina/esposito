@@ -2,6 +2,8 @@
 
 A directory browser for `/sdcard`.
 
+![File manager screenshot](file_manager.png)
+
 ## Current Features
 
 - Two-pane (`mc`-style) browser under `/sdcard`
