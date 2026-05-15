@@ -86,11 +86,25 @@ static bool image_viewer_render_current(void) {
     os_log(TAG, "Successfully rendered JPEG: %dx%d", drawn_w, drawn_h);
     state.showing_image = true;
 
-    // Status bar: filename and image dimensions at the bottom of the screen
+    // Status bar at the bottom row. Using text mode avoids app-linker relocation
+    // issues seen with direct display_draw_text_bg in this app build.
+    int rows = text_mode_get_rows();
+    int cols = text_mode_get_cols();
+    int status_row = rows > 0 ? rows - 1 : 0;
+
     char status[96];
     snprintf(status, sizeof(status), " %s  %dx%d ", image_viewer_basename(state.path), state.image_width, state.image_height);
-    // Draw at pixel row (screen_height - 8) — one character row from the bottom
-    display_draw_text_bg(0, screen_height - 8, status, 0xFFFF, 0x0000);
+
+    char line[128];
+    int line_len = cols;
+    if (line_len > (int)sizeof(line) - 1) {
+        line_len = (int)sizeof(line) - 1;
+    }
+    memset(line, ' ', line_len);
+    line[line_len] = '\0';
+    strncpy(line, status, line_len);
+
+    text_mode_print_at_attr_bg(0, status_row, line, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 
     return true;
 }
