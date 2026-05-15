@@ -85,6 +85,13 @@ static bool image_viewer_render_current(void) {
 
     os_log(TAG, "Successfully rendered JPEG: %dx%d", drawn_w, drawn_h);
     state.showing_image = true;
+
+    // Status bar: filename and image dimensions at the bottom of the screen
+    char status[96];
+    snprintf(status, sizeof(status), " %s  %dx%d ", image_viewer_basename(state.path), state.image_width, state.image_height);
+    // Draw at pixel row (screen_height - 8) — one character row from the bottom
+    display_draw_text_bg(0, screen_height - 8, status, 0xFFFF, 0x0000);
+
     return true;
 }
 
