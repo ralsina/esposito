@@ -64,6 +64,17 @@ These functions work alongside text mode — `paint` uses `display_draw_pixel` a
 - `config_bind_app(name)` / `config_unbind_app()` select an app config namespace.
 - `config_get_*()` and `config_set_*()` read and write app settings.
 
+### Shared system settings
+
+These settings are global (not app-local) and are used for cross-app/system configuration.
+
+- `os_settings_get_string(key_path, default, out, out_size)` reads a string setting.
+- `os_settings_set_string(key_path, value)` writes a string setting.
+- `os_settings_get_int(key_path, default)` reads an integer setting.
+- `os_settings_set_int(key_path, value)` writes an integer setting.
+- `os_settings_get_bool(key_path, default)` reads a boolean setting.
+- `os_settings_set_bool(key_path, value)` writes a boolean setting.
+
 ### Files and system helpers
 
 - Standard C I/O helpers such as `fopen`, `fread`, `fwrite`, `fclose`, `fseek`, and `ftell` are available.
@@ -226,7 +237,7 @@ Developer utility that renders all available fonts to the display for visual ins
 
 ### [clock](clock/)
 
-Small UTC clock app showing current date/time, Unix timestamp, and whether the OS time has been trusted by NTP during this boot.
+Clock app showing current date/time using configured timezone, weather, and NTP sync state.
 
 ---
 
