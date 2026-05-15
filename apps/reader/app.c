@@ -16,6 +16,11 @@ void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 0;
 
+    // Bind reader config namespace so progress (offset/page) persists.
+    if (!config_bind_app("reader")) {
+        os_log("reader", "Warning: could not bind reader config namespace");
+    }
+
     memset(&state, 0, sizeof(state));
     reader_startup_init(&state, &bold_pending, &underline_pending);
 }
@@ -31,5 +36,6 @@ void app_checkpoint(app_context_t *ctx) {
 void app_close(app_context_t *ctx) {
     reader_close_current_file(&state);
     reader_free_file_list(&state);
+    config_unbind_app();
     text_mode_clear(TEXT_COLOR_BLACK);
 }
