@@ -684,4 +684,4 @@ const GFXglyph spleen_5x8Glyphs[] PROGMEM = {
 const GFXfont spleen_5x8 PROGMEM = {
   (uint8_t  *)spleen_5x8Bitmaps,
   (GFXglyph *)spleen_5x8Glyphs,
-  0x20, 0xE0B3, 8};
+  0x20, 0x1F7, 8};
