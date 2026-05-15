@@ -254,10 +254,12 @@ static void handle_main_key(char key) {
             case 1:
                 state = STATE_ENTER_SSID;
                 input_ssid[0] = '\0';
+                render();
                 break;
             case 2:
                 state = STATE_ENTER_PASSWORD;
                 input_password[0] = '\0';
+                render();
                 break;
             case 3:
                 if (input_ssid[0] == '\0') {
@@ -277,10 +279,12 @@ static void handle_main_key(char key) {
                 break;
             case 5: {
                 state = STATE_ENTER_TIMEZONE;
+                render();
                 break;
             }
             case 6: {
                 state = STATE_ENTER_LOCATION;
+                render();
                 break;
             }
             case 7: {
