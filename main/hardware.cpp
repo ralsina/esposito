@@ -21,6 +21,22 @@ extern "C" {
 
 static const char *TAG = "hardware";
 
+// Minimal POSIX FILE DataWrapper for direct JPEG decoding without LovyanGFX's
+// file-factory machinery (which sets need_transaction=true and may disrupt the
+// display SPI transaction even when SD and display are on separate buses).
+struct PosixFileWrapper : public lgfx::DataWrapper {
+    PosixFileWrapper(FILE *fp) : lgfx::DataWrapper(), _fp(fp) {
+        need_transaction = false;
+    }
+    int read(uint8_t *buf, uint32_t len) override { return fread(buf, 1, len, _fp); }
+    void skip(int32_t offset) override { fseek(_fp, offset, SEEK_CUR); }
+    bool seek(uint32_t offset) override { return fseek(_fp, offset, SEEK_SET) == 0; }
+    void close(void) override { }
+    int32_t tell(void) override { return ftell(_fp); }
+private:
+    FILE *_fp;
+};
+
 // Display state
 LGFX tft;
 LGFX* display_tft = &tft;
@@ -331,12 +347,25 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
 
     int draw_x = (screen_width - target_width) / 2;
     int draw_y = (screen_height - target_height) / 2;
-    
-    ESP_LOGI(TAG, "Drawing JPEG at (%d, %d) size %dx%d with scale %.3f", 
+
+    ESP_LOGI(TAG, "Drawing JPEG at (%d, %d) size %dx%d with scale %.3f",
              draw_x, draw_y, target_width, target_height, best_scale);
-    
-    if (!tft.drawJpgFile(path, draw_x, draw_y, target_width, target_height, 0, 0, best_scale)) {
-        ESP_LOGE(TAG, "tft.drawJpgFile failed for %s", path);
+
+    // Open the file ourselves via POSIX to bypass LovyanGFX's DataWrapper
+    // file-factory which sets need_transaction=true and may disrupt the
+    // display SPI bus even though the SD card is on a completely separate bus.
+    FILE *jpeg_fp = fopen(path, "rb");
+    if (!jpeg_fp) {
+        ESP_LOGE(TAG, "fopen failed for %s", path);
+        return false;
+    }
+
+    PosixFileWrapper jpeg_wrapper(jpeg_fp);
+    bool draw_ok = tft.drawJpg(&jpeg_wrapper, draw_x, draw_y, target_width, target_height, 0, 0, best_scale, 0.0f);
+    fclose(jpeg_fp);
+
+    if (!draw_ok) {
+        ESP_LOGE(TAG, "tft.drawJpg failed for %s", path);
         return false;
     }
 
