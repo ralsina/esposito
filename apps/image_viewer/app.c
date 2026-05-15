@@ -42,7 +42,9 @@ static bool image_viewer_render_current(void) {
     int screen_width = text_mode_get_cols() * text_mode_get_char_width();
     int screen_height = text_mode_get_rows() * text_mode_get_char_height();
 
+    os_log(TAG, "Attempting to read JPEG size from: %s", state.path);
     if (!display_get_jpg_size(state.path, &state.image_width, &state.image_height)) {
+        os_log(TAG, "Failed to read JPEG size");
         image_viewer_show_message(
             "Image Viewer",
             "Could not read JPEG header.",
@@ -53,18 +55,24 @@ static bool image_viewer_render_current(void) {
         return false;
     }
 
+    os_log(TAG, "JPEG size: %dx%d, screen: %dx%d", state.image_width, state.image_height, screen_width, screen_height);
+
     if (state.image_width > screen_width * 8 || state.image_height > screen_height * 8) {
         char actual_line[64];
         char limit_line[64];
         snprintf(actual_line, sizeof(actual_line), "Image: %dx%d", state.image_width, state.image_height);
         snprintf(limit_line, sizeof(limit_line), "Limit: %dx%d", screen_width * 8, screen_height * 8);
+        os_log(TAG, "Image too large: %s vs %s", actual_line, limit_line);
         image_viewer_show_message("Image too large", actual_line, limit_line, image_viewer_basename(state.path));
         state.showing_image = false;
         return false;
     }
 
     display_clear(0x0000);
-    if (!display_draw_jpg_fit(state.path, NULL, NULL)) {
+    os_log(TAG, "Calling display_draw_jpg_fit for: %s", state.path);
+    int drawn_w = 0, drawn_h = 0;
+    if (!display_draw_jpg_fit(state.path, &drawn_w, &drawn_h)) {
+        os_log(TAG, "display_draw_jpg_fit failed");
         image_viewer_show_message(
             "Image Viewer",
             "JPEG decode failed.",
@@ -75,6 +83,7 @@ static bool image_viewer_render_current(void) {
         return false;
     }
 
+    os_log(TAG, "Successfully rendered JPEG: %dx%d", drawn_w, drawn_h);
     state.showing_image = true;
     return true;
 }

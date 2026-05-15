@@ -181,24 +181,31 @@ bool display_get_jpg_size(const char *path, int *width, int *height) {
     }
 
     if (path == NULL) {
+        ESP_LOGE(TAG, "display_get_jpg_size: path is NULL");
         return false;
     }
 
     FILE *file = fopen(path, "rb");
     if (file == NULL) {
+        ESP_LOGE(TAG, "display_get_jpg_size: cannot open %s", path);
         return false;
     }
 
     int soi_high = fgetc(file);
     int soi_low = fgetc(file);
     if (soi_high != 0xFF || soi_low != 0xD8) {
+        ESP_LOGE(TAG, "display_get_jpg_size: invalid JPEG header (0x%02X 0x%02X)", soi_high, soi_low);
         fclose(file);
         return false;
     }
 
+    ESP_LOGI(TAG, "JPEG header OK, scanning for SOF marker...");
+
+    int markers_checked = 0;
     while (true) {
         int prefix = fgetc(file);
         if (prefix == EOF) {
+            ESP_LOGE(TAG, "display_get_jpg_size: reached EOF without finding SOF (checked %d markers)", markers_checked);
             break;
         }
         if (prefix != 0xFF) {
@@ -211,6 +218,7 @@ bool display_get_jpg_size(const char *path, int *width, int *height) {
         }
 
         if (marker == EOF || marker == 0xD9 || marker == 0xDA) {
+            ESP_LOGE(TAG, "display_get_jpg_size: hit end marker 0x%02X without SOF", marker);
             break;
         }
 
@@ -220,17 +228,23 @@ bool display_get_jpg_size(const char *path, int *width, int *height) {
 
         int segment_length = 0;
         if (!jpeg_read_be16(file, &segment_length) || segment_length < 2) {
+            ESP_LOGE(TAG, "display_get_jpg_size: invalid segment length at marker 0x%02X", marker);
             break;
         }
 
+        markers_checked++;
+
         if (jpeg_is_sof_marker(marker)) {
+            ESP_LOGI(TAG, "Found SOF marker 0x%02X at marker #%d", marker, markers_checked);
             if (fgetc(file) == EOF) {
+                ESP_LOGE(TAG, "display_get_jpg_size: EOF reading precision byte");
                 break;
             }
 
             int jpeg_height = 0;
             int jpeg_width = 0;
             if (!jpeg_read_be16(file, &jpeg_height) || !jpeg_read_be16(file, &jpeg_width)) {
+                ESP_LOGE(TAG, "display_get_jpg_size: failed to read dimensions");
                 break;
             }
 
@@ -242,10 +256,13 @@ bool display_get_jpg_size(const char *path, int *width, int *height) {
             if (height != NULL) {
                 *height = jpeg_height;
             }
+            
+            ESP_LOGI(TAG, "Successfully read JPEG size: %dx%d", jpeg_width, jpeg_height);
             return jpeg_width > 0 && jpeg_height > 0;
         }
 
         if (fseek(file, segment_length - 2, SEEK_CUR) != 0) {
+            ESP_LOGE(TAG, "display_get_jpg_size: fseek failed");
             break;
         }
     }
@@ -263,18 +280,24 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
     }
 
     if (!display_initialized || path == NULL) {
+        ESP_LOGE(TAG, "display_draw_jpg_fit: display not initialized or path is NULL");
         return false;
     }
 
     int jpeg_width = 0;
     int jpeg_height = 0;
     if (!display_get_jpg_size(path, &jpeg_width, &jpeg_height)) {
+        ESP_LOGE(TAG, "display_draw_jpg_fit: failed to get JPEG size from %s", path);
         return false;
     }
+
+    ESP_LOGI(TAG, "JPEG dimensions: %dx%d", jpeg_width, jpeg_height);
 
     const int screen_width = tft.width();
     const int screen_height = tft.height();
     if (jpeg_width <= 0 || jpeg_height <= 0 || jpeg_width > screen_width * 8 || jpeg_height > screen_height * 8) {
+        ESP_LOGE(TAG, "JPEG size check failed: %dx%d (screen %dx%d, limit %dx%d)",
+                 jpeg_width, jpeg_height, screen_width, screen_height, screen_width * 8, screen_height * 8);
         return false;
     }
 
@@ -291,6 +314,8 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
         // Use the largest scale that fits on screen
         if (scaled_w <= screen_width && scaled_h <= screen_height) {
             best_scale = test_scale;
+            ESP_LOGI(TAG, "Selected scale: %.3f (1/%d divisor) -> %dx%d", 
+                     best_scale, (int)(1.0f / best_scale), scaled_w, scaled_h);
             break;
         }
     }
@@ -306,9 +331,16 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
 
     int draw_x = (screen_width - target_width) / 2;
     int draw_y = (screen_height - target_height) / 2;
+    
+    ESP_LOGI(TAG, "Drawing JPEG at (%d, %d) size %dx%d with scale %.3f", 
+             draw_x, draw_y, target_width, target_height, best_scale);
+    
     if (!tft.drawJpgFile(path, draw_x, draw_y, target_width, target_height, 0, 0, best_scale)) {
+        ESP_LOGE(TAG, "tft.drawJpgFile failed for %s", path);
         return false;
     }
+
+    ESP_LOGI(TAG, "JPEG rendered successfully");
 
     if (drawn_width != NULL) {
         *drawn_width = target_width;
