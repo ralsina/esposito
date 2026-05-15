@@ -37,6 +37,166 @@ static ui_text_input_widget_t location_input;
 #define SETTINGS_KEY_TIMEZONE "time/timezone"
 #define SETTINGS_KEY_LOCATION "weather/location"
 #define SETTINGS_KEY_SERIAL_LOG "system/serial_log_output"
+#define WEATHER_GEOCODE_URL_FMT "http://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json"
+#define WEATHER_HTTP_TIMEOUT_MS 15000
+
+static void trim_spaces(char *text) {
+    if (!text || !text[0]) {
+        return;
+    }
+
+    size_t start = 0;
+    while (text[start] == ' ' || text[start] == '\t') {
+        start++;
+    }
+
+    if (start > 0) {
+        memmove(text, text + start, strlen(text + start) + 1);
+    }
+
+    size_t len = strlen(text);
+    while (len > 0 && (text[len - 1] == ' ' || text[len - 1] == '\t')) {
+        text[len - 1] = '\0';
+        len--;
+    }
+}
+
+static void url_encode_basic(const char *src, char *dst, size_t dst_size) {
+    static const char hex[] = "0123456789ABCDEF";
+    size_t out = 0;
+
+    if (!src || !dst || dst_size == 0) {
+        return;
+    }
+
+    for (size_t index = 0; src[index] != '\0' && out + 1 < dst_size; index++) {
+        unsigned char ch = (unsigned char)src[index];
+        bool safe = (ch >= 'a' && ch <= 'z') ||
+                    (ch >= 'A' && ch <= 'Z') ||
+                    (ch >= '0' && ch <= '9') ||
+                    ch == '-' || ch == '_' || ch == '.' || ch == '~';
+        if (safe) {
+            dst[out++] = (char)ch;
+        } else {
+            if (out + 3 >= dst_size) {
+                break;
+            }
+            dst[out++] = '%';
+            dst[out++] = hex[(ch >> 4) & 0x0F];
+            dst[out++] = hex[ch & 0x0F];
+        }
+    }
+    dst[out] = '\0';
+}
+
+static int parse_location_lat_lon(const char *location, char *lat_out, size_t lat_size, char *lon_out, size_t lon_size) {
+    if (!location || !lat_out || !lon_out || lat_size == 0 || lon_size == 0) {
+        return 0;
+    }
+
+    const char *comma = strchr(location, ',');
+    if (!comma) {
+        return 0;
+    }
+
+    size_t lat_len = (size_t)(comma - location);
+    size_t lon_len = strlen(comma + 1);
+    if (lat_len == 0 || lon_len == 0 || lat_len >= lat_size || lon_len >= lon_size) {
+        return 0;
+    }
+
+    memcpy(lat_out, location, lat_len);
+    lat_out[lat_len] = '\0';
+    memcpy(lon_out, comma + 1, lon_len);
+    lon_out[lon_len] = '\0';
+
+    trim_spaces(lat_out);
+    trim_spaces(lon_out);
+
+    if (lat_out[0] == '\0' || lon_out[0] == '\0') {
+        return 0;
+    }
+
+    for (size_t index = 0; lat_out[index] != '\0'; index++) {
+        char ch = lat_out[index];
+        if (!((ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == '+')) {
+            return 0;
+        }
+    }
+
+    for (size_t index = 0; lon_out[index] != '\0'; index++) {
+        char ch = lon_out[index];
+        if (!((ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == '+')) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static int extract_json_number_field(const char *json, const char *field_name, char *out, size_t out_size) {
+    if (!json || !field_name || !out || out_size == 0) {
+        return 0;
+    }
+
+    char needle[48];
+    snprintf(needle, sizeof(needle), "\"%s\":", field_name);
+    const char *field = strstr(json, needle);
+    if (!field) {
+        return 0;
+    }
+
+    const char *value = field + strlen(needle);
+    while (*value == ' ' || *value == '\t') {
+        value++;
+    }
+
+    size_t out_len = 0;
+    if (*value == '-' || *value == '+') {
+        if (out_len + 1 >= out_size) {
+            return 0;
+        }
+        out[out_len++] = *value++;
+    }
+
+    while (((*value >= '0' && *value <= '9') || *value == '.') && out_len + 1 < out_size) {
+        out[out_len++] = *value++;
+    }
+
+    out[out_len] = '\0';
+    return out_len > 0;
+}
+
+static int resolve_location(const char *location, char *resolved_out, size_t resolved_size) {
+    char latitude[24];
+    char longitude[24];
+    if (parse_location_lat_lon(location, latitude, sizeof(latitude), longitude, sizeof(longitude))) {
+        snprintf(resolved_out, resolved_size, "%s,%s", latitude, longitude);
+        return 1;
+    }
+
+    char encoded[128];
+    char geocode_url[256];
+    char geocode_response[1024];
+    url_encode_basic(location, encoded, sizeof(encoded));
+    if (encoded[0] == '\0') {
+        return 0;
+    }
+
+    snprintf(geocode_url, sizeof(geocode_url), WEATHER_GEOCODE_URL_FMT, encoded);
+    int geocode_result = os_http_get(geocode_url, geocode_response, sizeof(geocode_response), WEATHER_HTTP_TIMEOUT_MS);
+    if (geocode_result <= 0) {
+        return 0;
+    }
+
+    if (!extract_json_number_field(geocode_response, "latitude", latitude, sizeof(latitude)) ||
+        !extract_json_number_field(geocode_response, "longitude", longitude, sizeof(longitude))) {
+        return 0;
+    }
+
+    snprintf(resolved_out, resolved_size, "%s,%s", latitude, longitude);
+    return 1;
+}
 
 static void set_status(const char *msg) {
     strncpy(status_msg, msg, sizeof(status_msg) - 1);
@@ -385,8 +545,17 @@ static void handle_text_entry_event(event_t *event) {
             os_settings_set_string(SETTINGS_KEY_TIMEZONE, input_timezone);
             set_status("Timezone saved");
         } else if (state == STATE_ENTER_LOCATION) {
+            trim_spaces(input_location);
+            char resolved_location[64];
+            if (!resolve_location(input_location, resolved_location, sizeof(resolved_location))) {
+                state = STATE_MESSAGE;
+                set_status("Location lookup failed");
+                render();
+                return;
+            }
+            snprintf(input_location, sizeof(input_location), "%s", resolved_location);
             os_settings_set_string(SETTINGS_KEY_LOCATION, input_location);
-            set_status("Location saved");
+            set_status("Location saved as lat,lon");
         }
     }
 
