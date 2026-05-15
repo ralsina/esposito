@@ -176,6 +176,12 @@ static void render(void) {
         case STATE_ENTER_PASSWORD:
             ui_text_input_widget_draw(&password_input);
             break;
+        case STATE_ENTER_TIMEZONE:
+            ui_text_input_widget_draw(&timezone_input);
+            break;
+        case STATE_ENTER_LOCATION:
+            ui_text_input_widget_draw(&location_input);
+            break;
         case STATE_MESSAGE:
             draw_message();
             break;
