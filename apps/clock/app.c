@@ -1,7 +1,7 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "wifi.h"
-#include "jsmn.h"
+#include "core_json.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +10,9 @@
 static const char *TAG = "clock";
 
 #define WEATHER_URL "http://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current=temperature_2m,weather_code&timezone=UTC"
+#define WEATHER_INITIAL_DELAY_SECONDS 10
+#define WEATHER_HTTP_TIMEOUT_MS 15000
+#define WEATHER_HTTP_ATTEMPTS 3
 #define WEATHER_REFRESH_SECONDS 600
 
 #define CLOCK_DIGIT_W 3
@@ -37,7 +40,9 @@ typedef struct {
     int temperature_tenths_c;
     int weather_code;
     time_t next_refresh_at;
+    time_t warmup_until;
     char status[64];
+    char debug[96];
 } weather_state_t;
 
 static weather_state_t weather = {
@@ -45,95 +50,36 @@ static weather_state_t weather = {
     .temperature_tenths_c = 0,
     .weather_code = -1,
     .next_refresh_at = 0,
+    .warmup_until = 0,
     .status = "No weather yet",
+    .debug = "Weather dbg: idle",
 };
 
-static int json_token_equals(const char *json, const jsmntok_t *token, const char *text) {
-    if (!json || !token || !text || token->start < 0 || token->end < token->start) {
-        return 0;
-    }
-
-    size_t token_len = (size_t)(token->end - token->start);
-    size_t text_len = strlen(text);
-    if (token_len != text_len) {
-        return 0;
-    }
-
-    return strncmp(json + token->start, text, token_len) == 0;
-}
-
-static int json_skip_token_tree(const jsmntok_t *tokens, int token_count, int index) {
-    if (!tokens || index < 0 || index >= token_count) {
-        return token_count;
-    }
-
-    int next = index + 1;
-    switch (tokens[index].type) {
-        case JSMN_OBJECT:
-            for (int pair_index = 0; pair_index < tokens[index].size; pair_index++) {
-                next = json_skip_token_tree(tokens, token_count, next);
-                next = json_skip_token_tree(tokens, token_count, next);
-            }
-            break;
-        case JSMN_ARRAY:
-            for (int item_index = 0; item_index < tokens[index].size; item_index++) {
-                next = json_skip_token_tree(tokens, token_count, next);
-            }
-            break;
-        default:
-            break;
-    }
-    return next;
-}
-
-static int json_find_object_value(const char *json,
-                                  const jsmntok_t *tokens,
-                                  int token_count,
-                                  int object_token_index,
-                                  const char *key,
-                                  int *value_token_index) {
-    if (!json || !tokens || !key || !value_token_index ||
-        object_token_index < 0 || object_token_index >= token_count ||
-        tokens[object_token_index].type != JSMN_OBJECT) {
-        return 0;
-    }
-
-    int index = object_token_index + 1;
-    for (int pair_index = 0; pair_index < tokens[object_token_index].size; pair_index++) {
-        if (index + 1 >= token_count) {
-            return 0;
+static void weather_pause_seconds(int seconds) {
+    time_t end_time = time(NULL) + seconds;
+    while (time(NULL) < end_time) {
+        for (volatile int spin = 0; spin < 50000; spin++) {
         }
-
-        int key_index = index;
-        int value_index = key_index + 1;
-        if (tokens[key_index].type == JSMN_STRING && json_token_equals(json, &tokens[key_index], key)) {
-            *value_token_index = value_index;
-            return 1;
-        }
-
-        index = json_skip_token_tree(tokens, token_count, value_index);
     }
-
-    return 0;
 }
 
-static int json_parse_int_token(const char *json, const jsmntok_t *token, int *out_value) {
-    if (!json || !token || !out_value || token->type != JSMN_PRIMITIVE || token->start < 0 || token->end <= token->start) {
-        return 0;
-    }
-
-    int index = token->start;
+static int json_parse_int_value(const char *text, int *out_value) {
     int sign = 1;
-    if (json[index] == '-') {
-        sign = -1;
-        index++;
-    }
-
     int value = 0;
     int saw_digit = 0;
-    while (index < token->end && json[index] >= '0' && json[index] <= '9') {
-        value = value * 10 + (json[index] - '0');
-        index++;
+
+    if (!text || !out_value) {
+        return 0;
+    }
+
+    if (*text == '-') {
+        sign = -1;
+        text++;
+    }
+
+    while (*text >= '0' && *text <= '9') {
+        value = value * 10 + (*text - '0');
+        text++;
         saw_digit = 1;
     }
 
@@ -145,23 +91,23 @@ static int json_parse_int_token(const char *json, const jsmntok_t *token, int *o
     return 1;
 }
 
-static int json_parse_tenths_token(const char *json, const jsmntok_t *token, int *out_tenths) {
-    if (!json || !token || !out_tenths || token->type != JSMN_PRIMITIVE || token->start < 0 || token->end <= token->start) {
+static int json_parse_tenths_value(const char *text, int *out_tenths) {
+    int sign = 1;
+    int whole = 0;
+    int saw_digit = 0;
+
+    if (!text || !out_tenths) {
         return 0;
     }
 
-    int index = token->start;
-    int sign = 1;
-    if (json[index] == '-') {
+    if (*text == '-') {
         sign = -1;
-        index++;
+        text++;
     }
 
-    int whole = 0;
-    int saw_digit = 0;
-    while (index < token->end && json[index] >= '0' && json[index] <= '9') {
-        whole = whole * 10 + (json[index] - '0');
-        index++;
+    while (*text >= '0' && *text <= '9') {
+        whole = whole * 10 + (*text - '0');
+        text++;
         saw_digit = 1;
     }
 
@@ -170,9 +116,8 @@ static int json_parse_tenths_token(const char *json, const jsmntok_t *token, int
     }
 
     int tenths = whole * 10;
-    if (index < token->end && json[index] == '.' && index + 1 < token->end &&
-        json[index + 1] >= '0' && json[index + 1] <= '9') {
-        tenths += (json[index + 1] - '0');
+    if (*text == '.' && text[1] >= '0' && text[1] <= '9') {
+        tenths += text[1] - '0';
     }
 
     *out_tenths = tenths * sign;
@@ -205,57 +150,105 @@ static const char *weather_code_label(int code) {
 
 static void refresh_weather_if_needed(int force) {
     time_t now = time(NULL);
-    if (!force && now < weather.next_refresh_at) {
+    if (!force && weather.warmup_until > 0 && now < weather.warmup_until) {
+        snprintf(weather.status, sizeof(weather.status), "Weather warming up");
+        snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: warmup until %lld", (long long)weather.warmup_until);
+        os_log(TAG, "Weather refresh delayed: warmup_until=%lld now=%lld",
+               (long long)weather.warmup_until, (long long)now);
+        weather.next_refresh_at = weather.warmup_until;
         return;
     }
+
+    if (!force && now < weather.next_refresh_at) {
+        os_log(TAG, "Weather refresh skipped: next=%lld now=%lld status=%s",
+               (long long)weather.next_refresh_at, (long long)now, weather.status);
+        return;
+    }
+
+    os_log(TAG, "Weather refresh start: force=%d now=%lld wifi=%d",
+           force, (long long)now, wifi_is_connected());
+    snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: refresh start");
 
     if (!wifi_is_connected()) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather: WiFi disconnected");
+        snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: wifi disconnected");
+        os_log(TAG, "Weather refresh aborted: WiFi disconnected");
         weather.next_refresh_at = now + 30;
         return;
     }
 
     char response[768];
-    int result = os_http_get(WEATHER_URL, response, sizeof(response), 5000);
+    int result = -1;
+    for (int attempt = 1; attempt <= WEATHER_HTTP_ATTEMPTS; attempt++) {
+        response[0] = '\0';
+        result = os_http_get(WEATHER_URL, response, sizeof(response), WEATHER_HTTP_TIMEOUT_MS);
+        os_log(TAG, "Weather HTTP attempt=%d result=%d bytes=%u", attempt, result, (unsigned)strlen(response));
+        if (result > 0) {
+            break;
+        }
+        if (attempt < WEATHER_HTTP_ATTEMPTS) {
+            weather_pause_seconds(1);
+        }
+    }
     if (result <= 0) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather fetch failed (%d)", result);
+        snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: fetch failed %d", result);
+        os_log(TAG, "Weather fetch failed after %d attempts: result=%d", WEATHER_HTTP_ATTEMPTS, result);
+        weather.next_refresh_at = now + 15;
+        return;
+    }
+
+    JSONStatus_t json_status = JSON_Validate(response, strlen(response));
+    os_log(TAG, "Weather JSON validate=%d", json_status);
+    if (json_status != JSONSuccess) {
+        weather.has_data = false;
+        snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
+        snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: validate failed %d", json_status);
+        os_log(TAG, "Weather parse failed at validate: %d", json_status);
         weather.next_refresh_at = now + 60;
         return;
     }
 
-    jsmn_parser parser;
-    jsmntok_t tokens[128];
-    jsmn_init(&parser);
-    int token_count = jsmn_parse(&parser, response, (unsigned int)strlen(response), tokens, 128);
-    if (token_count < 1 || tokens[0].type != JSMN_OBJECT) {
+    const char * temp_value = NULL;
+    const char * code_value = NULL;
+    size_t temp_length = 0;
+    size_t code_length = 0;
+    if (JSON_SearchConst(response, strlen(response), "current.temperature_2m", strlen("current.temperature_2m"), &temp_value, &temp_length, NULL) != JSONSuccess ||
+        JSON_SearchConst(response, strlen(response), "current.weather_code", strlen("current.weather_code"), &code_value, &code_length, NULL) != JSONSuccess) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
-        weather.next_refresh_at = now + 60;
-        return;
-    }
-
-    int current_token_index = -1;
-    int temp_token_index = -1;
-    int code_token_index = -1;
-    if (!json_find_object_value(response, tokens, token_count, 0, "current", &current_token_index) ||
-        current_token_index < 0 || current_token_index >= token_count ||
-        tokens[current_token_index].type != JSMN_OBJECT ||
-        !json_find_object_value(response, tokens, token_count, current_token_index, "temperature_2m", &temp_token_index) ||
-        !json_find_object_value(response, tokens, token_count, current_token_index, "weather_code", &code_token_index)) {
-        weather.has_data = false;
-        snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
+        snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: search failed");
+        os_log(TAG, "Weather parse failed: current fields not found");
         weather.next_refresh_at = now + 60;
         return;
     }
 
     int temp_tenths = 0;
     int code = 0;
-    if (!json_parse_tenths_token(response, &tokens[temp_token_index], &temp_tenths) ||
-        !json_parse_int_token(response, &tokens[code_token_index], &code)) {
+    char temp_buffer[32];
+    char code_buffer[16];
+    if (temp_length >= sizeof(temp_buffer) || code_length >= sizeof(code_buffer)) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
+        snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: value too long");
+        os_log(TAG, "Weather parse failed: value length too long");
+        weather.next_refresh_at = now + 60;
+        return;
+    }
+
+    memcpy(temp_buffer, temp_value, temp_length);
+    temp_buffer[temp_length] = '\0';
+    memcpy(code_buffer, code_value, code_length);
+    code_buffer[code_length] = '\0';
+
+    if (!json_parse_tenths_value(temp_buffer, &temp_tenths) ||
+        !json_parse_int_value(code_buffer, &code)) {
+        weather.has_data = false;
+        snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
+        snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: value parse failed");
+        os_log(TAG, "Weather parse failed at values: temp=%s code=%s", temp_buffer, code_buffer);
         weather.next_refresh_at = now + 60;
         return;
     }
@@ -264,6 +257,8 @@ static void refresh_weather_if_needed(int force) {
     weather.temperature_tenths_c = temp_tenths;
     weather.weather_code = code;
     snprintf(weather.status, sizeof(weather.status), "Weather updated");
+    snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: temp=%d code=%d", temp_tenths, code);
+    os_log(TAG, "Weather updated: temp_tenths=%d weather_code=%d", temp_tenths, code);
     weather.next_refresh_at = now + WEATHER_REFRESH_SECONDS;
 }
 
@@ -407,6 +402,8 @@ static void draw_clock(void) {
         print_padded_line(2, 27, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, weather.status, 40);
     }
 
+    print_padded_line(2, 28, TEXT_COLOR_BRIGHT_BLACK, TEXT_ATTR_NORMAL, weather.debug, 44);
+
     /* Flush text-mode cells first, then paint the large clock cells on top */
     text_mode_flush();
     draw_large_time(&time_status);
@@ -417,7 +414,13 @@ void app_init(app_context_t *ctx) {
     ctx->timer_interval_ms = 1000;
 
     text_mode_init();
-    refresh_weather_if_needed(1);
+    weather.warmup_until = time(NULL) + WEATHER_INITIAL_DELAY_SECONDS;
+    weather.next_refresh_at = weather.warmup_until;
+    snprintf(weather.status, sizeof(weather.status), "Weather warming up");
+    snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: init warmup until %lld", (long long)weather.warmup_until);
+    os_log(TAG, "Weather init warmup_until=%lld", (long long)weather.warmup_until);
+    os_log(TAG, "Weather init status: %s", weather.status);
+    os_log(TAG, "Weather init debug: %s", weather.debug);
     draw_static_clock();
     draw_clock();
     os_log(TAG, "Clock app initialized");
