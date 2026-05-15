@@ -587,7 +587,7 @@ Set the snake direction!
 }
 ```
 
-And this is the tail of the snake and that is the whole thing!
+And this is the tail of the snake and that is the whole thing! oooo>
 
 ```c
 
