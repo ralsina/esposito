@@ -14,12 +14,16 @@ typedef enum {
     STATE_SCAN_RESULTS,
     STATE_ENTER_SSID,
     STATE_ENTER_PASSWORD,
+    STATE_ENTER_TIMEZONE,
+    STATE_ENTER_LOCATION,
     STATE_MESSAGE,
 } app_state_t;
 
 static app_state_t state = STATE_MAIN;
 static char input_ssid[WIFI_MAX_SSID] = {0};
 static char input_password[WIFI_MAX_PASSWORD] = {0};
+static char input_timezone[48] = {0};
+static char input_location[64] = {0};
 static char status_msg[128] = {0};
 static int msg_timer = 0;
 static int selected = 0;
@@ -27,19 +31,27 @@ static int scan_count = 0;
 static int scan_selected = 0;
 static ui_text_input_widget_t ssid_input;
 static ui_text_input_widget_t password_input;
+static ui_text_input_widget_t timezone_input;
+static ui_text_input_widget_t location_input;
+
+#define SETTINGS_KEY_TIMEZONE "time/timezone"
+#define SETTINGS_KEY_LOCATION "weather/location"
+#define SETTINGS_KEY_SERIAL_LOG "system/serial_log_output"
 
 static void set_status(const char *msg) {
     strncpy(status_msg, msg, sizeof(status_msg) - 1);
     msg_timer = 150;
 }
 
-#define MENU_ITEMS 6
+#define MENU_ITEMS 8
 static const char *menu_labels[MENU_ITEMS] = {
     "Scan for networks",
     "Enter SSID",
     "Enter Password",
     "Save && Connect",
     "Disconnect",
+    "Set Timezone",
+    "Set Location",
     "Serial logs to UART",
 };
 
@@ -64,6 +76,13 @@ static void draw_main(void) {
                   serial_log_output_is_enabled() ? "Serial logs: Enabled" : "Serial logs: Disabled",
                   serial_log_output_is_enabled() ? TEXT_COLOR_YELLOW : TEXT_COLOR_GREEN,
                   TEXT_ATTR_NORMAL);
+
+    char timezone_line[72];
+    char location_line[72];
+    snprintf(timezone_line, sizeof(timezone_line), "Timezone: %s", input_timezone[0] ? input_timezone : "UTC");
+    snprintf(location_line, sizeof(location_line), "Location: %s", input_location[0] ? input_location : "40.4168,-3.7038");
+    ui_label_attr(3, y++, timezone_line, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    ui_label_attr(3, y++, location_line, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
 
     ui_separator(y++);
     ui_menu_draw(5, y, MENU_ITEMS, menu_labels, MENU_ITEMS, selected);
@@ -162,7 +181,10 @@ void app_init(app_context_t *ctx) {
     selected = 0;
     scan_selected = 0;
 
-    serial_log_output_set_enabled(config_get_bool("serial_log_output", false));
+    serial_log_output_set_enabled(os_settings_get_bool(SETTINGS_KEY_SERIAL_LOG, false));
+
+    os_settings_get_string(SETTINGS_KEY_TIMEZONE, "UTC", input_timezone, sizeof(input_timezone));
+    os_settings_get_string(SETTINGS_KEY_LOCATION, "40.4168,-3.7038", input_location, sizeof(input_location));
 
     ssid_input.title = "Enter SSID";
     ssid_input.label = "SSID:";
@@ -179,6 +201,22 @@ void app_init(app_context_t *ctx) {
     password_input.mask_input = true;
     password_input.hint_left = "Type to enter  Enter Confirm";
     password_input.hint_right = "ESC Cancel";
+
+    timezone_input.title = "Set Timezone";
+    timezone_input.label = "Timezone:";
+    timezone_input.buffer = input_timezone;
+    timezone_input.max_len = sizeof(input_timezone);
+    timezone_input.mask_input = false;
+    timezone_input.hint_left = "Ex: UTC or Europe/Madrid";
+    timezone_input.hint_right = "ESC Cancel";
+
+    location_input.title = "Set Location";
+    location_input.label = "Location:";
+    location_input.buffer = input_location;
+    location_input.max_len = sizeof(input_location);
+    location_input.mask_input = false;
+    location_input.hint_left = "City or lat,lon";
+    location_input.hint_right = "ESC Cancel";
 
     render();
     os_log(TAG, "Settings app initialized");
@@ -238,9 +276,17 @@ static void handle_main_key(char key) {
                 set_status("Disconnected");
                 break;
             case 5: {
+                state = STATE_ENTER_TIMEZONE;
+                break;
+            }
+            case 6: {
+                state = STATE_ENTER_LOCATION;
+                break;
+            }
+            case 7: {
                 bool enabled = !serial_log_output_is_enabled();
                 serial_log_output_set_enabled(enabled);
-                config_set_bool("serial_log_output", enabled);
+                os_settings_set_bool(SETTINGS_KEY_SERIAL_LOG, enabled);
                 set_status(enabled ? "Serial log output enabled" : "Serial log output disabled");
                 render();
                 break;
@@ -288,8 +334,31 @@ static void handle_scan_key(char key) {
 }
 
 static void handle_text_entry_event(event_t *event) {
-    const ui_text_input_widget_t *widget = (state == STATE_ENTER_SSID) ? &ssid_input : &password_input;
+    const ui_text_input_widget_t *widget = NULL;
+    if (state == STATE_ENTER_SSID) {
+        widget = &ssid_input;
+    } else if (state == STATE_ENTER_PASSWORD) {
+        widget = &password_input;
+    } else if (state == STATE_ENTER_TIMEZONE) {
+        widget = &timezone_input;
+    } else if (state == STATE_ENTER_LOCATION) {
+        widget = &location_input;
+    }
+    if (!widget) {
+        return;
+    }
+
     int result = ui_text_input_widget_handle_event(widget, event);
+    if (result == 1) {
+        if (state == STATE_ENTER_TIMEZONE) {
+            os_settings_set_string(SETTINGS_KEY_TIMEZONE, input_timezone);
+            set_status("Timezone saved");
+        } else if (state == STATE_ENTER_LOCATION) {
+            os_settings_set_string(SETTINGS_KEY_LOCATION, input_location);
+            set_status("Location saved");
+        }
+    }
+
     if (result != 0) {
         state = STATE_MAIN;
         render();
@@ -319,6 +388,8 @@ void app_event(app_context_t *ctx, event_t *event) {
                 break;
             case STATE_ENTER_SSID:
             case STATE_ENTER_PASSWORD:
+            case STATE_ENTER_TIMEZONE:
+            case STATE_ENTER_LOCATION:
                 handle_text_entry_event(event);
                 break;
             case STATE_MESSAGE:

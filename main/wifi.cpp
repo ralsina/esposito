@@ -1,5 +1,5 @@
 #include "wifi.h"
-#include "sd_card.h"
+#include "os_core.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_netif.h"
@@ -8,7 +8,6 @@
 #include "nvs_flash.h"
 #include <string.h>
 #include <stdio.h>
-#include <sys/stat.h>
 #include <time.h>
 
 static const char *TAG = "wifi";
@@ -26,8 +25,8 @@ static char wifi_password[WIFI_MAX_PASSWORD] = {0};
 static wifi_ap_record_t scan_results[WIFI_MAX_SCAN_RESULTS];
 static int scan_count = 0;
 
-// Config file path
-#define WIFI_CONFIG_PATH "/sdcard/config/wifi.txt"
+#define WIFI_SETTINGS_SSID_KEY "wifi/ssid"
+#define WIFI_SETTINGS_PASSWORD_KEY "wifi/password"
 
 static void wifi_time_sync_notification(struct timeval *timeval_ptr) {
     (void)timeval_ptr;
@@ -86,32 +85,16 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 }
 
 static bool read_config(void) {
-    FILE *f = fopen(WIFI_CONFIG_PATH, "r");
-    if (!f) {
-        ESP_LOGI(TAG, "No WiFi config at %s", WIFI_CONFIG_PATH);
-        return false;
+    os_settings_get_string(WIFI_SETTINGS_SSID_KEY, "", wifi_ssid, sizeof(wifi_ssid));
+    os_settings_get_string(WIFI_SETTINGS_PASSWORD_KEY, "", wifi_password, sizeof(wifi_password));
+
+    if (wifi_ssid[0] != '\0') {
+        ESP_LOGI(TAG, "Read WiFi config from shared settings for SSID: %s", wifi_ssid);
+        return true;
     }
 
-    if (!fgets(wifi_ssid, sizeof(wifi_ssid), f)) {
-        fclose(f);
-        return false;
-    }
-    size_t ssid_len = strlen(wifi_ssid);
-    if (ssid_len > 0 && wifi_ssid[ssid_len - 1] == '\n') {
-        wifi_ssid[ssid_len - 1] = '\0';
-    }
-
-    if (!fgets(wifi_password, sizeof(wifi_password), f)) {
-        wifi_password[0] = '\0';
-    }
-    size_t pass_len = strlen(wifi_password);
-    if (pass_len > 0 && wifi_password[pass_len - 1] == '\n') {
-        wifi_password[pass_len - 1] = '\0';
-    }
-
-    fclose(f);
-    ESP_LOGI(TAG, "Read WiFi config for SSID: %s", wifi_ssid);
-    return true;
+    ESP_LOGI(TAG, "No WiFi config found in shared settings");
+    return false;
 }
 
 bool wifi_init(void) {
@@ -247,18 +230,17 @@ time_t wifi_time_last_sync(void) {
 }
 
 bool wifi_save_config(const char *ssid, const char *password) {
-    // Ensure config directory exists
-    mkdir("/sdcard/config", 0755);
-
-    FILE *f = fopen(WIFI_CONFIG_PATH, "w");
-    if (!f) {
-        ESP_LOGE(TAG, "Failed to write %s", WIFI_CONFIG_PATH);
+    if (!ssid || !ssid[0]) {
+        ESP_LOGE(TAG, "Refusing to save empty WiFi SSID");
         return false;
     }
 
-    fprintf(f, "%s\n", ssid);
-    fprintf(f, "%s\n", password ? password : "");
-    fclose(f);
+    bool saved_ssid = os_settings_set_string(WIFI_SETTINGS_SSID_KEY, ssid);
+    bool saved_password = os_settings_set_string(WIFI_SETTINGS_PASSWORD_KEY, password ? password : "");
+    if (!saved_ssid || !saved_password) {
+        ESP_LOGE(TAG, "Failed to persist WiFi config to shared settings");
+        return false;
+    }
 
     ESP_LOGI(TAG, "WiFi config saved for SSID: %s", ssid);
     return true;

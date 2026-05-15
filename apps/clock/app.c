@@ -9,7 +9,12 @@
 
 static const char *TAG = "clock";
 
-#define WEATHER_URL "http://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current=temperature_2m,weather_code&timezone=UTC"
+#define WEATHER_FORECAST_URL_FMT "http://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&current=temperature_2m,weather_code&timezone=%s"
+#define WEATHER_GEOCODE_URL_FMT "http://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json"
+#define SETTINGS_KEY_TIMEZONE "time/timezone"
+#define SETTINGS_KEY_LOCATION "weather/location"
+#define DEFAULT_TIMEZONE "UTC"
+#define DEFAULT_LOCATION "40.4168,-3.7038"
 #define WEATHER_INITIAL_DELAY_SECONDS 10
 #define WEATHER_HTTP_TIMEOUT_MS 15000
 #define WEATHER_HTTP_ATTEMPTS 3
@@ -54,6 +59,126 @@ static weather_state_t weather = {
     .status = "No weather yet",
     .debug = "Weather dbg: idle",
 };
+
+static void trim_spaces(char *text) {
+    if (!text || !text[0]) {
+        return;
+    }
+
+    size_t start = 0;
+    while (text[start] == ' ' || text[start] == '\t') {
+        start++;
+    }
+
+    if (start > 0) {
+        memmove(text, text + start, strlen(text + start) + 1);
+    }
+
+    size_t len = strlen(text);
+    while (len > 0 && (text[len - 1] == ' ' || text[len - 1] == '\t')) {
+        text[len - 1] = '\0';
+        len--;
+    }
+}
+
+static void url_encode_basic(const char *src, char *dst, size_t dst_size) {
+    static const char hex[] = "0123456789ABCDEF";
+    size_t out = 0;
+
+    if (!src || !dst || dst_size == 0) {
+        return;
+    }
+
+    for (size_t index = 0; src[index] != '\0' && out + 1 < dst_size; index++) {
+        unsigned char ch = (unsigned char)src[index];
+        bool safe = (ch >= 'a' && ch <= 'z') ||
+                    (ch >= 'A' && ch <= 'Z') ||
+                    (ch >= '0' && ch <= '9') ||
+                    ch == '-' || ch == '_' || ch == '.' || ch == '~';
+        if (safe) {
+            dst[out++] = (char)ch;
+        } else {
+            if (out + 3 >= dst_size) {
+                break;
+            }
+            dst[out++] = '%';
+            dst[out++] = hex[(ch >> 4) & 0x0F];
+            dst[out++] = hex[ch & 0x0F];
+        }
+    }
+    dst[out] = '\0';
+}
+
+static int parse_location_lat_lon(const char *location, char *lat_out, size_t lat_size, char *lon_out, size_t lon_size) {
+    if (!location || !lat_out || !lon_out || lat_size == 0 || lon_size == 0) {
+        return 0;
+    }
+
+    const char *comma = strchr(location, ',');
+    if (!comma) {
+        return 0;
+    }
+
+    size_t lat_len = (size_t)(comma - location);
+    size_t lon_len = strlen(comma + 1);
+    if (lat_len == 0 || lon_len == 0 || lat_len >= lat_size || lon_len >= lon_size) {
+        return 0;
+    }
+
+    memcpy(lat_out, location, lat_len);
+    lat_out[lat_len] = '\0';
+    memcpy(lon_out, comma + 1, lon_len);
+    lon_out[lon_len] = '\0';
+
+    trim_spaces(lat_out);
+    trim_spaces(lon_out);
+
+    return lat_out[0] != '\0' && lon_out[0] != '\0';
+}
+
+static int resolve_location(const char *location, char *lat_out, size_t lat_size, char *lon_out, size_t lon_size) {
+    if (parse_location_lat_lon(location, lat_out, lat_size, lon_out, lon_size)) {
+        return 1;
+    }
+
+    char encoded[128];
+    char geocode_url[256];
+    char geocode_response[1024];
+
+    url_encode_basic(location, encoded, sizeof(encoded));
+    if (encoded[0] == '\0') {
+        return 0;
+    }
+
+    snprintf(geocode_url, sizeof(geocode_url), WEATHER_GEOCODE_URL_FMT, encoded);
+    int geocode_result = os_http_get(geocode_url, geocode_response, sizeof(geocode_response), WEATHER_HTTP_TIMEOUT_MS);
+    if (geocode_result <= 0) {
+        return 0;
+    }
+
+    if (JSON_Validate(geocode_response, strlen(geocode_response)) != JSONSuccess) {
+        return 0;
+    }
+
+    const char *lat_value = NULL;
+    const char *lon_value = NULL;
+    size_t lat_len = 0;
+    size_t lon_len = 0;
+    if (JSON_SearchConst(geocode_response, strlen(geocode_response), "results[0].latitude", strlen("results[0].latitude"), &lat_value, &lat_len, NULL) != JSONSuccess ||
+        JSON_SearchConst(geocode_response, strlen(geocode_response), "results[0].longitude", strlen("results[0].longitude"), &lon_value, &lon_len, NULL) != JSONSuccess) {
+        return 0;
+    }
+
+    if (lat_len >= lat_size || lon_len >= lon_size) {
+        return 0;
+    }
+
+    memcpy(lat_out, lat_value, lat_len);
+    lat_out[lat_len] = '\0';
+    memcpy(lon_out, lon_value, lon_len);
+    lon_out[lon_len] = '\0';
+    return 1;
+}
 
 static void weather_pause_seconds(int seconds) {
     time_t end_time = time(NULL) + seconds;
@@ -178,11 +303,41 @@ static void refresh_weather_if_needed(int force) {
         return;
     }
 
+    char timezone[48];
+    char timezone_encoded[96];
+    char location[64];
+    char latitude[24];
+    char longitude[24];
+    char weather_url[320];
+
+    os_settings_get_string(SETTINGS_KEY_TIMEZONE, DEFAULT_TIMEZONE, timezone, sizeof(timezone));
+    os_settings_get_string(SETTINGS_KEY_LOCATION, DEFAULT_LOCATION, location, sizeof(location));
+    trim_spaces(timezone);
+    trim_spaces(location);
+    if (timezone[0] == '\0') {
+        snprintf(timezone, sizeof(timezone), "%s", DEFAULT_TIMEZONE);
+    }
+    if (location[0] == '\0') {
+        snprintf(location, sizeof(location), "%s", DEFAULT_LOCATION);
+    }
+
+    if (!resolve_location(location, latitude, sizeof(latitude), longitude, sizeof(longitude))) {
+        weather.has_data = false;
+        snprintf(weather.status, sizeof(weather.status), "Weather location unresolved");
+        snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: location=%s", location);
+        os_log(TAG, "Weather location resolve failed: %s", location);
+        weather.next_refresh_at = now + 30;
+        return;
+    }
+
+    url_encode_basic(timezone, timezone_encoded, sizeof(timezone_encoded));
+    snprintf(weather_url, sizeof(weather_url), WEATHER_FORECAST_URL_FMT, latitude, longitude, timezone_encoded);
+
     char response[768];
     int result = -1;
     for (int attempt = 1; attempt <= WEATHER_HTTP_ATTEMPTS; attempt++) {
         response[0] = '\0';
-        result = os_http_get(WEATHER_URL, response, sizeof(response), WEATHER_HTTP_TIMEOUT_MS);
+        result = os_http_get(weather_url, response, sizeof(response), WEATHER_HTTP_TIMEOUT_MS);
         os_log(TAG, "Weather HTTP attempt=%d result=%d bytes=%u", attempt, result, (unsigned)strlen(response));
         if (result > 0) {
             break;
@@ -257,7 +412,7 @@ static void refresh_weather_if_needed(int force) {
     weather.temperature_tenths_c = temp_tenths;
     weather.weather_code = code;
     snprintf(weather.status, sizeof(weather.status), "Weather updated");
-    snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: temp=%d code=%d", temp_tenths, code);
+    snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: %s %s", timezone, location);
     os_log(TAG, "Weather updated: temp_tenths=%d weather_code=%d", temp_tenths, code);
     weather.next_refresh_at = now + WEATHER_REFRESH_SECONDS;
 }

@@ -109,6 +109,15 @@ bool os_get_time_status(os_time_status_t *status);
 bool os_time_is_synchronized(void);
 int64_t os_time_last_sync(void);
 int os_http_get(const char *url, char *out, size_t out_size, int timeout_ms);
+size_t os_settings_get_string(const char *key_path,
+                              const char *default_value,
+                              char *out,
+                              size_t out_size);
+bool os_settings_set_string(const char *key_path, const char *value);
+int os_settings_get_int(const char *key_path, int default_value);
+bool os_settings_set_int(const char *key_path, int value);
+bool os_settings_get_bool(const char *key_path, bool default_value);
+bool os_settings_set_bool(const char *key_path, bool value);
 void os_unload_app(void);
 app_context_t *os_get_current_app(void);
 void os_set_current_app(app_context_t *app);

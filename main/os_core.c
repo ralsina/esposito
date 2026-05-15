@@ -59,6 +59,7 @@ static char pending_app_name[64];
 static bool in_app_callback = false;
 
 #define OS_STARTUP_FILE_KEY "os/startup_file"
+#define OS_SETTINGS_APP_NAME "settings"
 
 // Serial ring buffer: decouples UART reads from event dispatch
 #define SERIAL_RING_SIZE 2048
@@ -265,6 +266,96 @@ bool os_time_is_synchronized(void) {
 
 int64_t os_time_last_sync(void) {
     return (int64_t)wifi_time_last_sync();
+}
+
+size_t os_settings_get_string(const char *key_path,
+                              const char *default_value,
+                              char *out,
+                              size_t out_size) {
+    if (!key_path || !out || out_size == 0) {
+        return 0;
+    }
+
+    if (!config_bind_app(OS_SETTINGS_APP_NAME)) {
+        const char *fallback = default_value ? default_value : "";
+        strncpy(out, fallback, out_size - 1);
+        out[out_size - 1] = '\0';
+        return strlen(out);
+    }
+
+    size_t len = config_get_string(key_path, default_value, out, out_size);
+    config_unbind_app();
+    return len;
+}
+
+bool os_settings_set_string(const char *key_path, const char *value) {
+    if (!key_path) {
+        return false;
+    }
+
+    if (!config_bind_app(OS_SETTINGS_APP_NAME)) {
+        return false;
+    }
+
+    bool ok = config_set_string(key_path, value ? value : "");
+    config_unbind_app();
+    return ok;
+}
+
+int os_settings_get_int(const char *key_path, int default_value) {
+    if (!key_path) {
+        return default_value;
+    }
+
+    if (!config_bind_app(OS_SETTINGS_APP_NAME)) {
+        return default_value;
+    }
+
+    int value = config_get_int(key_path, default_value);
+    config_unbind_app();
+    return value;
+}
+
+bool os_settings_set_int(const char *key_path, int value) {
+    if (!key_path) {
+        return false;
+    }
+
+    if (!config_bind_app(OS_SETTINGS_APP_NAME)) {
+        return false;
+    }
+
+    bool ok = config_set_int(key_path, value);
+    config_unbind_app();
+    return ok;
+}
+
+bool os_settings_get_bool(const char *key_path, bool default_value) {
+    if (!key_path) {
+        return default_value;
+    }
+
+    if (!config_bind_app(OS_SETTINGS_APP_NAME)) {
+        return default_value;
+    }
+
+    bool value = config_get_bool(key_path, default_value);
+    config_unbind_app();
+    return value;
+}
+
+bool os_settings_set_bool(const char *key_path, bool value) {
+    if (!key_path) {
+        return false;
+    }
+
+    if (!config_bind_app(OS_SETTINGS_APP_NAME)) {
+        return false;
+    }
+
+    bool ok = config_set_bool(key_path, value);
+    config_unbind_app();
+    return ok;
 }
 
 typedef struct {

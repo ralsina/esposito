@@ -41,6 +41,12 @@ SYMBOLS=(
     os_time_is_synchronized
     os_time_last_sync
     os_http_get
+    os_settings_get_string
+    os_settings_set_string
+    os_settings_get_int
+    os_settings_set_int
+    os_settings_get_bool
+    os_settings_set_bool
     os_get_current_app
     app_launcher_start
     text_mode_init
