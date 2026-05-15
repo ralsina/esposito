@@ -2,6 +2,7 @@ idf_component_register(
     SRCS "main.c"
         "app_heap.c"
         "app_config.c"
+        "app_manifest.c"
         "os_core.c"
         "os_symtab.c"
         "elf_loader.c"

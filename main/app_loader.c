@@ -1,6 +1,7 @@
 #include "app_loader.h"
 #include "app_heap.h"
 #include "app_config.h"
+#include "app_manifest.h"
 #include "os_core.h"
 #include "elf_loader.h"
 #include "sd_card.h"
@@ -34,6 +35,10 @@ int app_loader_scan(char (*app_names)[64], int max_apps) {
                 FILE *f = fopen(elf_path, "r");
                 if (f) {
                     fclose(f);
+                    // Skip apps that declare launcher=no in their manifest
+                    app_sd_manifest_t manifest;
+                    app_manifest_read(entry->d_name, &manifest);
+                    if (!manifest.show_in_launcher) continue;
                     strncpy(app_names[count], entry->d_name, 63);
                     app_names[count][63] = '\0';
                     count++;

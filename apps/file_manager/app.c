@@ -3,6 +3,7 @@
 #include "ui.h"
 #include "app_config.h"
 #include "app_launcher.h"
+#include "app_manifest.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -18,11 +19,6 @@
 #define FM_STATUS_MAX 128
 #define FM_PANES 2
 #define FM_OPEN_WITH_MAX 4
-
-typedef struct {
-    const char *app_name;
-    const char *extensions[5];
-} fm_app_assoc_t;
 
 typedef struct {
     char name[FM_MAX_NAME];
@@ -54,11 +50,8 @@ typedef struct {
 static const char *TAG = "file_manager";
 static file_manager_t state;
 
-static const fm_app_assoc_t APP_ASSOCIATIONS[] = {
-    {"reader", {".md", ".markdown", NULL}},
-    {"kilo", {".txt", ".md", ".markdown", ".c", ".h"}},
-    {"image_viewer", {".jpg", ".jpeg", NULL}},
-};
+// Storage for app names returned by manifest lookup (static to avoid stack pressure)
+static char manifest_app_bufs[FM_OPEN_WITH_MAX][64];
 
 static int ascii_tolower(int ch) {
     if (ch >= 'A' && ch <= 'Z') {
@@ -367,16 +360,15 @@ static void open_selected_with_app(const char *app_name, const char *file_path) 
 }
 
 static int collect_apps_for_path(const char *path, const char **apps_out, int max_apps) {
-    int count = 0;
-    for (size_t assoc_index = 0; assoc_index < sizeof(APP_ASSOCIATIONS) / sizeof(APP_ASSOCIATIONS[0]); assoc_index++) {
-        for (int ext_index = 0; APP_ASSOCIATIONS[assoc_index].extensions[ext_index]; ext_index++) {
-            if (path_has_extension(path, APP_ASSOCIATIONS[assoc_index].extensions[ext_index])) {
-                if (count < max_apps) {
-                    apps_out[count++] = APP_ASSOCIATIONS[assoc_index].app_name;
-                }
-                break;
-            }
-        }
+    // Find the extension (without the leading dot)
+    const char *dot = strrchr(path, '.');
+    if (!dot || !dot[1]) return 0;
+    const char *ext = dot + 1;
+
+    int n = max_apps < FM_OPEN_WITH_MAX ? max_apps : FM_OPEN_WITH_MAX;
+    int count = app_manifest_find_apps_for_ext(ext, manifest_app_bufs, n);
+    for (int i = 0; i < count; i++) {
+        apps_out[i] = manifest_app_bufs[i];
     }
     return count;
 }

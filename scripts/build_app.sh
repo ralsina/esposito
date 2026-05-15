@@ -137,3 +137,6 @@ echo ""
 echo "To use, copy to SD card:"
 echo "  mkdir -p /sdcard/apps/${APP_NAME}"
 echo "  cp $OUTPUT_DIR/${APP_NAME}.elf /sdcard/apps/${APP_NAME}/program.elf"
+if [ -f "${APP_DIR}/manifest.cfg" ]; then
+    echo "  cp ${APP_DIR}/manifest.cfg /sdcard/apps/${APP_NAME}/manifest.cfg"
+fi

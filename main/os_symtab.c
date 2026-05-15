@@ -1,6 +1,7 @@
 #include "os_symtab.h"
 #include "app_heap.h"
 #include "app_config.h"
+#include "app_manifest.h"
 #include "os_core.h"
 #include "hardware.h"
 #include "checkpoint.h"
@@ -147,6 +148,9 @@ static const os_symtab_entry_t symtab[] = {
     {"os_unload_app",           os_unload_app},
     {"fputc",                   fputc},
     {"time",                    time},
+    {"app_manifest_read",              app_manifest_read},
+    {"app_manifest_get_display_name",  app_manifest_get_display_name},
+    {"app_manifest_find_apps_for_ext", app_manifest_find_apps_for_ext},
     {NULL, NULL}
 };
 

@@ -4,6 +4,7 @@
 #include "app_launcher.h"
 #include "os_core.h"
 #include "app_loader.h"
+#include "app_manifest.h"
 #include "ui.h"
 #include "hardware.h"
 #include "text_mode.h"
@@ -18,7 +19,8 @@ static const char *TAG = "app_launcher";
 static bool app_launcher_active = false;
 static int app_launcher_selected = 0;
 static int app_count = 0;
-static char app_names[APP_LOADER_MAX_APPS][64];
+static char app_names[APP_LOADER_MAX_APPS][64];         // directory names (for loading)
+static char app_display_names[APP_LOADER_MAX_APPS][64]; // human-readable (for display)
 
 // App launcher UI layout
 #define HEADER_ROW 1
@@ -88,7 +90,7 @@ static void app_launcher_show(void) {
             uint16_t color = (i == app_launcher_selected) ? TEXT_COLOR_GREEN : TEXT_COLOR_WHITE;
             char marker = (i == app_launcher_selected) ? '>' : ' ';
             char line[80];
-            snprintf(line, sizeof(line), "%c %d. %.63s", marker, i + 1, app_names[i]);
+            snprintf(line, sizeof(line), "%c %d. %.63s", marker, i + 1, app_display_names[i]);
             ui_label(5, y, line, color);
         }
         y++;
@@ -152,9 +154,13 @@ void app_launcher_start(void) {
         return;
     }
 
-    // Get list of available apps
+    // Get list of available apps (manifest-filtered)
     app_count = app_loader_scan(app_names, APP_LOADER_MAX_APPS);
     sort_app_names();
+    // Populate human-readable display names from manifests
+    for (int i = 0; i < app_count; i++) {
+        app_manifest_get_display_name(app_names[i], app_display_names[i], 64);
+    }
     if (app_count == 0) {
         ESP_LOGE(TAG, "No apps found!");
         ui_clear();

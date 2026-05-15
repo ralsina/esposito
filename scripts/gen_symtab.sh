@@ -146,6 +146,9 @@ SYMBOLS=(
     os_unload_app
     fputc
     time
+    app_manifest_read
+    app_manifest_get_display_name
+    app_manifest_find_apps_for_ext
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"
