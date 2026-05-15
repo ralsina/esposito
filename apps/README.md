@@ -6,7 +6,7 @@ Dynamic apps that run on Esposito OS. Each app is compiled to a self-contained E
 
 ### [kilo](kilo/)
 
-A minimal text editor, ported from Salvatore Sanfilippo's classic [kilo](https://github.com/antirez/kilo). Open, edit, and save text files on the SD card. Supports Ctrl+O to open, Ctrl+S to save, Ctrl+W to save as.
+A minimal text editor, ported from Salvatore Sanfilippo's classic [kilo](https://github.com/antirez/kilo). Open, edit, and save text files on the SD card. Supports Ctrl+O file picker open, Ctrl+S save, Ctrl+W save as.
 
 ![kilo](kilo/kilo.png)
 
@@ -44,7 +44,13 @@ System settings: WiFi SSID/password configuration, serial log toggle, and WiFi c
 
 Two-pane filesystem browser for SD card content (mc-style). Navigate each pane independently and keep pane paths between launches.
 
-Current controls: `W/S` move, `A/D` or `Tab` switch pane, `Enter` open directory, `ESC` up/exit, `R` reload.
+Current controls: `W/S` move, `A/D` or `Tab` switch pane, `Enter` open directory, `ESC` up/exit, `R` reload, `K` mkdir, `C` copy to other pane, `O` open-with app.
+
+---
+
+### [file_picker](file_picker/)
+
+Single-pane reusable file picker app. Constrains navigation to a configured root path and filters visible files by a configured glob.
 
 ---
 

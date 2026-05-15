@@ -90,6 +90,8 @@ void os_log(const char *tag, const char *fmt, ...);
 bool os_init_filesystem(void);
 void os_event_loop(void);
 bool os_load_app(const char *app_name);
+bool os_open_app_with_file(const char *app_name, const char *file_path);
+size_t os_consume_startup_file(char *out, size_t out_size);
 void os_unload_app(void);
 app_context_t *os_get_current_app(void);
 void os_set_current_app(app_context_t *app);

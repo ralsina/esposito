@@ -59,17 +59,8 @@ static void open_selected_book(reader_state_t *state, int *bold_pending, int *un
 }
 
 static void exit_to_file_list(reader_state_t *state) {
-    char last_path[MAX_PATH];
-    strncpy(last_path, state->current_file, sizeof(last_path) - 1);
-    last_path[sizeof(last_path) - 1] = '\0';
-
-    state->mode = MODE_FILE_LIST;
     reader_close_current_file(state);
-    reader_scan_md_files(state);
-    int selected_index = reader_find_file_index_by_path(state, last_path);
-    state->file_selected = (selected_index >= 0) ? selected_index : 0;
-    config_set_string(KEY_LAST_FILE, "");
-    reader_view_draw_file_list(state);
+    reader_events_show_file_list(state);
 }
 
 static void handle_file_list_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {

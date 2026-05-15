@@ -76,6 +76,8 @@ void app_heap_reset(void) {
         return;
     }
 
+    memset(app_heap_storage, 0, app_heap_size);
+    app_heap = NULL;
     app_heap = multi_heap_register(app_heap_storage, app_heap_size);
     if (!app_heap) {
         ESP_LOGE(TAG, "Failed to reset app heap");

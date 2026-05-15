@@ -1,6 +1,7 @@
 #include "elf_loader.h"
 #include "os_symtab.h"
 #include "os_core.h"
+#include "app_heap.h"
 #include "sd_card.h"
 #include "esp_log.h"
 #include "esp_partition.h"
@@ -265,17 +266,6 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
             continue;
         }
 
-        uint8_t *rel_buf = malloc(rel_sh->sh_size);
-        if (!rel_buf) {
-            ESP_LOGE(TAG, "Failed to allocate relocation buffer (%lu bytes)", (unsigned long)rel_sh->sh_size);
-            return false;
-        }
-        if (!read_exact_at(fp, rel_sh->sh_offset, rel_buf, rel_sh->sh_size)) {
-            ESP_LOGE(TAG, "Failed to read relocation section at offset 0x%lx", (unsigned long)rel_sh->sh_offset);
-            free(rel_buf);
-            return false;
-        }
-
         int num_rels = rel_sh->sh_size / rel_size;
 
         int symtab_link = rel_sh->sh_link;
@@ -299,14 +289,26 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
             int32_t r_addend = 0;
 
             if (rel_sh->sh_type == SHT_RELA) {
-                const elf32_rela_t *rel = (const elf32_rela_t *)(rel_buf + rel_index * rel_size);
-                r_offset = rel->r_offset;
-                r_info = rel->r_info;
-                r_addend = rel->r_addend;
+                elf32_rela_t rel;
+                long rel_off = (long)rel_sh->sh_offset + (long)rel_index * rel_size;
+                if (!read_exact_at(fp, rel_off, &rel, sizeof(rel))) {
+                    ESP_LOGE(TAG, "Failed to read RELA entry %d at offset 0x%lx",
+                             rel_index, (unsigned long)rel_off);
+                    return false;
+                }
+                r_offset = rel.r_offset;
+                r_info = rel.r_info;
+                r_addend = rel.r_addend;
             } else {
-                const elf32_rel_t *rel = (const elf32_rel_t *)(rel_buf + rel_index * rel_size);
-                r_offset = rel->r_offset;
-                r_info = rel->r_info;
+                elf32_rel_t rel;
+                long rel_off = (long)rel_sh->sh_offset + (long)rel_index * rel_size;
+                if (!read_exact_at(fp, rel_off, &rel, sizeof(rel))) {
+                    ESP_LOGE(TAG, "Failed to read REL entry %d at offset 0x%lx",
+                             rel_index, (unsigned long)rel_off);
+                    return false;
+                }
+                r_offset = rel.r_offset;
+                r_info = rel.r_info;
             }
 
             r_sym = r_info >> 8;
@@ -341,8 +343,6 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
             *patch_addr = new_val;
             (*patched_count)++;
         }
-
-        free(rel_buf);
     }
 
     (void)target_is_dram;
@@ -624,7 +624,8 @@ elf_handle_t *elf_loader_load(const char *path) {
             bool is_exec = (sh->sh_flags & SHF_EXECINSTR) != 0;
             if ((pass == 0 && !is_exec) || (pass == 1 && is_exec)) continue;
 
-            uint8_t *section_buf = malloc(sh->sh_size);
+            // Use app heap for large per-section temp buffers to avoid global heap fragmentation.
+            uint8_t *section_buf = app_malloc(sh->sh_size);
             if (!section_buf) {
                 ESP_LOGE(TAG, "Failed to allocate section buffer (%lu bytes)", (unsigned long)sh->sh_size);
                 free(strtab);
@@ -637,7 +638,7 @@ elf_handle_t *elf_loader_load(const char *path) {
 
             if (!read_exact_at(fp, sh->sh_offset, section_buf, sh->sh_size)) {
                 ESP_LOGE(TAG, "Failed to read section data at offset 0x%lx", (unsigned long)sh->sh_offset);
-                free(section_buf);
+                app_free(section_buf);
                 free(strtab);
                 free(symtab);
                 free(shdrs);
@@ -647,7 +648,7 @@ elf_handle_t *elf_loader_load(const char *path) {
             }
 
             if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, strtab, section_index, section_buf, false, &total_patched)) {
-                free(section_buf);
+                app_free(section_buf);
                 free(strtab);
                 free(symtab);
                 free(shdrs);
@@ -657,7 +658,7 @@ elf_handle_t *elf_loader_load(const char *path) {
             }
 
             ret = esp_partition_write(handle->flash_part, write_offset, section_buf, sh->sh_size);
-            free(section_buf);
+            app_free(section_buf);
             if (ret != ESP_OK) {
                 ESP_LOGE(TAG, "Failed to write to flash: %s", esp_err_to_name(ret));
                 free(strtab);

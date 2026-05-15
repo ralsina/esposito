@@ -1,5 +1,6 @@
 #include "os_core.h"
 #include "text_mode.h"
+#include "app_config.h"
 #include "reader_state.h"
 #include "reader_core.h"
 #include "reader_events.h"

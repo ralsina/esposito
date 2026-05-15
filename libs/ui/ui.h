@@ -2,6 +2,7 @@
 #define UI_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "os_core.h"
 #include "text_mode.h"
@@ -49,6 +50,22 @@ void ui_text_input_widget_draw(const ui_text_input_widget_t *widget);
 // Returns: 1 on Enter (confirm), 0 while editing/ignored, -1 on ESC (cancel)
 // Redraws + flushes automatically while editing.
 int ui_text_input_widget_handle_event(const ui_text_input_widget_t *widget, const event_t *event);
+
+// Column widget for displaying scrollable lists
+// Stateless: app owns the data (char** list), selection index, and scroll offset.
+// Widget just renders from a given scroll offset with a selected row highlighted.
+
+// Draw a column widget
+// x, y: top-left position
+// width, height: dimensions (including border)
+// title: window title
+// active: whether this column is active (affects highlight colors)
+// items: pointer to array of strings (char**)
+// count: number of items in the array
+// selected: which item is currently selected (0-based)
+// scroll_offset: which item is at the top of the display
+void ui_column_draw(int x, int y, int width, int height, const char *title, int active,
+                    const char **items, int count, int selected, int scroll_offset);
 
 // Clear screen to black
 void ui_clear(void);

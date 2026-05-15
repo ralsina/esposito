@@ -2,6 +2,7 @@
 
 #include "app_config.h"
 #include "reader_events.h"
+#include "os_core.h"
 #include "text_mode.h"
 
 #include <string.h>
@@ -13,7 +14,10 @@ void reader_startup_init(reader_state_t *state, int *bold_pending, int *underlin
     state->search_status[0] = '\0';
 
     char saved_file[MAX_PATH];
-    size_t saved_len = config_get_string(KEY_LAST_FILE, "", saved_file, sizeof(saved_file));
+    size_t saved_len = os_consume_startup_file(saved_file, sizeof(saved_file));
+    if (saved_len == 0) {
+        saved_len = config_get_string(KEY_LAST_FILE, "", saved_file, sizeof(saved_file));
+    }
     if (saved_len == 0) {
         saved_len = config_get_string(KEY_LEGACY_LAST_FILE, "", saved_file, sizeof(saved_file));
     }

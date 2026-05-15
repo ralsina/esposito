@@ -30,6 +30,9 @@ SYMBOLS=(
     checkpoint_save
     checkpoint_open
     checkpoint_close
+    os_load_app
+    os_open_app_with_file
+    os_consume_startup_file
     os_get_current_app
     app_launcher_start
     text_mode_init
@@ -80,6 +83,7 @@ SYMBOLS=(
     readdir
     closedir
     stat
+    mkdir
     os_log
     terminal_mode_default
     terminal_mode_init

@@ -218,6 +218,81 @@ int ui_text_input_widget_handle_event(const ui_text_input_widget_t *widget, cons
     return 0;
 }
 
+void ui_column_draw(int x, int y, int width, int height, const char *title, int active,
+                    const char **items, int count, int selected, int scroll_offset) {
+    if (width < 3 || height < 3) return;
+
+    int list_rows = height - 2;
+    if (list_rows < 1) list_rows = 1;
+    int list_width = width - 2;
+    if (list_width < 1) list_width = 1;
+
+    // Auto-adjust scroll_offset to keep selection visible
+    if (count > 0) {
+        if (selected < scroll_offset) {
+            scroll_offset = selected;
+        } else if (selected >= scroll_offset + list_rows) {
+            scroll_offset = selected - list_rows + 1;
+        }
+    }
+
+    // Clamp scroll offset to valid range
+    if (scroll_offset < 0) scroll_offset = 0;
+    if (scroll_offset > count - list_rows && count > list_rows) {
+        scroll_offset = count - list_rows;
+    }
+    if (scroll_offset < 0) scroll_offset = 0;
+
+    // Draw window border
+    ui_window(x, y, width, height, title);
+
+    // Draw rows
+    for (int row = 0; row < list_rows; row++) {
+        int index = scroll_offset + row;
+        int screen_y = y + 1 + row;
+
+        if (index < count && items && items[index]) {
+            const char *line = items[index];
+
+            int max_text = list_width;
+            if (max_text < 0) max_text = 0;
+
+            uint8_t fg = TEXT_COLOR_WHITE;
+            uint8_t bg = TEXT_COLOR_BLACK;
+            uint8_t attr = TEXT_ATTR_NORMAL;
+
+            if (index == selected && active) {
+                fg = TEXT_COLOR_BLACK;
+                bg = TEXT_COLOR_BRIGHT_GREEN;
+                attr = TEXT_ATTR_BOLD;
+            } else if (index == selected) {
+                fg = TEXT_COLOR_BLACK;
+                bg = TEXT_COLOR_CYAN;
+            }
+
+            // Truncate if needed
+            char truncated[192];
+            snprintf(truncated, sizeof(truncated), "%s", line);
+            if ((int)strlen(truncated) > max_text) {
+                truncated[max_text] = '\0';
+            }
+
+            text_mode_print_at_attr_bg(x + 1, screen_y, truncated, fg, bg, attr);
+
+            // Fill rest of line
+            int used = (int)strlen(truncated);
+            for (int col_pos = used; col_pos < list_width; col_pos++) {
+                text_mode_print_at_attr_bg(x + 1 + col_pos, screen_y, " ", fg, bg, attr);
+            }
+        } else {
+            // Empty row
+            for (int col_pos = 0; col_pos < list_width; col_pos++) {
+                text_mode_print_at_attr_bg(x + 1 + col_pos, screen_y, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+            }
+        }
+    }
+}
+
 void ui_clear(void) {
     text_mode_clear(TEXT_COLOR_BLACK);
 }

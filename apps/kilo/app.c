@@ -14,6 +14,7 @@
 #include <time.h>
 
 static const char *TAG = "kilo";
+static const char *KILO_FILE_KEY = "editor_file";
 
 #define KILO_VERSION "0.0.1"
 
@@ -803,6 +804,8 @@ static void editorMoveCursor(editor_t *editor, int key) {
     if (editor->cx > rowlen) editor->cx = rowlen;
 }
 
+
+
 /* ======================== App Lifecycle ======================== */
 
 void app_init(app_context_t *ctx) {
@@ -845,9 +848,15 @@ void app_init(app_context_t *ctx) {
     
     /* Try to open a file from config, or start empty */
     char filename[256] = {0};
-    config_bind_app("kilo");
-    config_get_string("editor/file", "", filename, sizeof(filename));
-    config_unbind_app();
+    os_consume_startup_file(filename, sizeof(filename));
+    if (!filename[0] && config_bind_app("kilo")) {
+        // Backward-compatible fallback for older writer paths.
+        config_get_string(KILO_FILE_KEY, "", filename, sizeof(filename));
+        if (!filename[0]) {
+            config_get_string("editor/file", "", filename, sizeof(filename));
+        }
+        config_unbind_app();
+    }
     
     if (filename[0]) {
         if (!editorOpen(&kilo->editor, filename)) {
@@ -961,7 +970,7 @@ void app_event(app_context_t *ctx, event_t *event) {
 void app_checkpoint(app_context_t *ctx) {
     if (kilo && kilo->editor.filename[0]) {
         config_bind_app("kilo");
-        config_set_string("editor/file", kilo->editor.filename);
+        config_set_string(KILO_FILE_KEY, kilo->editor.filename);
         config_unbind_app();
     }
 }
@@ -970,7 +979,7 @@ void app_close(app_context_t *ctx) {
     if (kilo) {
         config_bind_app("kilo");
         if (kilo->editor.filename[0]) {
-            config_set_string("editor/file", kilo->editor.filename);
+            config_set_string(KILO_FILE_KEY, kilo->editor.filename);
         }
         config_unbind_app();
         

@@ -1,6 +1,7 @@
 #include "boot.h"
 #include "hardware.h"
 #include "os_core.h"
+#include "app_heap.h"
 #include "app_loader.h"
 #include "app_launcher.h"
 #include "app_config.h"
@@ -54,13 +55,16 @@ static void boot_report_app_memory(void) {
              (unsigned)free_internal, (double)free_internal / 1024.0);
     ESP_LOGI(TAG, "  Largest internal block: %u bytes (%.1f KiB)",
              (unsigned)largest_internal, (double)largest_internal / 1024.0);
+    app_heap_log_stats("App heap");
 }
 
 static void boot_apply_log_output_setting(void) {
-    bool enabled = false;
+    bool enabled = serial_log_output_is_enabled();
     if (config_bind_app("settings")) {
         enabled = config_get_bool("serial_log_output", false);
         config_unbind_app();
+    } else {
+        ESP_LOGW(TAG, "Settings config unavailable; keeping serial log output enabled");
     }
     serial_log_output_set_enabled(enabled);
 }
@@ -168,6 +172,17 @@ void boot_sequence(void) {
     ESP_LOGI(TAG, "║     ESP32 CYD (2USB version)         ║");
     ESP_LOGI(TAG, "╚═══════════════════════════════════════╝");
     ESP_LOGI(TAG, "");
+
+    ESP_LOGI(TAG, "Reserving app heap early");
+    if (!app_heap_init()) {
+        ESP_LOGE(TAG, "App heap reservation failed");
+        boot_status.stage = BOOT_STAGE_FAILED;
+        boot_status.stage_name = "Boot Failed";
+        boot_status.success = false;
+        boot_status.error_message = "App heap reservation failed";
+        return;
+    }
+    boot_report_app_memory();
 
     // Stage 1: Display initialization
     boot_display_init();

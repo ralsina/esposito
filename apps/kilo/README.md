@@ -9,24 +9,24 @@ A minimal text editor for Esposito OS, ported from the classic
 
 - Open, edit, and save text files on the SD card
 - Syntax highlighting for C/C++, JSON, and Markdown files (`.c`, `.h`, `.cpp`, `.json`, `.md`, `.markdown`)
-- Open-file and save-as prompts
+- Open-file picker and save-as prompt
 - Scrolling for files wider or longer than the screen
 - Modified-file indicator in the status bar
 
 ## Controls
 
 | Key | Action |
-|-----|--------|
+| --- | --- |
 | Fn + W/A/S/D | Move cursor up/left/down/right |
 | Backspace | Delete character |
 | Enter | Insert newline |
 | Fn + Q | Insert tab (4 spaces) |
 | ^S (Ctrl + S) | Save |
 | ^N (Ctrl + N) | New file |
-| ^O (Ctrl + O) | Open file prompt |
+| ^O (Ctrl + O) | Open file (prompt for path) |
 | ^W (Ctrl + W) | Save As prompt |
 
-In the Open / Save As prompt, type a full SD card path (e.g. `/sdcard/notes.txt`) and press Enter to confirm, or Esc to cancel.
+Save As still uses a typed path prompt.
 
 ## Default File
 

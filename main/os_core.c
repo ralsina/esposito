@@ -50,6 +50,11 @@ static event_t event_queue[EVENT_QUEUE_SIZE];
 static size_t event_queue_head = 0;
 static size_t event_queue_tail = 0;
 static app_context_t *current_app = NULL;
+static bool pending_app_switch = false;
+static char pending_app_name[64];
+static bool in_app_callback = false;
+
+#define OS_STARTUP_FILE_KEY "os/startup_file"
 
 // Serial ring buffer: decouples UART reads from event dispatch
 #define SERIAL_RING_SIZE 2048
@@ -157,16 +162,26 @@ void os_unload_app(void) {
         free(current_app);
         current_app = NULL;
         config_unbind_app();
-        app_heap_release();
+        app_heap_reset();
         os_log_global_heap_stats("after unload");
         app_heap_log_stats("after unload");
     }
-    // Deinit serial (teardown driver, clear ring buffer)
-    serial_deinit();
+    // Keep UART0 driver alive across app switches; apps can reconfigure it via serial_init().
     serial_ring_clear();
 }
 
 bool os_load_app(const char *app_name) {
+    if (in_app_callback) {
+        if (!app_name || !app_name[0]) {
+            return false;
+        }
+        strncpy(pending_app_name, app_name, sizeof(pending_app_name) - 1);
+        pending_app_name[sizeof(pending_app_name) - 1] = '\0';
+        pending_app_switch = true;
+        ESP_LOGI(TAG, "Deferring app switch until callback returns: %s", pending_app_name);
+        return true;
+    }
+
     os_log_global_heap_stats("before load");
     app_heap_log_stats("before load");
 
@@ -193,6 +208,42 @@ bool os_load_app(const char *app_name) {
     os_log_global_heap_stats("after load");
     app_heap_log_stats("after load");
     return true;
+}
+
+bool os_open_app_with_file(const char *app_name, const char *file_path) {
+    if (!app_name || !app_name[0] || !file_path || !file_path[0]) {
+        return false;
+    }
+
+    if (!config_bind_app(app_name)) {
+        return false;
+    }
+
+    bool ok = config_set_string(OS_STARTUP_FILE_KEY, file_path);
+    config_unbind_app();
+    if (!ok) {
+        return false;
+    }
+
+    return os_load_app(app_name);
+}
+
+size_t os_consume_startup_file(char *out, size_t out_size) {
+    if (!out || out_size == 0 || !current_app || !current_app->name[0]) {
+        return 0;
+    }
+
+    if (!config_bind_app(current_app->name)) {
+        out[0] = '\0';
+        return 0;
+    }
+
+    size_t len = config_get_string(OS_STARTUP_FILE_KEY, "", out, out_size);
+    if (len > 0 && out[0]) {
+        config_delete(OS_STARTUP_FILE_KEY);
+    }
+    config_unbind_app();
+    return len;
 }
 
 // Event posting (called by hardware layer)
@@ -374,9 +425,23 @@ void os_event_loop(void) {
             if (current_app && (current_app->subscriptions & event.type)) {
                 if (current_app->event_fn) {
                     ESP_LOGD(TAG, "Delivering event to app %s", current_app->name);
+                    in_app_callback = true;
                     current_app->event_fn(current_app, &event);
+                    in_app_callback = false;
                 }
             }
+        }
+
+        if (pending_app_switch) {
+            char app_to_load[64];
+            strncpy(app_to_load, pending_app_name, sizeof(app_to_load) - 1);
+            app_to_load[sizeof(app_to_load) - 1] = '\0';
+            pending_app_switch = false;
+
+            if (!os_load_app(app_to_load)) {
+                ESP_LOGE(TAG, "Deferred app load failed: %s", app_to_load);
+            }
+            continue;
         }
 
         // Auto-restart launcher if no app is running
