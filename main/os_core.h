@@ -81,6 +81,19 @@ typedef struct {
     uint32_t subscriptions;
 } app_manifest_t;
 
+typedef struct {
+    int64_t unix_time;
+    int64_t last_sync_time;
+    int year;
+    int month;
+    int day;
+    int hour;
+    int minute;
+    int second;
+    int weekday;
+    bool synchronized;
+} os_time_status_t;
+
 // OS core functions
 #ifdef __cplusplus
 extern "C" {
@@ -92,6 +105,9 @@ void os_event_loop(void);
 bool os_load_app(const char *app_name);
 bool os_open_app_with_file(const char *app_name, const char *file_path);
 size_t os_consume_startup_file(char *out, size_t out_size);
+bool os_get_time_status(os_time_status_t *status);
+bool os_time_is_synchronized(void);
+int64_t os_time_last_sync(void);
 void os_unload_app(void);
 app_context_t *os_get_current_app(void);
 void os_set_current_app(app_context_t *app);

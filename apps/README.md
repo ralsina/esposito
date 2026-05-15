@@ -72,6 +72,12 @@ Developer utility that renders all available fonts to the display for visual ins
 
 ---
 
+### [clock](clock/)
+
+Small UTC clock app showing current date/time, Unix timestamp, and whether the OS time has been trusted by NTP during this boot.
+
+---
+
 ### [sd_test](sd_test/)
 
 Developer utility that exercises SD card read/write and reports results to the display.

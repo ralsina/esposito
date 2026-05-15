@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 
 #define WIFI_MAX_SSID 32
 #define WIFI_MAX_PASSWORD 64
@@ -32,6 +33,10 @@ bool wifi_connect(const char *ssid, const char *password);
 
 // Disconnect
 void wifi_disconnect(void);
+
+// SNTP / time sync state for current boot
+bool wifi_time_is_synchronized(void);
+time_t wifi_time_last_sync(void);
 
 // Save WiFi config to SD card
 bool wifi_save_config(const char *ssid, const char *password);

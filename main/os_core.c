@@ -9,6 +9,7 @@
 #include "text_mode.h"
 #include "terminal_mode.h"
 #include "touchscreen.h"
+#include "wifi.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "esp_spiffs.h"
@@ -18,6 +19,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <time.h>
 
 static const char *TAG = "os_core";
 
@@ -226,6 +228,41 @@ bool os_open_app_with_file(const char *app_name, const char *file_path) {
     }
 
     return os_load_app(app_name);
+}
+
+bool os_get_time_status(os_time_status_t *status) {
+    if (!status) {
+        return false;
+    }
+
+    memset(status, 0, sizeof(*status));
+
+    time_t now = 0;
+    time(&now);
+    status->unix_time = (int64_t)now;
+    status->synchronized = wifi_time_is_synchronized();
+    status->last_sync_time = (int64_t)wifi_time_last_sync();
+
+    struct tm utc_time;
+    if (gmtime_r(&now, &utc_time)) {
+        status->year = utc_time.tm_year + 1900;
+        status->month = utc_time.tm_mon + 1;
+        status->day = utc_time.tm_mday;
+        status->hour = utc_time.tm_hour;
+        status->minute = utc_time.tm_min;
+        status->second = utc_time.tm_sec;
+        status->weekday = utc_time.tm_wday;
+    }
+
+    return true;
+}
+
+bool os_time_is_synchronized(void) {
+    return wifi_time_is_synchronized();
+}
+
+int64_t os_time_last_sync(void) {
+    return (int64_t)wifi_time_last_sync();
 }
 
 size_t os_consume_startup_file(char *out, size_t out_size) {

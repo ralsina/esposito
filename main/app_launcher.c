@@ -18,7 +18,7 @@ static const char *TAG = "app_launcher";
 static bool app_launcher_active = false;
 static int app_launcher_selected = 0;
 static int app_count = 0;
-static char app_names[10][64]; // Support up to 10 apps
+static char app_names[APP_LOADER_MAX_APPS][64];
 
 // App launcher UI layout
 #define HEADER_ROW 1
@@ -153,7 +153,7 @@ void app_launcher_start(void) {
     }
 
     // Get list of available apps
-    app_count = app_loader_scan(app_names, 10);
+    app_count = app_loader_scan(app_names, APP_LOADER_MAX_APPS);
     sort_app_names();
     if (app_count == 0) {
         ESP_LOGE(TAG, "No apps found!");

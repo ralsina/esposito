@@ -157,66 +157,47 @@ void text_mode_print_at_color(int x, int y, const char *str, uint16_t color) {
     text_mode_print_at_attr(x, y, str, color & 0x0F, TEXT_ATTR_NORMAL);
 }
 
-void text_mode_print_at_attr(int x, int y, const char *str, uint8_t color, uint8_t attr) {
-    if (!initialized || !grid) return;
+static void text_mode_write_cells(int x, int y, const char *str, uint8_t fg_color, uint8_t bg, uint8_t attr) {
+    if (!initialized || !grid || !str) return;
     if (x < 0 || x >= grid_cols || y < 0 || y >= grid_rows) return;
 
     int len = strlen(str);
     int max_chars = grid_cols - x;
+    int write_len = len < max_chars ? len : max_chars;
 
-    int px, py;
-    grid_to_pixel(x, y, &px, &py);
-    int sw = len * font_width;
-    display_fill_rect(px, py, sw, font_height, color_palette[bg_color & 0x0F]);
-
-    for (int i = 0; i < len && i < max_chars; i++) {
+    for (int i = 0; i < write_len; i++) {
         int idx = y * grid_cols + x + i;
-        grid[idx].character = str[i];
-        grid[idx].color = color;
-        grid[idx].bg_color = bg_color;
-        grid[idx].attributes = attr;
+        text_cell_t *cell = &grid[idx];
 
-        if (str[i] != ' ' || (attr & TEXT_ATTR_UNDERLINE)) {
-            update_cell(x + i, y);
+        if (cell->character == str[i] &&
+            cell->color == fg_color &&
+            cell->bg_color == bg &&
+            cell->attributes == attr) {
+            continue;
         }
+
+        cell->character = str[i];
+        cell->color = fg_color;
+        cell->bg_color = bg;
+        cell->attributes = attr;
+        update_cell(x + i, y);
     }
 
-    cursor_x = x + len - 1;
-    if (cursor_x >= grid_cols) {
-        cursor_x = 0;
-        cursor_y = (cursor_y + 1) % grid_rows;
+    if (write_len > 0) {
+        cursor_x = x + write_len - 1;
+        if (cursor_x >= grid_cols) {
+            cursor_x = 0;
+            cursor_y = (cursor_y + 1) % grid_rows;
+        }
     }
 }
 
+void text_mode_print_at_attr(int x, int y, const char *str, uint8_t color, uint8_t attr) {
+    text_mode_write_cells(x, y, str, color, bg_color, attr);
+}
+
 void text_mode_print_at_attr_bg(int x, int y, const char *str, uint8_t fg_color, uint8_t bg, uint8_t attr) {
-    if (!initialized || !grid) return;
-    if (x < 0 || x >= grid_cols || y < 0 || y >= grid_rows) return;
-
-    int len = strlen(str);
-    int max_chars = grid_cols - x;
-
-    int px, py;
-    grid_to_pixel(x, y, &px, &py);
-    int sw = len * font_width;
-    display_fill_rect(px, py, sw, font_height, color_palette[bg & 0x0F]);
-
-    for (int i = 0; i < len && i < max_chars; i++) {
-        int idx = y * grid_cols + x + i;
-        grid[idx].character = str[i];
-        grid[idx].color = fg_color;
-        grid[idx].bg_color = bg;
-        grid[idx].attributes = attr;
-
-        if (str[i] != ' ' || (attr & TEXT_ATTR_UNDERLINE)) {
-            update_cell(x + i, y);
-        }
-    }
-
-    cursor_x = x + len - 1;
-    if (cursor_x >= grid_cols) {
-        cursor_x = 0;
-        cursor_y = (cursor_y + 1) % grid_rows;
-    }
+    text_mode_write_cells(x, y, str, fg_color, bg, attr);
 }
 
 void text_mode_printf_at(int x, int y, const char *fmt, ...) {

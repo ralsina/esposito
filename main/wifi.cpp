@@ -4,15 +4,20 @@
 #include "esp_wifi.h"
 #include "esp_netif.h"
 #include "esp_event.h"
+#include "esp_sntp.h"
 #include "nvs_flash.h"
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <time.h>
 
 static const char *TAG = "wifi";
 
 static bool wifi_initialized = false;
 static bool wifi_connected = false;
+static bool ntp_initialized = false;
+static bool time_synchronized = false;
+static time_t last_time_sync = 0;
 static char wifi_ip[WIFI_IP_STR_LEN] = {0};
 static char wifi_ssid[WIFI_MAX_SSID] = {0};
 static char wifi_password[WIFI_MAX_PASSWORD] = {0};
@@ -23,6 +28,41 @@ static int scan_count = 0;
 
 // Config file path
 #define WIFI_CONFIG_PATH "/sdcard/config/wifi.txt"
+
+static void wifi_time_sync_notification(struct timeval *timeval_ptr) {
+    (void)timeval_ptr;
+
+    time_t now;
+    time(&now);
+    time_synchronized = true;
+    last_time_sync = now;
+
+    struct tm time_info;
+    gmtime_r(&now, &time_info);
+
+    char timestamp[32];
+    if (strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S UTC", &time_info) > 0) {
+        ESP_LOGI(TAG, "Time synchronized via NTP: %s", timestamp);
+    } else {
+        ESP_LOGI(TAG, "Time synchronized via NTP");
+    }
+}
+
+static void wifi_start_time_sync(void) {
+    if (!ntp_initialized) {
+        esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
+        esp_sntp_setservername(0, "pool.ntp.org");
+        esp_sntp_setservername(1, "time.cloudflare.com");
+        esp_sntp_set_time_sync_notification_cb(wifi_time_sync_notification);
+        esp_sntp_init();
+        ntp_initialized = true;
+        ESP_LOGI(TAG, "NTP sync started");
+        return;
+    }
+
+    esp_sntp_restart();
+    ESP_LOGI(TAG, "NTP sync restarted after reconnect");
+}
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                 int32_t event_id, void *event_data) {
@@ -40,6 +80,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
             wifi_connected = true;
             snprintf(wifi_ip, sizeof(wifi_ip), IPSTR, IP2STR(&event->ip_info.ip));
             ESP_LOGI(TAG, "WiFi connected, IP: %s", wifi_ip);
+            wifi_start_time_sync();
         }
     }
 }
@@ -195,6 +236,14 @@ void wifi_disconnect(void) {
     esp_wifi_disconnect();
     wifi_connected = false;
     wifi_ip[0] = '\0';
+}
+
+bool wifi_time_is_synchronized(void) {
+    return time_synchronized;
+}
+
+time_t wifi_time_last_sync(void) {
+    return last_time_sync;
 }
 
 bool wifi_save_config(const char *ssid, const char *password) {

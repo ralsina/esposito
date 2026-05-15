@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#define APP_LOADER_MAX_APPS 32
+
 // App loader initialization
 #ifdef __cplusplus
 extern "C" {
