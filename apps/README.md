@@ -40,7 +40,16 @@ Apps can bypass the text grid and draw directly to the 320×240 display using RG
 - `display_measure_scaled_text(text, scale, &w, &h)` returns pixel dimensions for a scaled string.
 - `display_draw_scaled_text_bg(x, y, text, fg, bg, scale)` renders text with each source pixel blown up to `scale×scale` squares, using the same glyph-bitmap decoder as the screenshot engine. Good for large clock digits or titles.
 
-These functions work alongside text mode — `paint` uses `display_draw_pixel` and `display_fill_rect` for canvas drawing while keeping text-mode-style UI at the top. The `clock` app uses `display_draw_scaled_text_bg` for the large time readout.
+### JPEG and image rendering
+
+- `display_get_jpg_size(path, &width, &height)` reads a JPEG file header and returns image dimensions without decoding.
+- `display_draw_jpg_fit(path, x, y, max_w, max_h, scale_div)` decodes and renders a JPEG at specified coordinates, scaled to fit within bounds. `scale_div` uses hardware divisors (1.0, 0.5, 0.25, or 0.125).
+
+### Input handling
+
+- `keyboard_read_event(&key, &pressed)` reads keyboard events (BBQ20 keyboard on serial).
+
+These functions work alongside text mode — `paint` uses `display_draw_pixel` and `display_fill_rect` for canvas drawing while keeping text-mode-style UI at the top. The `clock` app uses `display_draw_scaled_text_bg` for the large time readout. The `image_viewer` app uses `display_draw_jpg_fit` for JPEG rendering.
 
 ### Display and text mode
 
@@ -60,6 +69,82 @@ These functions work alongside text mode — `paint` uses `display_draw_pixel` a
 - Standard C I/O helpers such as `fopen`, `fread`, `fwrite`, `fclose`, `fseek`, and `ftell` are available.
 - Directory helpers such as `opendir`, `readdir`, `closedir`, `stat`, and `mkdir` are available.
 - `os_log(tag, fmt, ...)` writes to the system log.
+
+### Serial communication
+
+- `serial_init()` initializes the serial port.
+- `serial_deinit()` closes the serial port.
+- `serial_write(data, len)` sends data over serial.
+- `serial_log_output_set_enabled(enabled)` controls whether log output is sent to serial.
+- `serial_log_output_is_enabled()` returns the current serial logging state.
+
+### WiFi and networking
+
+- `wifi_init()` initializes WiFi.
+- `wifi_is_connected()` returns true if WiFi is connected.
+- `wifi_get_ip(&ip, &mask, &gw)` retrieves current IP configuration.
+- `wifi_scan()` performs a WiFi network scan.
+- `wifi_scan_get_ssid(index, &ssid, max_len)` retrieves SSID from scan results.
+- `wifi_scan_get_rssi(index)` retrieves signal strength from scan results.
+- `wifi_connect(ssid, password)` connects to a network.
+- `wifi_disconnect()` disconnects from WiFi.
+- `wifi_save_config()` persists WiFi settings.
+
+### Terminal mode (VT100 emulation)
+
+Terminal mode provides a software VT100 terminal emulator for CLI applications.
+
+- `terminal_mode_init()` initializes terminal mode.
+- `terminal_mode_reset()` clears terminal state.
+- `terminal_mode_set_write_callback(callback)` provides a callback for output.
+- `terminal_mode_set_title_callback(callback)` provides a callback for window title changes.
+- `terminal_mode_process_bytes(data, len)` processes incoming terminal control sequences.
+- `terminal_mode_handle_key(key)` sends keyboard input to the terminal.
+- `terminal_mode_set_status(status)` sets the status line.
+- `terminal_mode_render()` renders the terminal screen.
+- `terminal_mode_cols()` / `terminal_mode_rows()` return screen dimensions.
+- `terminal_mode_normalize_key(key)` converts raw key codes to VT100 escape sequences.
+
+### App manifests
+
+Each app directory contains a `manifest.cfg` file that declares app metadata. The manifest system allows:
+- Controlling whether an app appears in the launcher
+- Providing human-readable display names
+- Declaring file extensions the app can open
+
+#### Manifest format
+
+A `manifest.cfg` file is plain text with key=value pairs:
+
+```
+name=My App
+launcher=yes
+extensions=txt,md,json
+```
+
+#### Manifest fields
+
+- `name` (required): Human-readable app name shown in the launcher. If omitted, the directory name is used.
+- `launcher` (optional): Set to `no` to hide the app from the launcher (default: `yes`). Hidden apps can still be launched programmatically via `os_load_app()`.
+- `extensions` (optional): Comma-separated list of file extensions the app can open. Used by the file manager to populate "Open with" menus. Example: `jpg,jpeg,png`.
+
+#### Querying manifests from apps
+
+- `app_manifest_read(app_name, &manifest)` loads a manifest from the SD card.
+- `app_manifest_get_display_name(app_name)` returns the human-readable app name.
+- `app_manifest_find_apps_for_ext(extension, &apps, max_apps)` finds all apps that handle a file extension (useful for implementing "Open with" functionality).
+
+#### Example: File manager extension lookup
+
+```c
+// Find apps that can open .txt files
+app_t apps[8];
+int count = app_manifest_find_apps_for_ext("txt", apps, 8);
+for (int i = 0; i < count; i++) {
+    char *name = app_manifest_get_display_name(apps[i].name);
+    printf("Can open with: %s\n", name);
+}
+```
 
 ### Memory
 
