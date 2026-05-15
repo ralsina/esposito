@@ -147,6 +147,22 @@ static int editorRowSize(erow *row) {
     return row ? row->size : 0;
 }
 
+/* Convert character index (cx) to rendered column index (rx), expanding tabs. */
+static int editorRowCxToRx(const erow *row, int cx) {
+    if (!row) return 0;
+    if (cx < 0) cx = 0;
+    if (cx > row->size) cx = row->size;
+
+    int rx = 0;
+    for (int index = 0; index < cx; index++) {
+        if (row->chars[index] == '\t') {
+            rx += (8 - 1) - (rx % 8);
+        }
+        rx++;
+    }
+    return rx;
+}
+
 static int ascii_is_space(int c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
 }
@@ -647,13 +663,16 @@ static int editorPromptHandleKey(editor_t *editor, char key) {
 /* ======================== Rendering ======================== */
 
 static void editorRefresh(editor_t *editor, terminal_mode_t *term) {
+    erow *current_row = editorRowAt(editor, editor->cy);
+    int rx = editorRowCxToRx(current_row, editor->cx);
+
     if (editor->cy < editor->rowoff) editor->rowoff = editor->cy;
     if (editor->cy >= editor->rowoff + editor->screenrows) {
         editor->rowoff = editor->cy - editor->screenrows + 1;
     }
-    if (editor->cx < editor->coloff) editor->coloff = editor->cx;
-    if (editor->cx >= editor->coloff + editor->screencols) {
-        editor->coloff = editor->cx - editor->screencols + 1;
+    if (rx < editor->coloff) editor->coloff = rx;
+    if (rx >= editor->coloff + editor->screencols) {
+        editor->coloff = rx - editor->screencols + 1;
     }
     
     /* Build output buffer with VT100 commands */
@@ -728,7 +747,7 @@ static void editorRefresh(editor_t *editor, terminal_mode_t *term) {
     
     /* Position cursor at current location */
     int display_row = editor->cy - editor->rowoff;
-    int display_col = editor->cx - editor->coloff;
+    int display_col = rx - editor->coloff;
     len += snprintf(buf + len, sizeof(buf) - len, "\x1b[%d;%dH", display_row + 1, display_col + 1);
     
     /* Feed output to terminal mode */
