@@ -65,9 +65,10 @@ static void update_cell(int x, int y) {
     display_fill_rect(px, py, font_width, font_height, bg);
 
     if (cell->character != ' ') {
-        display_draw_text_bg(px, py, &cell->character, fg, bg);
+        char glyph[2] = { cell->character, '\0' };
+        display_draw_text_bg(px, py, glyph, fg, bg);
         if (cell->attributes & TEXT_ATTR_BOLD) {
-            display_draw_text_transparent(px + 1, py, &cell->character, fg);
+            display_draw_text_transparent(px + 1, py, glyph, fg);
         }
     }
 
