@@ -622,8 +622,8 @@ static void draw_large_digit(int x, int y, char ch) {
 
 static void draw_static_clock(void) {
     text_mode_clear(TEXT_COLOR_BLACK);
-    text_mode_print_at_attr(2, 0, "Clock", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
-    text_mode_print_at_attr(10, 0, "UTC", TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
+    text_mode_print_at_attr(2, 0, "Clock", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr(10, 0, "UTC", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
 }
 
 static void draw_large_time(const os_time_status_t *time_status) {
@@ -678,12 +678,12 @@ static void draw_clock(void) {
     }
 
     snprintf(line, sizeof(line), "%-14s", timezone);
-    text_mode_print_at_attr(10, 0, line, TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
+    text_mode_print_at_attr(10, 0, line, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
 
     if (time_status.synchronized) {
-        text_mode_print_at_attr(29, 0, "NTP", TEXT_COLOR_GREEN, TEXT_ATTR_BOLD);
+        text_mode_print_at_attr(29, 0, "NTP", TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL);
     } else {
-        text_mode_print_at_attr(29, 0, "NTP", TEXT_COLOR_RED, TEXT_ATTR_BOLD);
+        text_mode_print_at_attr(29, 0, "NTP", TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
     }
 
     /* Text rows 18+ are safely below the large time area */
@@ -695,7 +695,7 @@ static void draw_clock(void) {
         weekday = weekday_names[display_status.weekday];
     }
     snprintf(line, sizeof(line), "%s %02d/%02d/%04d", weekday, display_status.day, display_status.month, display_status.year);
-    print_padded_line(2, 18, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_BOLD, line, 40);
+    print_padded_line(2, 18, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL, line, 40);
 
     if (weather.has_data) {
         int abs_t = weather.temperature_tenths_c < 0 ? -weather.temperature_tenths_c : weather.temperature_tenths_c;
@@ -712,7 +712,6 @@ static void draw_clock(void) {
         print_padded_line(2, 20, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, weather.status, 40);
     }
 
-    print_padded_line(2, 21, TEXT_COLOR_BRIGHT_BLACK, TEXT_ATTR_NORMAL, weather.debug, 44);
 
     /* Flush text-mode cells first, then paint the large clock cells on top */
     text_mode_flush();
