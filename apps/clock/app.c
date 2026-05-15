@@ -81,6 +81,154 @@ static void trim_spaces(char *text) {
     }
 }
 
+static int parse_timezone_offset_seconds(const char *timezone, int *out_seconds) {
+    if (!timezone || !out_seconds) {
+        return 0;
+    }
+
+    const char *text = timezone;
+    if (strncmp(text, "UTC", 3) == 0 || strncmp(text, "GMT", 3) == 0) {
+        text += 3;
+    }
+
+    if (*text == '\0') {
+        *out_seconds = 0;
+        return 1;
+    }
+
+    int sign = 1;
+    if (*text == '+') {
+        sign = 1;
+        text++;
+    } else if (*text == '-') {
+        sign = -1;
+        text++;
+    } else {
+        return 0;
+    }
+
+    int hours = 0;
+    int hour_digits = 0;
+    while (*text >= '0' && *text <= '9' && hour_digits < 2) {
+        hours = hours * 10 + (*text - '0');
+        text++;
+        hour_digits++;
+    }
+    if (hour_digits == 0) {
+        return 0;
+    }
+
+    int minutes = 0;
+    if (*text == ':') {
+        text++;
+        if (!(text[0] >= '0' && text[0] <= '9' && text[1] >= '0' && text[1] <= '9')) {
+            return 0;
+        }
+        minutes = (text[0] - '0') * 10 + (text[1] - '0');
+        text += 2;
+    } else if (*text >= '0' && *text <= '9') {
+        if (!(text[0] >= '0' && text[0] <= '9' && text[1] >= '0' && text[1] <= '9')) {
+            return 0;
+        }
+        minutes = (text[0] - '0') * 10 + (text[1] - '0');
+        text += 2;
+    }
+
+    while (*text == ' ' || *text == '\t') {
+        text++;
+    }
+    if (*text != '\0') {
+        return 0;
+    }
+
+    if (hours > 23 || minutes > 59) {
+        return 0;
+    }
+
+    *out_seconds = sign * (hours * 3600 + minutes * 60);
+    return 1;
+}
+
+static int is_leap_year(int year) {
+    if (year % 400 == 0) {
+        return 1;
+    }
+    if (year % 100 == 0) {
+        return 0;
+    }
+    return (year % 4) == 0;
+}
+
+static int days_in_month(int year, int month) {
+    static const int month_days[12] = {
+        31, 28, 31, 30, 31, 30,
+        31, 31, 30, 31, 30, 31
+    };
+    if (month < 1 || month > 12) {
+        return 30;
+    }
+    if (month == 2 && is_leap_year(year)) {
+        return 29;
+    }
+    return month_days[month - 1];
+}
+
+static void apply_timezone_offset(const os_time_status_t *utc, int offset_seconds, os_time_status_t *out) {
+    if (!utc || !out) {
+        return;
+    }
+
+    *out = *utc;
+
+    int total = utc->hour * 3600 + utc->minute * 60 + utc->second + offset_seconds;
+    int day_delta = 0;
+    while (total < 0) {
+        total += 86400;
+        day_delta--;
+    }
+    while (total >= 86400) {
+        total -= 86400;
+        day_delta++;
+    }
+
+    out->hour = total / 3600;
+    out->minute = (total % 3600) / 60;
+    out->second = total % 60;
+
+    if (day_delta != 0) {
+        out->weekday = (utc->weekday + day_delta) % 7;
+        if (out->weekday < 0) {
+            out->weekday += 7;
+        }
+
+        int year = utc->year;
+        int month = utc->month;
+        int day = utc->day + day_delta;
+
+        while (day < 1) {
+            month--;
+            if (month < 1) {
+                month = 12;
+                year--;
+            }
+            day += days_in_month(year, month);
+        }
+
+        while (day > days_in_month(year, month)) {
+            day -= days_in_month(year, month);
+            month++;
+            if (month > 12) {
+                month = 1;
+                year++;
+            }
+        }
+
+        out->year = year;
+        out->month = month;
+        out->day = day;
+    }
+}
+
 static void url_encode_basic(const char *src, char *dst, size_t dst_size) {
     static const char hex[] = "0123456789ABCDEF";
     size_t out = 0;
@@ -515,17 +663,34 @@ static void draw_clock(void) {
     }
 
     char line[80];
+    char timezone[48];
+    os_settings_get_string(SETTINGS_KEY_TIMEZONE, DEFAULT_TIMEZONE, timezone, sizeof(timezone));
+    trim_spaces(timezone);
+    if (timezone[0] == '\0') {
+        snprintf(timezone, sizeof(timezone), "%s", DEFAULT_TIMEZONE);
+    }
+
+    int tz_offset_seconds = 0;
+    int has_tz_offset = parse_timezone_offset_seconds(timezone, &tz_offset_seconds);
+
+    os_time_status_t display_status = time_status;
+    if (has_tz_offset) {
+        apply_timezone_offset(&time_status, tz_offset_seconds, &display_status);
+    }
+
+    snprintf(line, sizeof(line), "%-14s", timezone);
+    text_mode_print_at_attr(10, 0, line, TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
 
     /* Text rows 18+ are safely below the large time area */
-    snprintf(line, sizeof(line), "%04d-%02d-%02d", time_status.year, time_status.month, time_status.day);
+    snprintf(line, sizeof(line), "%04d-%02d-%02d", display_status.year, display_status.month, display_status.day);
     print_padded_line(2, 18, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_BOLD, line, 20);
 
     static const char *weekday_names[] = {
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
     };
     const char *weekday = "Unknown";
-    if (time_status.weekday >= 0 && time_status.weekday < 7) {
-        weekday = weekday_names[time_status.weekday];
+    if (display_status.weekday >= 0 && display_status.weekday < 7) {
+        weekday = weekday_names[display_status.weekday];
     }
     snprintf(line, sizeof(line), "%s", weekday);
     print_padded_line(2, 20, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, 16);
@@ -561,7 +726,7 @@ static void draw_clock(void) {
 
     /* Flush text-mode cells first, then paint the large clock cells on top */
     text_mode_flush();
-    draw_large_time(&time_status);
+    draw_large_time(&display_status);
 }
 
 void app_init(app_context_t *ctx) {
