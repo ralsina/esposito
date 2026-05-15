@@ -2,6 +2,55 @@
 
 Dynamic apps that run on Esposito OS. Each app is compiled to a self-contained ELF and loaded from the SD card at runtime.
 
+## App API
+
+Apps are linked against a small OS API surface that is exported by the firmware.
+The exact symbol list lives in `main/os_symtab.c`, but the main groups are:
+
+### App lifecycle
+
+- `app_init(app_context_t *ctx)` sets subscriptions and initializes the app.
+- `app_event(app_context_t *ctx, event_t *event)` receives timer, keyboard, touch, and serial events.
+- `app_checkpoint(app_context_t *ctx)` saves state before the app switches away.
+- `app_close(app_context_t *ctx)` releases resources and clears the display.
+
+### App switching and startup files
+
+- `os_load_app(name)` launches another app.
+- `os_open_app_with_file(name, path)` stores a startup file for the target app and launches it.
+- `os_consume_startup_file(out, size)` reads and clears that startup file during app startup.
+
+### Time and NTP
+
+- `os_get_time_status(&status)` returns the current UTC time and whether the clock is trusted.
+- `os_time_is_synchronized()` returns whether NTP has synced during this boot.
+- `os_time_last_sync()` returns the Unix timestamp of the last successful sync.
+
+### Display and text mode
+
+- `text_mode_init()` / `text_mode_init_ex(font)` select the text grid.
+- `text_mode_print_at*()` and `text_mode_printf_at*()` draw text.
+- `text_mode_clear()` clears the screen.
+- `text_mode_flush()` commits buffered text updates.
+
+### Checkpoint and config
+
+- `checkpoint_save_*()` / `checkpoint_load_*()` store app state in the app checkpoint.
+- `config_bind_app(name)` / `config_unbind_app()` select an app config namespace.
+- `config_get_*()` and `config_set_*()` read and write app settings.
+
+### Files and system helpers
+
+- Standard C I/O helpers such as `fopen`, `fread`, `fwrite`, `fclose`, `fseek`, and `ftell` are available.
+- Directory helpers such as `opendir`, `readdir`, `closedir`, `stat`, and `mkdir` are available.
+- `os_log(tag, fmt, ...)` writes to the system log.
+
+### Memory
+
+- `malloc`, `calloc`, `realloc`, and `free` are mapped to the app heap, not the global firmware heap.
+
+If you are writing a new app, start from [app_template/](app_template/) and keep the event loop small: most apps just set up state in `app_init`, react to events in `app_event`, and save state in `app_checkpoint`.
+
 ## Apps
 
 ### [kilo](kilo/)
