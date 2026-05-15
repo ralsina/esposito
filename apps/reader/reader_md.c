@@ -90,54 +90,10 @@ static void strip_html(char *line) {
     *dst = '\0';
 }
 
-// Decode a UTF-8 sequence and return the Unicode codepoint
-// Advances src pointer past the sequence
-static uint32_t utf8_decode(const unsigned char **src) {
-    const unsigned char *p = *src;
-    uint32_t codepoint = 0;
-    
-    if (p[0] < 0x80) {
-        codepoint = p[0];
-        *src = p + 1;
-    } else if ((p[0] & 0xE0) == 0xC0 && p[1]) {
-        // 2-byte sequence
-        codepoint = ((p[0] & 0x1F) << 6) | (p[1] & 0x3F);
-        *src = p + 2;
-    } else if ((p[0] & 0xF0) == 0xE0 && p[1] && p[2]) {
-        // 3-byte sequence
-        codepoint = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
-        *src = p + 3;
-    } else if ((p[0] & 0xF8) == 0xF0 && p[1] && p[2] && p[3]) {
-        // 4-byte sequence
-        codepoint = ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
-        *src = p + 4;
-    } else {
-        *src = p + 1;
-    }
-    
-    return codepoint;
-}
-
-// Check if a Unicode codepoint is in the spleen-5x8 font
-// Font range: 0x20 to 0xE0B3
-static int is_in_spleen_font(uint32_t codepoint) {
-    return codepoint >= 0x20 && codepoint <= 0xE0B3;
-}
-
-// Get byte length of a UTF-8 sequence starting at src
-static int utf8_seq_len(const unsigned char *src) {
-    if (src[0] < 0x80) return 1;
-    if ((src[0] & 0xE0) == 0xC0) return 2;
-    if ((src[0] & 0xF0) == 0xE0) return 3;
-    if ((src[0] & 0xF8) == 0xF0) return 4;
-    return 1;
-}
-
 static void asciify(char *line) {
     char *dst = line;
     unsigned char *src = (unsigned char *)line;
     while (*src) {
-        // Handle smart quote conversions (legacy support)
         if (*src == 0xE2) {
             if (src[1] == 0x80) {
                 switch (src[2]) {
@@ -154,38 +110,21 @@ static void asciify(char *line) {
                     default: break;
                 }
             }
+            src++;
+            if (*src) src++;
+            if (*src) src++;
+            continue;
         }
-        
         if (*src == '\\') {
             src++;
             if (*src) { *dst++ = *src++; continue; }
             break;
         }
-        
-        // ASCII range: always pass through
-        if (*src >= 0x20 && *src <= 0x7E) {
-            *dst++ = *src++;
+        if (*src < 0x20 || *src > 0x7E) {
+            src++;
             continue;
         }
-        
-        // Non-ASCII: decode UTF-8 and check if it's in the font
-        if (*src >= 0x80) {
-            const unsigned char *src_before = src;
-            uint32_t codepoint = utf8_decode((const unsigned char **)&src);
-            
-            if (is_in_spleen_font(codepoint)) {
-                // Character is in font: copy all bytes
-                int seq_len = utf8_seq_len(src_before);
-                for (int i = 0; i < seq_len && src_before[i]; i++) {
-                    *dst++ = src_before[i];
-                }
-            }
-            // else: skip the sequence (already advanced src in utf8_decode)
-            continue;
-        }
-        
-        // Control characters: skip
-        src++;
+        *dst++ = *src++;
     }
     *dst = '\0';
 }
