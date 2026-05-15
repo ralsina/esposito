@@ -55,6 +55,10 @@ static uint8_t line_drawing_base_mask(char ch) {
         case '-': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT;
         case '|': return LINE_DRAW_UP | LINE_DRAW_DOWN;
         case '+': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
+        case 'l': return LINE_DRAW_RIGHT | LINE_DRAW_DOWN;
+        case 'k': return LINE_DRAW_LEFT | LINE_DRAW_DOWN;
+        case 'm': return LINE_DRAW_RIGHT | LINE_DRAW_UP;
+        case 'j': return LINE_DRAW_LEFT | LINE_DRAW_UP;
         default: return 0;
     }
 }

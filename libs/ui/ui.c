@@ -19,10 +19,10 @@ void ui_window(int x, int y, int w, int h, const char *title) {
         text_mode_print_at_attr(x, cy, "|", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
         text_mode_print_at_attr(x2, cy, "|", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
     }
-    text_mode_print_at_attr(x, y, "+", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
-    text_mode_print_at_attr(x2, y, "+", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
-    text_mode_print_at_attr(x, y2, "+", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
-    text_mode_print_at_attr(x2, y2, "+", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+    text_mode_print_at_attr(x, y, "l", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+    text_mode_print_at_attr(x2, y, "k", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+    text_mode_print_at_attr(x, y2, "m", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+    text_mode_print_at_attr(x2, y2, "j", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
 
     if (title && title[0]) {
         int tlen = (int)strlen(title);
