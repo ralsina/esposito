@@ -113,7 +113,7 @@ static void draw_main(void) {
         ui_label_attr(3, y, status_msg, TEXT_COLOR_BRIGHT_YELLOW, TEXT_ATTR_BOLD);
     }
 
-    ui_status_bar(TEXT_MODE_ROWS - 2, "W/S Navigate  Enter Select", "ESC Exit");
+    ui_status_bar(TEXT_MODE_ROWS - 2, "W/S Navigate  Enter Select", "");
 }
 
 static void draw_scan_results(void) {
