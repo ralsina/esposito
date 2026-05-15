@@ -22,6 +22,8 @@ SYMBOLS=(
     display_draw_pixel
     display_fill_rect
     display_draw_char_at
+    display_measure_scaled_text
+    display_draw_scaled_text_bg
     keyboard_read_event
     checkpoint_save_string
     checkpoint_load_string

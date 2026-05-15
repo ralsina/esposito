@@ -7,6 +7,8 @@
 #include "freertos/task.h"
 #include <soc/rtc_cntl_reg.h>
 #include "fonts.h"
+#include <lgfx/v1/lgfx_fonts.hpp>
+#include <lgfx/utility/pgmspace.h>
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include <string.h>
@@ -133,6 +135,123 @@ void display_draw_pixel(int x, int y, uint16_t color) {
 void display_fill_rect(int x, int y, int width, int height, uint16_t color) {
     if (!display_initialized) return;
     tft.fillRect(x, y, width, height, color);
+}
+
+static void decode_glyph_rle(const uint8_t *data, int w, int h, uint8_t *pixels) {
+    int total = w * h;
+    int px = 0;
+
+    uint8_t mask = 0x80;
+    int32_t btmp = pgm_read_byte(data);
+    if (btmp & mask) { btmp = ~btmp; }
+    uint32_t bitlen = 0;
+
+    for (int row = 0; row < h && px < total; row++) {
+        int remain = w;
+        while (remain > 0 && px < total) {
+            if (bitlen == 0) {
+                btmp = ~btmp;
+                do {
+                    do {
+                        ++bitlen;
+                        if (0 == (mask >>= 1)) {
+                            goto read_next_byte_rle;
+                        }
+                    } while (btmp & mask);
+                    break;
+
+                read_next_byte_rle:
+                    mask = 0x80;
+                    data++;
+                    btmp = pgm_read_byte(data) ^ (btmp < 0 ? ~0 : 0);
+                } while (btmp & mask);
+            }
+
+            int l = bitlen;
+            if (l > remain) l = remain;
+            bitlen -= l;
+            remain -= l;
+
+            uint8_t val = (btmp >= 0) ? 1 : 0;
+            for (int i = 0; i < l && px < total; i++) {
+                pixels[px++] = val;
+            }
+        }
+    }
+}
+
+void display_measure_scaled_text(const char *text, int scale, int *width, int *height) {
+    if (width) *width = 0;
+    if (height) *height = 0;
+    if (!text || scale <= 0) return;
+
+    int measured_width = (int)strlen(text) * disp_font_width * scale;
+    int measured_height = disp_font_height * scale;
+
+    if (width) *width = measured_width;
+    if (height) *height = measured_height;
+}
+
+void display_draw_scaled_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg, int scale) {
+    if (!display_initialized || !text || scale <= 0) return;
+    if (!current_display_font) return;
+
+    const GFXfont *fnt = (const GFXfont *)current_display_font;
+    const uint8_t *bitmap_base = (const uint8_t *)pgm_read_ptr(&fnt->bitmap);
+    const GFXglyph *glyphs = (const GFXglyph *)pgm_read_ptr(&fnt->glyph);
+    uint16_t first_char = pgm_read_word(&fnt->first);
+    uint16_t last_char = pgm_read_word(&fnt->last);
+
+    int text_width = 0;
+    int text_height = 0;
+    display_measure_scaled_text(text, scale, &text_width, &text_height);
+    if (text_width <= 0 || text_height <= 0) return;
+
+    tft.fillRect(x, y, text_width, text_height, bg);
+
+    uint8_t glyph_bits[80];
+    int cursor_x = x;
+
+    for (size_t index = 0; text[index]; index++) {
+        char ch = text[index];
+        int advance = disp_font_width * scale;
+
+        if (ch >= first_char && ch <= last_char && bitmap_base) {
+            const GFXglyph *g = &glyphs[ch - first_char];
+            uint32_t offset = pgm_read_dword(&g->bitmapOffset);
+            uint8_t gw = pgm_read_byte(&g->width);
+            uint8_t gh = pgm_read_byte(&g->height);
+            int8_t x_offset = (int8_t)pgm_read_byte(&g->xOffset);
+            int8_t y_offset = (int8_t)pgm_read_byte(&g->yOffset);
+            uint8_t x_advance = pgm_read_byte(&g->xAdvance);
+
+            advance = x_advance * scale;
+
+            if (gw > 0 && gh > 0 && gw <= disp_font_width && gh <= disp_font_height) {
+                memset(glyph_bits, 0, gw * gh);
+                decode_glyph_rle(bitmap_base + offset, gw, gh, glyph_bits);
+
+                /* x_offset shifts the glyph within the advance width.
+                   y_offset is baseline-relative (negative = above baseline).
+                   We treat y as the top of the cell and place the glyph so
+                   that the baseline sits at y + (-y_offset)*scale, giving:
+                   glyph_top = baseline + y_offset*scale = y. */
+                int glyph_x = cursor_x + x_offset * scale;
+                int glyph_y = y;
+
+                for (int gy = 0; gy < gh; gy++) {
+                    for (int gx = 0; gx < gw; gx++) {
+                        if (!glyph_bits[gy * gw + gx]) {
+                            continue;
+                        }
+                        tft.fillRect(glyph_x + gx * scale, glyph_y + gy * scale, scale, scale, fg);
+                    }
+                }
+            }
+        }
+
+        cursor_x += advance;
+    }
 }
 
 // Font cell size used by text mode (spleen-5x8)

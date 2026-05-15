@@ -29,6 +29,8 @@ void display_draw_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t 
 void display_draw_pixel(int x, int y, uint16_t color);
 void display_fill_rect(int x, int y, int width, int height, uint16_t color);
 void display_set_font(const void *font);
+void display_measure_scaled_text(const char *text, int scale, int *width, int *height);
+void display_draw_scaled_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg, int scale);
 
 // Display character with specific foreground and background at pixel position
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color);

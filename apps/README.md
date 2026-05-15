@@ -26,6 +26,22 @@ The exact symbol list lives in `main/os_symtab.c`, but the main groups are:
 - `os_time_is_synchronized()` returns whether NTP has synced during this boot.
 - `os_time_last_sync()` returns the Unix timestamp of the last successful sync.
 
+### Direct pixel drawing
+
+Apps can bypass the text grid and draw directly to the 320×240 display using RGB565 color values (each component encoded as 5 or 6 bits packed into a `uint16_t`).
+
+- `display_clear(color)` fills the whole screen with `color`.
+- `display_draw_pixel(x, y, color)` draws a single pixel.
+- `display_fill_rect(x, y, w, h, color)` fills a rectangle.
+- `display_draw_text(x, y, text, color)` draws text at pixel coordinates with transparent background.
+- `display_draw_text_bg(x, y, text, fg, bg)` draws text with an explicit background color.
+- `display_draw_char_at(x, y, ch, fg, bg)` draws one character at pixel coordinates.
+- `display_set_font(font_ptr)` selects the active font (use `font_table[FONT_*].font_ptr`).
+- `display_measure_scaled_text(text, scale, &w, &h)` returns pixel dimensions for a scaled string.
+- `display_draw_scaled_text_bg(x, y, text, fg, bg, scale)` renders text with each source pixel blown up to `scale×scale` squares, using the same glyph-bitmap decoder as the screenshot engine. Good for large clock digits or titles.
+
+These functions work alongside text mode — `paint` uses `display_draw_pixel` and `display_fill_rect` for canvas drawing while keeping text-mode-style UI at the top. The `clock` app uses `display_draw_scaled_text_bg` for the large time readout.
+
 ### Display and text mode
 
 - `text_mode_init()` / `text_mode_init_ex(font)` select the text grid.
