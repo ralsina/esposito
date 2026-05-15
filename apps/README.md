@@ -40,6 +40,14 @@ System settings: WiFi SSID/password configuration, serial log toggle, and WiFi c
 
 ---
 
+### [file_manager](file_manager/)
+
+Two-pane filesystem browser for SD card content (mc-style). Navigate each pane independently and keep pane paths between launches.
+
+Current controls: `W/S` move, `A/D` or `Tab` switch pane, `Enter` open directory, `ESC` up/exit, `R` reload.
+
+---
+
 ### [terminado](terminado/)
 
 A serial terminal emulator. Connects to a host over USB serial and provides a full VT100 terminal. The foundation for the terminal mode subsystem.
