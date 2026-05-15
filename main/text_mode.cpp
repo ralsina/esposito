@@ -129,6 +129,41 @@ static void draw_line_drawing_cell(int px, int py, uint8_t fg, uint8_t mask) {
     }
 }
 
+static bool line_drawing_pixel_is_set(const text_cell_t *cell, int gx, int gy, int char_row, int dx) {
+    if (!cell || !(cell->attributes & TEXT_ATTR_LINE_DRAWING)) {
+        return false;
+    }
+
+    uint8_t mask = line_drawing_mask_for_cell(gx, gy);
+    if (mask == 0) {
+        return false;
+    }
+
+    int mid_x = font_width / 2;
+    int mid_y = font_height / 2;
+
+    if ((mask & LINE_DRAW_LEFT) && (mask & LINE_DRAW_RIGHT) && char_row == mid_y) {
+        return true;
+    }
+    if ((mask & LINE_DRAW_LEFT) && !(mask & LINE_DRAW_RIGHT) && char_row == mid_y && dx <= mid_x) {
+        return true;
+    }
+    if ((mask & LINE_DRAW_RIGHT) && !(mask & LINE_DRAW_LEFT) && char_row == mid_y && dx >= mid_x) {
+        return true;
+    }
+    if ((mask & LINE_DRAW_UP) && (mask & LINE_DRAW_DOWN) && dx == mid_x) {
+        return true;
+    }
+    if ((mask & LINE_DRAW_UP) && !(mask & LINE_DRAW_DOWN) && dx == mid_x && char_row <= mid_y) {
+        return true;
+    }
+    if ((mask & LINE_DRAW_DOWN) && !(mask & LINE_DRAW_UP) && dx == mid_x && char_row >= mid_y) {
+        return true;
+    }
+
+    return false;
+}
+
 static void refresh_line_drawing_cells_around(int x, int y) {
     static const int offsets[][2] = {
         {0, 0},
@@ -573,6 +608,12 @@ bool text_mode_save_screenshot(void) {
             uint8_t g_bg = (rgb565_bg >> 3) & 0xFC; g_bg |= g_bg >> 6;
             uint8_t b_bg = (rgb565_bg << 3) & 0xF8; b_bg |= b_bg >> 5;
 
+            bool line_drawing = (cell->attributes & TEXT_ATTR_LINE_DRAWING) != 0;
+            uint8_t line_mask = 0;
+            if (line_drawing) {
+                line_mask = line_drawing_mask_for_cell(gx, gy);
+            }
+
             // Decode character glyph via RLE
             int char_idx = (unsigned char)cell->character - first_char;
             uint8_t gw = 0;
@@ -600,18 +641,20 @@ bool text_mode_save_screenshot(void) {
             // Render this cell row to the PPM row buffer
             for (int dx = 0; dx < font_width; dx++) {
                 bool pixel_set = false;
-                if (gw > 0 && dx < gw && char_row < gh) {
+                if (line_drawing && line_mask != 0) {
+                    pixel_set = line_drawing_pixel_is_set(cell, gx, gy, char_row, dx);
+                } else if (gw > 0 && dx < gw && char_row < gh) {
                     pixel_set = glyph_bits[char_row * gw + dx] != 0;
-                }
-                // Bold
-                if (!pixel_set && (cell->attributes & TEXT_ATTR_BOLD) && dx > 0
-                    && gw > 0 && (dx - 1) < gw && char_row < gh) {
-                    pixel_set = glyph_bits[char_row * gw + (dx - 1)] != 0;
-                }
-                // Underline
-                if (!pixel_set && (cell->attributes & TEXT_ATTR_UNDERLINE)
-                    && char_row == font_height - 1) {
-                    pixel_set = true;
+                    // Bold
+                    if (!pixel_set && (cell->attributes & TEXT_ATTR_BOLD) && dx > 0
+                        && gw > 0 && (dx - 1) < gw && char_row < gh) {
+                        pixel_set = glyph_bits[char_row * gw + (dx - 1)] != 0;
+                    }
+                    // Underline
+                    if (!pixel_set && (cell->attributes & TEXT_ATTR_UNDERLINE)
+                        && char_row == font_height - 1) {
+                        pixel_set = true;
+                    }
                 }
 
                 if (pixel_set) {
