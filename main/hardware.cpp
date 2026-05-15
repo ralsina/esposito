@@ -11,6 +11,8 @@
 #include <lgfx/utility/pgmspace.h>
 #include "driver/uart.h"
 #include "driver/gpio.h"
+#include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 extern "C" {
@@ -135,6 +137,176 @@ void display_draw_pixel(int x, int y, uint16_t color) {
 void display_fill_rect(int x, int y, int width, int height, uint16_t color) {
     if (!display_initialized) return;
     tft.fillRect(x, y, width, height, color);
+}
+
+static bool jpeg_is_sof_marker(int marker) {
+    switch (marker) {
+        case 0xC0:
+        case 0xC1:
+        case 0xC2:
+        case 0xC3:
+        case 0xC5:
+        case 0xC6:
+        case 0xC7:
+        case 0xC9:
+        case 0xCA:
+        case 0xCB:
+        case 0xCD:
+        case 0xCE:
+        case 0xCF:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool jpeg_read_be16(FILE *file, int *value) {
+    int high = fgetc(file);
+    int low = fgetc(file);
+
+    if (high == EOF || low == EOF) {
+        return false;
+    }
+
+    *value = (high << 8) | low;
+    return true;
+}
+
+bool display_get_jpg_size(const char *path, int *width, int *height) {
+    if (width != NULL) {
+        *width = 0;
+    }
+    if (height != NULL) {
+        *height = 0;
+    }
+
+    if (path == NULL) {
+        return false;
+    }
+
+    FILE *file = fopen(path, "rb");
+    if (file == NULL) {
+        return false;
+    }
+
+    int soi_high = fgetc(file);
+    int soi_low = fgetc(file);
+    if (soi_high != 0xFF || soi_low != 0xD8) {
+        fclose(file);
+        return false;
+    }
+
+    while (true) {
+        int prefix = fgetc(file);
+        if (prefix == EOF) {
+            break;
+        }
+        if (prefix != 0xFF) {
+            continue;
+        }
+
+        int marker = fgetc(file);
+        while (marker == 0xFF) {
+            marker = fgetc(file);
+        }
+
+        if (marker == EOF || marker == 0xD9 || marker == 0xDA) {
+            break;
+        }
+
+        if (marker >= 0xD0 && marker <= 0xD7) {
+            continue;
+        }
+
+        int segment_length = 0;
+        if (!jpeg_read_be16(file, &segment_length) || segment_length < 2) {
+            break;
+        }
+
+        if (jpeg_is_sof_marker(marker)) {
+            if (fgetc(file) == EOF) {
+                break;
+            }
+
+            int jpeg_height = 0;
+            int jpeg_width = 0;
+            if (!jpeg_read_be16(file, &jpeg_height) || !jpeg_read_be16(file, &jpeg_width)) {
+                break;
+            }
+
+            fclose(file);
+
+            if (width != NULL) {
+                *width = jpeg_width;
+            }
+            if (height != NULL) {
+                *height = jpeg_height;
+            }
+            return jpeg_width > 0 && jpeg_height > 0;
+        }
+
+        if (fseek(file, segment_length - 2, SEEK_CUR) != 0) {
+            break;
+        }
+    }
+
+    fclose(file);
+    return false;
+}
+
+bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height) {
+    if (drawn_width != NULL) {
+        *drawn_width = 0;
+    }
+    if (drawn_height != NULL) {
+        *drawn_height = 0;
+    }
+
+    if (!display_initialized || path == NULL) {
+        return false;
+    }
+
+    int jpeg_width = 0;
+    int jpeg_height = 0;
+    if (!display_get_jpg_size(path, &jpeg_width, &jpeg_height)) {
+        return false;
+    }
+
+    const int screen_width = tft.width();
+    const int screen_height = tft.height();
+    if (jpeg_width <= 0 || jpeg_height <= 0 || jpeg_width > screen_width * 8 || jpeg_height > screen_height * 8) {
+        return false;
+    }
+
+    float scale = 1.0f;
+    if (jpeg_width > screen_width || jpeg_height > screen_height) {
+        float scale_x = (float)screen_width / (float)jpeg_width;
+        float scale_y = (float)screen_height / (float)jpeg_height;
+        scale = (scale_x < scale_y) ? scale_x : scale_y;
+    }
+
+    int target_width = (int)floorf((jpeg_width * scale) + 0.5f);
+    int target_height = (int)floorf((jpeg_height * scale) + 0.5f);
+    if (target_width < 1) {
+        target_width = 1;
+    }
+    if (target_height < 1) {
+        target_height = 1;
+    }
+
+    int draw_x = (screen_width - target_width) / 2;
+    int draw_y = (screen_height - target_height) / 2;
+    if (!tft.drawJpgFile(path, draw_x, draw_y, target_width, target_height, 0, 0, scale)) {
+        return false;
+    }
+
+    if (drawn_width != NULL) {
+        *drawn_width = target_width;
+    }
+    if (drawn_height != NULL) {
+        *drawn_height = target_height;
+    }
+    return true;
 }
 
 static void decode_glyph_rle(const uint8_t *data, int w, int h, uint8_t *pixels) {

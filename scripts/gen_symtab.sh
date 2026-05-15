@@ -24,6 +24,8 @@ SYMBOLS=(
     display_draw_char_at
     display_measure_scaled_text
     display_draw_scaled_text_bg
+    display_get_jpg_size
+    display_draw_jpg_fit
     keyboard_read_event
     checkpoint_save_string
     checkpoint_load_string

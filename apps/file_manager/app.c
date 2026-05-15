@@ -57,6 +57,7 @@ static file_manager_t state;
 static const fm_app_assoc_t APP_ASSOCIATIONS[] = {
     {"reader", {".md", ".markdown", NULL}},
     {"kilo", {".txt", ".md", ".markdown", ".c", ".h"}},
+    {"image_viewer", {".jpg", ".jpeg", NULL}},
 };
 
 static int ascii_tolower(int ch) {
