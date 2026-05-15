@@ -58,6 +58,10 @@ These functions work alongside text mode — `paint` uses `display_draw_pixel` a
 - `text_mode_clear()` clears the screen.
 - `text_mode_flush()` commits buffered text updates.
 
+Apps that want pane/window borders can set `TEXT_ATTR_LINE_DRAWING` on
+`text_mode_print_at_attr*()` calls to render `+`, `-`, and `|` as line-drawing
+cells instead of literal glyphs.
+
 ### Checkpoint and config
 
 - `checkpoint_save_*()` / `checkpoint_load_*()` store app state in the app checkpoint.

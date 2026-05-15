@@ -37,6 +37,121 @@ static uint8_t bg_color = 0;
 static bool initialized = false;
 static bool graphics = false;
 
+static void update_cell(int x, int y);
+
+enum line_drawing_mask_t {
+    LINE_DRAW_LEFT = 1 << 0,
+    LINE_DRAW_RIGHT = 1 << 1,
+    LINE_DRAW_UP = 1 << 2,
+    LINE_DRAW_DOWN = 1 << 3,
+};
+
+static bool cell_uses_line_drawing(const text_cell_t *cell) {
+    return cell && (cell->attributes & TEXT_ATTR_LINE_DRAWING);
+}
+
+static uint8_t line_drawing_base_mask(char ch) {
+    switch (ch) {
+        case '-': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT;
+        case '|': return LINE_DRAW_UP | LINE_DRAW_DOWN;
+        case '+': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
+        default: return 0;
+    }
+}
+
+static bool neighbor_connects_to_direction(int nx, int ny, uint8_t opposite_mask) {
+    if (!grid || nx < 0 || ny < 0 || nx >= grid_cols || ny >= grid_rows) {
+        return false;
+    }
+
+    const text_cell_t *neighbor = &grid[ny * grid_cols + nx];
+    if (!cell_uses_line_drawing(neighbor)) {
+        return false;
+    }
+
+    return (line_drawing_base_mask(neighbor->character) & opposite_mask) != 0;
+}
+
+static uint8_t line_drawing_mask_for_cell(int x, int y) {
+    if (!grid || x < 0 || y < 0 || x >= grid_cols || y >= grid_rows) {
+        return 0;
+    }
+
+    const text_cell_t *cell = &grid[y * grid_cols + x];
+    if (!cell_uses_line_drawing(cell)) {
+        return 0;
+    }
+
+    uint8_t mask = line_drawing_base_mask(cell->character);
+    if (cell->character == '+') {
+        mask = 0;
+        if (neighbor_connects_to_direction(x - 1, y, LINE_DRAW_RIGHT)) {
+            mask |= LINE_DRAW_LEFT;
+        }
+        if (neighbor_connects_to_direction(x + 1, y, LINE_DRAW_LEFT)) {
+            mask |= LINE_DRAW_RIGHT;
+        }
+        if (neighbor_connects_to_direction(x, y - 1, LINE_DRAW_DOWN)) {
+            mask |= LINE_DRAW_UP;
+        }
+        if (neighbor_connects_to_direction(x, y + 1, LINE_DRAW_UP)) {
+            mask |= LINE_DRAW_DOWN;
+        }
+
+        if (mask == 0) {
+            mask = LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
+        }
+    }
+
+    return mask;
+}
+
+static void draw_line_drawing_cell(int px, int py, uint8_t fg, uint8_t mask) {
+    int mid_x = px + font_width / 2;
+    int mid_y = py + font_height / 2;
+    int right = px + font_width - 1;
+    int bottom = py + font_height - 1;
+
+    if ((mask & LINE_DRAW_LEFT) && (mask & LINE_DRAW_RIGHT)) {
+        display_fill_rect(px, mid_y, font_width, 1, fg);
+    } else if (mask & LINE_DRAW_LEFT) {
+        display_fill_rect(px, mid_y, mid_x - px + 1, 1, fg);
+    } else if (mask & LINE_DRAW_RIGHT) {
+        display_fill_rect(mid_x, mid_y, right - mid_x + 1, 1, fg);
+    }
+
+    if ((mask & LINE_DRAW_UP) && (mask & LINE_DRAW_DOWN)) {
+        display_fill_rect(mid_x, py, 1, font_height, fg);
+    } else if (mask & LINE_DRAW_UP) {
+        display_fill_rect(mid_x, py, 1, mid_y - py + 1, fg);
+    } else if (mask & LINE_DRAW_DOWN) {
+        display_fill_rect(mid_x, mid_y, 1, bottom - mid_y + 1, fg);
+    }
+}
+
+static void refresh_line_drawing_cells_around(int x, int y) {
+    static const int offsets[][2] = {
+        {0, 0},
+        {-1, 0},
+        {1, 0},
+        {0, -1},
+        {0, 1},
+    };
+
+    for (size_t index = 0; index < sizeof(offsets) / sizeof(offsets[0]); index++) {
+        int nx = x + offsets[index][0];
+        int ny = y + offsets[index][1];
+        if (!grid || nx < 0 || ny < 0 || nx >= grid_cols || ny >= grid_rows) {
+            continue;
+        }
+
+        text_cell_t *cell = &grid[ny * grid_cols + nx];
+        if (cell->attributes & TEXT_ATTR_LINE_DRAWING) {
+            update_cell(nx, ny);
+        }
+    }
+}
+
 int text_mode_get_cols(void) { return grid_cols; }
 int text_mode_get_rows(void) { return grid_rows; }
 int text_mode_get_char_width(void) { return font_width; }
@@ -63,6 +178,14 @@ static void update_cell(int x, int y) {
     }
 
     display_fill_rect(px, py, font_width, font_height, bg);
+
+    if (cell->attributes & TEXT_ATTR_LINE_DRAWING) {
+        uint8_t mask = line_drawing_mask_for_cell(x, y);
+        if (mask != 0 && cell->character != ' ') {
+            draw_line_drawing_cell(px, py, fg, mask);
+        }
+        return;
+    }
 
     if (cell->character != ' ') {
         display_draw_char_at(px, py, cell->character, fg, bg);
@@ -182,6 +305,7 @@ static void text_mode_write_cells(int x, int y, const char *str, uint8_t fg_colo
         cell->bg_color = bg;
         cell->attributes = attr;
         update_cell(x + i, y);
+        refresh_line_drawing_cells_around(x + i, y);
     }
 
     if (write_len > 0) {

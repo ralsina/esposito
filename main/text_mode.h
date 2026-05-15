@@ -43,6 +43,7 @@ typedef enum {
     TEXT_ATTR_ITALIC = 2,
     TEXT_ATTR_UNDERLINE = 4,
     TEXT_ATTR_INVERSE = 8,
+    TEXT_ATTR_LINE_DRAWING = 16,
 } text_attribute_t;
 
 // Cell data structure

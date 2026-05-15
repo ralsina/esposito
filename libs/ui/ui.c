@@ -12,17 +12,17 @@ void ui_window(int x, int y, int w, int h, const char *title) {
     int y2 = y + h - 1;
 
     for (int cx = x; cx <= x2; cx++) {
-        text_mode_print_at_color(cx, y, "-", TEXT_COLOR_CYAN);
-        text_mode_print_at_color(cx, y2, "-", TEXT_COLOR_CYAN);
+        text_mode_print_at_attr(cx, y, "-", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+        text_mode_print_at_attr(cx, y2, "-", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
     }
     for (int cy = y; cy <= y2; cy++) {
-        text_mode_print_at_color(x, cy, "|", TEXT_COLOR_CYAN);
-        text_mode_print_at_color(x2, cy, "|", TEXT_COLOR_CYAN);
+        text_mode_print_at_attr(x, cy, "|", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+        text_mode_print_at_attr(x2, cy, "|", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
     }
-    text_mode_print_at_color(x, y, "+", TEXT_COLOR_CYAN);
-    text_mode_print_at_color(x2, y, "+", TEXT_COLOR_CYAN);
-    text_mode_print_at_color(x, y2, "+", TEXT_COLOR_CYAN);
-    text_mode_print_at_color(x2, y2, "+", TEXT_COLOR_CYAN);
+    text_mode_print_at_attr(x, y, "+", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+    text_mode_print_at_attr(x2, y, "+", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+    text_mode_print_at_attr(x, y2, "+", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+    text_mode_print_at_attr(x2, y2, "+", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
 
     if (title && title[0]) {
         int tlen = (int)strlen(title);
@@ -35,7 +35,7 @@ void ui_window(int x, int y, int w, int h, const char *title) {
 void ui_separator(int y) {
     int cols = text_mode_get_cols();
     for (int x = 0; x < cols; x++) {
-        text_mode_print_at_color(x, y, "-", TEXT_COLOR_BLUE);
+        text_mode_print_at_attr(x, y, "-", TEXT_COLOR_BLUE, TEXT_ATTR_LINE_DRAWING);
     }
 }
 
