@@ -45,7 +45,13 @@ for app_elf in build/apps/*.elf; do
     app_name=$(basename "$app_elf" .elf)
     mkdir -p "$SD_MOUNT/apps/${app_name}"
     cp "$app_elf" "$SD_MOUNT/apps/${app_name}/program.elf"
-    echo "  Copied $app_name"
+    manifest="apps/${app_name}/manifest.cfg"
+    if [ -f "$manifest" ]; then
+        cp "$manifest" "$SD_MOUNT/apps/${app_name}/manifest.cfg"
+        echo "  Copied $app_name (with manifest)"
+    else
+        echo "  Copied $app_name"
+    fi
 done
 sync
 
