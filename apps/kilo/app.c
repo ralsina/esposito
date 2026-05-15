@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 
 static const char *TAG = "kilo";
 static const char *KILO_FILE_KEY = "editor_file";
@@ -527,7 +528,22 @@ static void editorResolvePath(const char *input, char *output, size_t out_size) 
 
 /* ======================== File I/O ======================== */
 
+#define KILO_MAX_FILE_SIZE (32 * 1024)  /* 32 KiB limit */
+
 static int editorOpen(editor_t *editor, const char *filename) {
+    struct stat st;
+    if (stat(filename, &st) != 0) {
+        snprintf(editor->statusmsg, sizeof(editor->statusmsg),
+                 "Cannot stat file: %s", filename);
+        return 0;
+    }
+    
+    if (st.st_size > KILO_MAX_FILE_SIZE) {
+        snprintf(editor->statusmsg, sizeof(editor->statusmsg),
+                 "File too large (%ld bytes, max %d)", st.st_size, KILO_MAX_FILE_SIZE);
+        return 0;
+    }
+    
     FILE *fp = fopen(filename, "r");
     if (!fp) return 0;
 

@@ -28,6 +28,11 @@ A minimal text editor for Esposito OS, ported from the classic
 
 Save As still uses a typed path prompt.
 
+## Limitations
+
+- **File size limit: 32 KiB** — Kilo loads entire files into memory. Attempting to open files larger than 32KB will be rejected with an error message. This protects against memory exhaustion on the app heap.
+- **No line wrapping** — Long lines scroll horizontally but do not wrap to the next display line.
+
 ## Default File
 
 If no file is configured, new content is saved to `/sdcard/apps/kilo/untitled.txt`.
