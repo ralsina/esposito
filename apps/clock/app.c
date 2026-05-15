@@ -1,6 +1,7 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "wifi.h"
+#include "jsmn.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -47,23 +48,91 @@ static weather_state_t weather = {
     .status = "No weather yet",
 };
 
-static int parse_int_prefix(const char *text, int *value, int *consumed) {
-    int sign = 1;
-    int index = 0;
-    int result = 0;
-    int saw_digit = 0;
-
-    if (!text || !value || !consumed) {
+static int json_token_equals(const char *json, const jsmntok_t *token, const char *text) {
+    if (!json || !token || !text || token->start < 0 || token->end < token->start) {
         return 0;
     }
 
-    if (text[index] == '-') {
+    size_t token_len = (size_t)(token->end - token->start);
+    size_t text_len = strlen(text);
+    if (token_len != text_len) {
+        return 0;
+    }
+
+    return strncmp(json + token->start, text, token_len) == 0;
+}
+
+static int json_skip_token_tree(const jsmntok_t *tokens, int token_count, int index) {
+    if (!tokens || index < 0 || index >= token_count) {
+        return token_count;
+    }
+
+    int next = index + 1;
+    switch (tokens[index].type) {
+        case JSMN_OBJECT:
+            for (int pair_index = 0; pair_index < tokens[index].size; pair_index++) {
+                next = json_skip_token_tree(tokens, token_count, next);
+                next = json_skip_token_tree(tokens, token_count, next);
+            }
+            break;
+        case JSMN_ARRAY:
+            for (int item_index = 0; item_index < tokens[index].size; item_index++) {
+                next = json_skip_token_tree(tokens, token_count, next);
+            }
+            break;
+        default:
+            break;
+    }
+    return next;
+}
+
+static int json_find_object_value(const char *json,
+                                  const jsmntok_t *tokens,
+                                  int token_count,
+                                  int object_token_index,
+                                  const char *key,
+                                  int *value_token_index) {
+    if (!json || !tokens || !key || !value_token_index ||
+        object_token_index < 0 || object_token_index >= token_count ||
+        tokens[object_token_index].type != JSMN_OBJECT) {
+        return 0;
+    }
+
+    int index = object_token_index + 1;
+    for (int pair_index = 0; pair_index < tokens[object_token_index].size; pair_index++) {
+        if (index + 1 >= token_count) {
+            return 0;
+        }
+
+        int key_index = index;
+        int value_index = key_index + 1;
+        if (tokens[key_index].type == JSMN_STRING && json_token_equals(json, &tokens[key_index], key)) {
+            *value_token_index = value_index;
+            return 1;
+        }
+
+        index = json_skip_token_tree(tokens, token_count, value_index);
+    }
+
+    return 0;
+}
+
+static int json_parse_int_token(const char *json, const jsmntok_t *token, int *out_value) {
+    if (!json || !token || !out_value || token->type != JSMN_PRIMITIVE || token->start < 0 || token->end <= token->start) {
+        return 0;
+    }
+
+    int index = token->start;
+    int sign = 1;
+    if (json[index] == '-') {
         sign = -1;
         index++;
     }
 
-    while (text[index] >= '0' && text[index] <= '9') {
-        result = result * 10 + (text[index] - '0');
+    int value = 0;
+    int saw_digit = 0;
+    while (index < token->end && json[index] >= '0' && json[index] <= '9') {
+        value = value * 10 + (json[index] - '0');
         index++;
         saw_digit = 1;
     }
@@ -72,77 +141,41 @@ static int parse_int_prefix(const char *text, int *value, int *consumed) {
         return 0;
     }
 
-    *value = result * sign;
-    *consumed = index;
+    *out_value = value * sign;
     return 1;
 }
 
-static int json_extract_temp_tenths(const char *json, const char *key, int *out_tenths) {
-    if (!json || !key || !out_tenths) {
+static int json_parse_tenths_token(const char *json, const jsmntok_t *token, int *out_tenths) {
+    if (!json || !token || !out_tenths || token->type != JSMN_PRIMITIVE || token->start < 0 || token->end <= token->start) {
         return 0;
     }
 
-    char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\":", key);
-    const char *pos = strstr(json, needle);
-    if (!pos) {
-        return 0;
-    }
-
-    pos += strlen(needle);
-    while (*pos == ' ' || *pos == '\t') {
-        pos++;
+    int index = token->start;
+    int sign = 1;
+    if (json[index] == '-') {
+        sign = -1;
+        index++;
     }
 
     int whole = 0;
-    int consumed = 0;
-    if (!parse_int_prefix(pos, &whole, &consumed)) {
+    int saw_digit = 0;
+    while (index < token->end && json[index] >= '0' && json[index] <= '9') {
+        whole = whole * 10 + (json[index] - '0');
+        index++;
+        saw_digit = 1;
+    }
+
+    if (!saw_digit) {
         return 0;
     }
 
-    pos += consumed;
     int tenths = whole * 10;
-
-    if (*pos == '.') {
-        pos++;
-        if (*pos >= '0' && *pos <= '9') {
-            int frac = *pos - '0';
-            if (tenths >= 0) {
-                tenths += frac;
-            } else {
-                tenths -= frac;
-            }
-        }
+    if (index < token->end && json[index] == '.' && index + 1 < token->end &&
+        json[index + 1] >= '0' && json[index + 1] <= '9') {
+        tenths += (json[index + 1] - '0');
     }
 
-    *out_tenths = tenths;
-    return 1;
-}
-
-static int json_extract_int(const char *json, const char *key, int *out_value) {
-    if (!json || !key || !out_value) {
-        return 0;
-    }
-
-    char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\":", key);
-    const char *pos = strstr(json, needle);
-    if (!pos) {
-        return 0;
-    }
-
-    pos += strlen(needle);
-    while (*pos == ' ' || *pos == '\t') {
-        pos++;
-    }
-
-    int consumed = 0;
-    int value = 0;
-    if (!parse_int_prefix(pos, &value, &consumed)) {
-        return 0;
-    }
-
-    *out_value = value;
+    *out_tenths = tenths * sign;
     return 1;
 }
 
@@ -192,10 +225,35 @@ static void refresh_weather_if_needed(int force) {
         return;
     }
 
+    jsmn_parser parser;
+    jsmntok_t tokens[128];
+    jsmn_init(&parser);
+    int token_count = jsmn_parse(&parser, response, (unsigned int)strlen(response), tokens, 128);
+    if (token_count < 1 || tokens[0].type != JSMN_OBJECT) {
+        weather.has_data = false;
+        snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
+        weather.next_refresh_at = now + 60;
+        return;
+    }
+
+    int current_token_index = -1;
+    int temp_token_index = -1;
+    int code_token_index = -1;
+    if (!json_find_object_value(response, tokens, token_count, 0, "current", &current_token_index) ||
+        current_token_index < 0 || current_token_index >= token_count ||
+        tokens[current_token_index].type != JSMN_OBJECT ||
+        !json_find_object_value(response, tokens, token_count, current_token_index, "temperature_2m", &temp_token_index) ||
+        !json_find_object_value(response, tokens, token_count, current_token_index, "weather_code", &code_token_index)) {
+        weather.has_data = false;
+        snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
+        weather.next_refresh_at = now + 60;
+        return;
+    }
+
     int temp_tenths = 0;
     int code = 0;
-    if (!json_extract_temp_tenths(response, "temperature_2m", &temp_tenths) ||
-        !json_extract_int(response, "weather_code", &code)) {
+    if (!json_parse_tenths_token(response, &tokens[temp_token_index], &temp_tenths) ||
+        !json_parse_int_token(response, &tokens[code_token_index], &code)) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
         weather.next_refresh_at = now + 60;
