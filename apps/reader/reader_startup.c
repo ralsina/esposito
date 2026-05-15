@@ -15,6 +15,9 @@ void reader_startup_init(reader_state_t *state, int *bold_pending, int *underlin
 
     char saved_file[MAX_PATH];
     size_t saved_len = os_consume_startup_file(saved_file, sizeof(saved_file));
+    // os_consume_startup_file binds and then unbinds globally; restore reader binding
+    // before using config_get_string fallbacks.
+    config_bind_app("reader");
     if (saved_len == 0) {
         saved_len = config_get_string(KEY_LAST_FILE, "", saved_file, sizeof(saved_file));
     }
