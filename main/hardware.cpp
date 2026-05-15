@@ -278,15 +278,25 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
         return false;
     }
 
-    float scale = 1.0f;
-    if (jpeg_width > screen_width || jpeg_height > screen_height) {
-        float scale_x = (float)screen_width / (float)jpeg_width;
-        float scale_y = (float)screen_height / (float)jpeg_height;
-        scale = (scale_x < scale_y) ? scale_x : scale_y;
+    // Hardware JPEG decoder only supports scales: 1.0, 0.5, 0.25, 0.125
+    // Choose the best one that fits on screen (largest valid scale)
+    float best_scale = 0.125f;
+    const float valid_scales[] = {1.0f, 0.5f, 0.25f, 0.125f};
+
+    for (int i = 0; i < 4; i++) {
+        float test_scale = valid_scales[i];
+        int scaled_w = (int)floorf((jpeg_width * test_scale) + 0.5f);
+        int scaled_h = (int)floorf((jpeg_height * test_scale) + 0.5f);
+
+        // Use the largest scale that fits on screen
+        if (scaled_w <= screen_width && scaled_h <= screen_height) {
+            best_scale = test_scale;
+            break;
+        }
     }
 
-    int target_width = (int)floorf((jpeg_width * scale) + 0.5f);
-    int target_height = (int)floorf((jpeg_height * scale) + 0.5f);
+    int target_width = (int)floorf((jpeg_width * best_scale) + 0.5f);
+    int target_height = (int)floorf((jpeg_height * best_scale) + 0.5f);
     if (target_width < 1) {
         target_width = 1;
     }
@@ -296,7 +306,7 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
 
     int draw_x = (screen_width - target_width) / 2;
     int draw_y = (screen_height - target_height) / 2;
-    if (!tft.drawJpgFile(path, draw_x, draw_y, target_width, target_height, 0, 0, scale)) {
+    if (!tft.drawJpgFile(path, draw_x, draw_y, target_width, target_height, 0, 0, best_scale)) {
         return false;
     }
 
