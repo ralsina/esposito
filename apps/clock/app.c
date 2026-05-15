@@ -624,7 +624,6 @@ static void draw_static_clock(void) {
     text_mode_clear(TEXT_COLOR_BLACK);
     text_mode_print_at_attr(2, 0, "Clock", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
     text_mode_print_at_attr(10, 0, "UTC", TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
-    text_mode_print_at_attr(2, 16, "Time status:", TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_BOLD);
 }
 
 static void draw_large_time(const os_time_status_t *time_status) {
@@ -681,10 +680,13 @@ static void draw_clock(void) {
     snprintf(line, sizeof(line), "%-14s", timezone);
     text_mode_print_at_attr(10, 0, line, TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
 
-    /* Text rows 18+ are safely below the large time area */
-    snprintf(line, sizeof(line), "%04d-%02d-%02d", display_status.year, display_status.month, display_status.day);
-    print_padded_line(2, 18, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_BOLD, line, 20);
+    if (time_status.synchronized) {
+        text_mode_print_at_attr(29, 0, "NTP", TEXT_COLOR_GREEN, TEXT_ATTR_BOLD);
+    } else {
+        text_mode_print_at_attr(29, 0, "NTP", TEXT_COLOR_RED, TEXT_ATTR_BOLD);
+    }
 
+    /* Text rows 18+ are safely below the large time area */
     static const char *weekday_names[] = {
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
     };
@@ -692,20 +694,8 @@ static void draw_clock(void) {
     if (display_status.weekday >= 0 && display_status.weekday < 7) {
         weekday = weekday_names[display_status.weekday];
     }
-    snprintf(line, sizeof(line), "%s", weekday);
-    print_padded_line(2, 20, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, 16);
-
-    snprintf(line, sizeof(line), "Unix: %lld", (long long)time_status.unix_time);
-    print_padded_line(2, 22, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL, line, 28);
-
-    if (time_status.synchronized) {
-        print_padded_line(2, 25, TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL, "Trusted (NTP synced)", 24);
-        snprintf(line, sizeof(line), "Last sync: %lld", (long long)time_status.last_sync_time);
-        print_padded_line(2, 26, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL, line, 32);
-    } else {
-        print_padded_line(2, 25, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, "Untrusted (no NTP sync)", 28);
-        print_padded_line(2, 26, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL, "Last sync: never", 32);
-    }
+    snprintf(line, sizeof(line), "%s %02d/%02d/%04d", weekday, display_status.day, display_status.month, display_status.year);
+    print_padded_line(2, 18, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_BOLD, line, 40);
 
     if (weather.has_data) {
         int abs_t = weather.temperature_tenths_c < 0 ? -weather.temperature_tenths_c : weather.temperature_tenths_c;
@@ -717,12 +707,12 @@ static void draw_clock(void) {
         } else {
             snprintf(line, sizeof(line), "Weather: %d.%d C  %s", whole, frac, weather_code_label(weather.weather_code));
         }
-        print_padded_line(2, 27, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, 40);
+        print_padded_line(2, 20, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, 40);
     } else {
-        print_padded_line(2, 27, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, weather.status, 40);
+        print_padded_line(2, 20, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, weather.status, 40);
     }
 
-    print_padded_line(2, 28, TEXT_COLOR_BRIGHT_BLACK, TEXT_ATTR_NORMAL, weather.debug, 44);
+    print_padded_line(2, 21, TEXT_COLOR_BRIGHT_BLACK, TEXT_ATTR_NORMAL, weather.debug, 44);
 
     /* Flush text-mode cells first, then paint the large clock cells on top */
     text_mode_flush();
