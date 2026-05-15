@@ -55,6 +55,12 @@ static const char *menu_labels[MENU_ITEMS] = {
     "Serial logs to UART",
 };
 
+static void draw_menu_item(int x, int y, int item_index) {
+    uint16_t color = (item_index == selected) ? TEXT_COLOR_GREEN : TEXT_COLOR_WHITE;
+    char marker = (item_index == selected) ? '>' : ' ';
+    text_mode_printf_at_color(x, y, color, "%c %s", marker, menu_labels[item_index]);
+}
+
 static void draw_main(void) {
     ui_clear();
 
@@ -85,8 +91,23 @@ static void draw_main(void) {
     ui_label_attr(3, y++, location_line, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
 
     ui_separator(y++);
-    ui_menu_draw(5, y, MENU_ITEMS, menu_labels, MENU_ITEMS, selected);
-    y += MENU_ITEMS + 1;
+
+    ui_label_attr(3, y++, "WiFi", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    draw_menu_item(5, y++, 0);
+    draw_menu_item(5, y++, 1);
+    draw_menu_item(5, y++, 2);
+    draw_menu_item(5, y++, 3);
+    draw_menu_item(5, y++, 4);
+
+    ui_separator(y++);
+    ui_label_attr(3, y++, "Time & Location", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    draw_menu_item(5, y++, 5);
+    draw_menu_item(5, y++, 6);
+
+    ui_separator(y++);
+    ui_label_attr(3, y++, "Debug", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    draw_menu_item(5, y++, 7);
+    y++;
 
     if (status_msg[0]) {
         ui_label_attr(3, y, status_msg, TEXT_COLOR_BRIGHT_YELLOW, TEXT_ATTR_BOLD);
