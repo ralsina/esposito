@@ -60,7 +60,9 @@ These functions work alongside text mode — `paint` uses `display_draw_pixel` a
 
 Apps that want pane/window borders can set `TEXT_ATTR_LINE_DRAWING` on
 `text_mode_print_at_attr*()` calls to render `+`, `-`, and `|` as line-drawing
-cells instead of literal glyphs.
+cells instead of literal glyphs. The renderer also understands VT100 ACS
+letters such as `q`, `x`, `l`, `k`, `m`, `j`, `n`, `t`, `u`, `v`, and `w`
+when that attribute is set.
 
 ### Checkpoint and config
 

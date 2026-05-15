@@ -75,16 +75,6 @@ static void terminal_title_from_vt(const char *title) {
     }
 }
 
-static uint16_t brighten_rgb565(uint16_t color) {
-    unsigned int r = (color >> 11) & 0x1F;
-    unsigned int g = (color >> 5) & 0x3F;
-    unsigned int b = color & 0x1F;
-    r = (r + 16) > 31 ? 31 : (r + 16);
-    g = (g + 32) > 63 ? 63 : (g + 32);
-    b = (b + 16) > 31 ? 31 : (b + 16);
-    return (uint16_t)((r << 11) | (g << 5) | b);
-}
-
 static void draw_graphics_char(int px, int py, char c, uint16_t fg) {
     int mid_x = px + TERM_CELL_W / 2;
     int mid_y = py + TERM_CELL_H / 2;
@@ -140,9 +130,6 @@ static void draw_graphics_char(int px, int py, char c, uint16_t fg) {
 }
 
 static void draw_cell(terminal_mode_impl_t *impl, int x, int y, char c, vt100_attr_t attr) {
-    int px = x * TERM_CELL_W;
-    int py = y * TERM_CELL_H;
-
     uint8_t fg_cga = ansi_to_cga[attr.fg & 7];
     uint8_t bg_cga = ansi_to_cga[attr.bg & 7];
     int reverse = attr.reverse ^ impl->vt.screen_reverse;
@@ -155,22 +142,10 @@ static void draw_cell(terminal_mode_impl_t *impl, int x, int y, char c, vt100_at
     uint8_t tm_attr = TEXT_ATTR_NORMAL;
     if (attr.bold)      tm_attr |= TEXT_ATTR_BOLD;
     if (attr.underline) tm_attr |= TEXT_ATTR_UNDERLINE;
+    if (attr.graphics)  tm_attr |= TEXT_ATTR_LINE_DRAWING;
 
     char buf[2] = {c, '\0'};
     text_mode_print_at_attr_bg(x, y, buf, fg_cga, bg_cga, tm_attr);
-
-    /* Graphics chars are drawn as pixels over the grid cell for correct visuals.
-     * The character is already stored in the text_mode grid for screenshots. */
-    if (attr.graphics && c != ' ') {
-        uint16_t fg_px = impl->palette[attr.fg & 7];
-        uint16_t bg_px = impl->palette[attr.bg & 7];
-        if (reverse) {
-            uint16_t tmp = fg_px; fg_px = bg_px; bg_px = tmp;
-        }
-        if (attr.bold) fg_px = brighten_rgb565(fg_px);
-        display_fill_rect(px, py, TERM_CELL_W, TERM_CELL_H, bg_px);
-        draw_graphics_char(px, py, c, fg_px);
-    }
 }
 
 static void draw_cursor(terminal_mode_impl_t *impl) {

@@ -53,12 +53,19 @@ static bool cell_uses_line_drawing(const text_cell_t *cell) {
 static uint8_t line_drawing_base_mask(char ch) {
     switch (ch) {
         case '-': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT;
+        case 'q': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT;
         case '|': return LINE_DRAW_UP | LINE_DRAW_DOWN;
+        case 'x': return LINE_DRAW_UP | LINE_DRAW_DOWN;
         case '+': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
+        case 'n': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
         case 'l': return LINE_DRAW_RIGHT | LINE_DRAW_DOWN;
         case 'k': return LINE_DRAW_LEFT | LINE_DRAW_DOWN;
         case 'm': return LINE_DRAW_RIGHT | LINE_DRAW_UP;
         case 'j': return LINE_DRAW_LEFT | LINE_DRAW_UP;
+        case 't': return LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
+        case 'u': return LINE_DRAW_LEFT | LINE_DRAW_UP | LINE_DRAW_DOWN;
+        case 'v': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP;
+        case 'w': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_DOWN;
         default: return 0;
     }
 }
