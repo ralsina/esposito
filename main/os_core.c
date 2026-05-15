@@ -10,6 +10,8 @@
 #include "terminal_mode.h"
 #include "touchscreen.h"
 #include "wifi.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "esp_spiffs.h"
@@ -263,6 +265,82 @@ bool os_time_is_synchronized(void) {
 
 int64_t os_time_last_sync(void) {
     return (int64_t)wifi_time_last_sync();
+}
+
+typedef struct {
+    char *out;
+    size_t out_size;
+    size_t len;
+    bool truncated;
+} os_http_get_ctx_t;
+
+static esp_err_t os_http_get_event_handler(esp_http_client_event_t *event) {
+    os_http_get_ctx_t *ctx = (os_http_get_ctx_t *)event->user_data;
+    if (!ctx || !ctx->out || ctx->out_size == 0) {
+        return ESP_OK;
+    }
+
+    if (event->event_id == HTTP_EVENT_ON_DATA && event->data && event->data_len > 0) {
+        size_t writable = ctx->out_size - 1 - ctx->len;
+        size_t to_copy = (size_t)event->data_len;
+        if (to_copy > writable) {
+            to_copy = writable;
+            ctx->truncated = true;
+        }
+
+        if (to_copy > 0) {
+            memcpy(ctx->out + ctx->len, event->data, to_copy);
+            ctx->len += to_copy;
+            ctx->out[ctx->len] = '\0';
+        }
+    }
+
+    return ESP_OK;
+}
+
+int os_http_get(const char *url, char *out, size_t out_size, int timeout_ms) {
+    if (!url || !out || out_size < 2) {
+        return -1;
+    }
+
+    out[0] = '\0';
+
+    os_http_get_ctx_t ctx = {
+        .out = out,
+        .out_size = out_size,
+        .len = 0,
+        .truncated = false,
+    };
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .timeout_ms = timeout_ms > 0 ? timeout_ms : 5000,
+        .event_handler = os_http_get_event_handler,
+        .user_data = &ctx,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (!client) {
+        return -1;
+    }
+
+    esp_err_t err = esp_http_client_perform(client);
+    if (err != ESP_OK) {
+        esp_http_client_cleanup(client);
+        return -1;
+    }
+
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    if (status != 200) {
+        return -status;
+    }
+    if (ctx.truncated) {
+        return -2;
+    }
+    return (int)ctx.len;
 }
 
 size_t os_consume_startup_file(char *out, size_t out_size) {

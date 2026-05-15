@@ -11,6 +11,7 @@ A minimal UTC clock app for Esposito OS.
 - Unix timestamp
 - Whether the OS considers the time trusted for this boot
 - Last NTP sync timestamp, if available
+- Weather from Open-Meteo (temperature + condition) when WiFi is connected
 
 ## Notes
 
@@ -24,6 +25,7 @@ The app uses the OS time API, so it reflects the current system clock state:
 The display updates automatically every second.
 
 - Any key redraws immediately
+- `R` forces a weather refresh
 - `Ctrl+Esc` returns to the launcher
 
 ## Build

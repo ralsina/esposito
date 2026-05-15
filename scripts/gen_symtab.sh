@@ -40,6 +40,7 @@ SYMBOLS=(
     os_get_time_status
     os_time_is_synchronized
     os_time_last_sync
+    os_http_get
     os_get_current_app
     app_launcher_start
     text_mode_init

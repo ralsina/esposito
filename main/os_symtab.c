@@ -42,6 +42,7 @@ static const os_symtab_entry_t symtab[] = {
     {"os_get_time_status",      os_get_time_status},
     {"os_time_is_synchronized", os_time_is_synchronized},
     {"os_time_last_sync",       os_time_last_sync},
+    {"os_http_get",             os_http_get},
     {"os_get_current_app",      os_get_current_app},
     {"app_launcher_start",      app_launcher_start},
     {"text_mode_init",          text_mode_init},

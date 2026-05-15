@@ -1,10 +1,15 @@
 #include "os_core.h"
 #include "text_mode.h"
+#include "wifi.h"
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 static const char *TAG = "clock";
+
+#define WEATHER_URL "https://api.open-meteo.com/v1/forecast?latitude=40.4168&longitude=-3.7038&current=temperature_2m,weather_code&timezone=UTC"
+#define WEATHER_REFRESH_SECONDS 600
 
 #define CLOCK_DIGIT_W 3
 #define CLOCK_DIGIT_H 5
@@ -25,6 +30,184 @@ static const uint8_t digit_bits[11][CLOCK_DIGIT_H] = {
     { 0x7, 0x5, 0x7, 0x1, 0x7 }, /* 9 */
     { 0x0, 0x2, 0x0, 0x2, 0x0 }, /* : */
 };
+
+typedef struct {
+    bool has_data;
+    int temperature_tenths_c;
+    int weather_code;
+    time_t next_refresh_at;
+    char status[64];
+} weather_state_t;
+
+static weather_state_t weather = {
+    .has_data = false,
+    .temperature_tenths_c = 0,
+    .weather_code = -1,
+    .next_refresh_at = 0,
+    .status = "No weather yet",
+};
+
+static int parse_int_prefix(const char *text, int *value, int *consumed) {
+    int sign = 1;
+    int index = 0;
+    int result = 0;
+    int saw_digit = 0;
+
+    if (!text || !value || !consumed) {
+        return 0;
+    }
+
+    if (text[index] == '-') {
+        sign = -1;
+        index++;
+    }
+
+    while (text[index] >= '0' && text[index] <= '9') {
+        result = result * 10 + (text[index] - '0');
+        index++;
+        saw_digit = 1;
+    }
+
+    if (!saw_digit) {
+        return 0;
+    }
+
+    *value = result * sign;
+    *consumed = index;
+    return 1;
+}
+
+static int json_extract_temp_tenths(const char *json, const char *key, int *out_tenths) {
+    if (!json || !key || !out_tenths) {
+        return 0;
+    }
+
+    char needle[64];
+    snprintf(needle, sizeof(needle), "\"%s\":", key);
+    const char *pos = strstr(json, needle);
+    if (!pos) {
+        return 0;
+    }
+
+    pos += strlen(needle);
+    while (*pos == ' ' || *pos == '\t') {
+        pos++;
+    }
+
+    int whole = 0;
+    int consumed = 0;
+    if (!parse_int_prefix(pos, &whole, &consumed)) {
+        return 0;
+    }
+
+    pos += consumed;
+    int tenths = whole * 10;
+
+    if (*pos == '.') {
+        pos++;
+        if (*pos >= '0' && *pos <= '9') {
+            int frac = *pos - '0';
+            if (tenths >= 0) {
+                tenths += frac;
+            } else {
+                tenths -= frac;
+            }
+        }
+    }
+
+    *out_tenths = tenths;
+    return 1;
+}
+
+static int json_extract_int(const char *json, const char *key, int *out_value) {
+    if (!json || !key || !out_value) {
+        return 0;
+    }
+
+    char needle[64];
+    snprintf(needle, sizeof(needle), "\"%s\":", key);
+    const char *pos = strstr(json, needle);
+    if (!pos) {
+        return 0;
+    }
+
+    pos += strlen(needle);
+    while (*pos == ' ' || *pos == '\t') {
+        pos++;
+    }
+
+    int consumed = 0;
+    int value = 0;
+    if (!parse_int_prefix(pos, &value, &consumed)) {
+        return 0;
+    }
+
+    *out_value = value;
+    return 1;
+}
+
+static const char *weather_code_label(int code) {
+    switch (code) {
+        case 0: return "Clear";
+        case 1:
+        case 2:
+        case 3: return "Cloudy";
+        case 45:
+        case 48: return "Fog";
+        case 51:
+        case 53:
+        case 55: return "Drizzle";
+        case 61:
+        case 63:
+        case 65: return "Rain";
+        case 71:
+        case 73:
+        case 75: return "Snow";
+        case 95:
+        case 96:
+        case 99: return "Storm";
+        default: return "Unknown";
+    }
+}
+
+static void refresh_weather_if_needed(int force) {
+    time_t now = time(NULL);
+    if (!force && now < weather.next_refresh_at) {
+        return;
+    }
+
+    if (!wifi_is_connected()) {
+        weather.has_data = false;
+        snprintf(weather.status, sizeof(weather.status), "Weather: WiFi disconnected");
+        weather.next_refresh_at = now + 30;
+        return;
+    }
+
+    char response[768];
+    int result = os_http_get(WEATHER_URL, response, sizeof(response), 5000);
+    if (result <= 0) {
+        weather.has_data = false;
+        snprintf(weather.status, sizeof(weather.status), "Weather fetch failed (%d)", result);
+        weather.next_refresh_at = now + 60;
+        return;
+    }
+
+    int temp_tenths = 0;
+    int code = 0;
+    if (!json_extract_temp_tenths(response, "temperature_2m", &temp_tenths) ||
+        !json_extract_int(response, "weather_code", &code)) {
+        weather.has_data = false;
+        snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
+        weather.next_refresh_at = now + 60;
+        return;
+    }
+
+    weather.has_data = true;
+    weather.temperature_tenths_c = temp_tenths;
+    weather.weather_code = code;
+    snprintf(weather.status, sizeof(weather.status), "Weather updated");
+    weather.next_refresh_at = now + WEATHER_REFRESH_SECONDS;
+}
 
 static void print_padded_line(int x, int y, uint8_t color, uint8_t attr, const char *text, int width) {
     char line[96];
@@ -114,6 +297,8 @@ static void draw_large_time(const os_time_status_t *time_status) {
 }
 
 static void draw_clock(void) {
+    refresh_weather_if_needed(0);
+
     os_time_status_t time_status;
     if (!os_get_time_status(&time_status)) {
         print_padded_line(2, 18, TEXT_COLOR_RED, TEXT_ATTR_NORMAL, "Failed to read time status", 34);
@@ -149,6 +334,21 @@ static void draw_clock(void) {
         print_padded_line(2, 26, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL, "Last sync: never", 32);
     }
 
+    if (weather.has_data) {
+        int abs_t = weather.temperature_tenths_c < 0 ? -weather.temperature_tenths_c : weather.temperature_tenths_c;
+        int whole = abs_t / 10;
+        int frac = abs_t % 10;
+        char sign = weather.temperature_tenths_c < 0 ? '-' : '\0';
+        if (sign) {
+            snprintf(line, sizeof(line), "Weather: %c%d.%d C  %s", sign, whole, frac, weather_code_label(weather.weather_code));
+        } else {
+            snprintf(line, sizeof(line), "Weather: %d.%d C  %s", whole, frac, weather_code_label(weather.weather_code));
+        }
+        print_padded_line(2, 27, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, 40);
+    } else {
+        print_padded_line(2, 27, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, weather.status, 40);
+    }
+
     /* Flush text-mode cells first, then paint the large clock cells on top */
     text_mode_flush();
     draw_large_time(&time_status);
@@ -159,6 +359,7 @@ void app_init(app_context_t *ctx) {
     ctx->timer_interval_ms = 1000;
 
     text_mode_init();
+    refresh_weather_if_needed(1);
     draw_static_clock();
     draw_clock();
     os_log(TAG, "Clock app initialized");
@@ -182,6 +383,9 @@ void app_event(app_context_t *ctx, event_t *event) {
     }
 
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
+        if (event->keyboard.key == 'r' || event->keyboard.key == 'R') {
+            refresh_weather_if_needed(1);
+        }
         draw_clock();
     }
 }
