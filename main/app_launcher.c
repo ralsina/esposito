@@ -26,14 +26,43 @@ static char app_display_names[APP_LOADER_MAX_APPS][64]; // human-readable (for d
 #define HEADER_ROW 1
 #define APPS_START_ROW 4
 
-// Button positions (set on first render)
-static int btn_up_x = 0;
-static int btn_open_x = 0;
-static int btn_down_x = 0;
-static int btn_row = 0;
-static int btn_w = 0;
+// Button widgets
+static ui_button_t *btn_up = NULL;
+static ui_button_t *btn_open = NULL;
+static ui_button_t *btn_down = NULL;
 
 static int previous_selected = -1;
+
+// Forward declarations
+static void app_launcher_show(void);
+
+// Button widget callbacks
+static void on_launcher_up_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    int old = app_launcher_selected;
+    app_launcher_selected = (app_launcher_selected - 1 + app_count) % app_count;
+    if (old != app_launcher_selected) app_launcher_show();
+}
+
+static void on_launcher_open_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (app_count > 0) {
+        ESP_LOGI(TAG, "Launching app: %s", app_names[app_launcher_selected]);
+        app_launcher_active = false;
+        previous_selected = -1;
+        os_load_app(app_names[app_launcher_selected]);
+    }
+}
+
+static void on_launcher_down_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    int old = app_launcher_selected;
+    app_launcher_selected = (app_launcher_selected + 1) % app_count;
+    if (old != app_launcher_selected) app_launcher_show();
+}
 
 static void sort_app_names(void) {
     for (int i = 0; i < app_count - 1; i++) {
@@ -55,25 +84,29 @@ static void app_launcher_show_static(void) {
     ui_label_attr((cols - 20) / 2, HEADER_ROW, "Esposito OS App Launcher", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
     ui_separator(HEADER_ROW + 1);
 
-    btn_w = 13;
-    int gap = 2;
-    btn_row = rows - 3;
-    btn_up_x = 2;
-    btn_open_x = btn_up_x + btn_w + gap;
-    btn_down_x = btn_open_x + btn_w + gap;
+    // Create button widgets if they don't exist
+    if (!btn_up || !btn_open || !btn_down) {
+        int btn_w = 13;
+        int gap = 2;
+        int btn_row = rows - 3;
+        int btn_up_x = 2;
+        int btn_open_x = btn_up_x + btn_w + gap;
+        int btn_down_x = btn_open_x + btn_w + gap;
 
-    char spacer[64];
-    memset(spacer, ' ', btn_w);
-    spacer[btn_w] = '\0';
+        btn_up = ui_button_create(btn_up_x, btn_row, btn_w, 1, "  UP  ");
+        ui_button_set_callback(btn_up, on_launcher_up_click, NULL);
 
-    text_mode_print_at_attr_bg(btn_up_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(btn_up_x + (btn_w - 6) / 2, btn_row, "  UP  ", TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+        btn_open = ui_button_create(btn_open_x, btn_row, btn_w, 1, " OPEN ");
+        ui_button_set_callback(btn_open, on_launcher_open_click, NULL);
 
-    text_mode_print_at_attr_bg(btn_open_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(btn_open_x + (btn_w - 6) / 2, btn_row, " OPEN ", TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
+        btn_down = ui_button_create(btn_down_x, btn_row, btn_w, 1, " DOWN ");
+        ui_button_set_callback(btn_down, on_launcher_down_click, NULL);
+    }
 
-    text_mode_print_at_attr_bg(btn_down_x, btn_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(btn_down_x + (btn_w - 6) / 2, btn_row, " DOWN ", TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    // Draw buttons
+    ui_button_draw(btn_up);
+    ui_button_draw(btn_open);
+    ui_button_draw(btn_down);
 }
 
 static void app_launcher_show(void) {
@@ -195,27 +228,21 @@ void app_launcher_handle_event(event_t *event) {
 
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         app_launcher_handle_key(event->keyboard.key);
-    } else if (event->type == EVENT_TOUCH && event->touch.pressed && btn_w > 0) {
+    } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
+        // Convert pixel coordinates to character coordinates
         int cw = text_mode_get_char_width();
         int ch = text_mode_get_char_height();
-        if (event->touch.y >= btn_row * ch && event->touch.y < (btn_row + 1) * ch) {
-            int x_col = event->touch.x / cw;
-            if (x_col >= btn_up_x && x_col < btn_up_x + btn_w) {
-                int old = app_launcher_selected;
-                app_launcher_selected = (app_launcher_selected - 1 + app_count) % app_count;
-                if (old != app_launcher_selected) app_launcher_show();
-            } else if (x_col >= btn_open_x && x_col < btn_open_x + btn_w) {
-                if (app_count > 0) {
-                    ESP_LOGI(TAG, "Launching app: %s", app_names[app_launcher_selected]);
-                    app_launcher_active = false;
-                    previous_selected = -1;
-                    os_load_app(app_names[app_launcher_selected]);
-                }
-            } else if (x_col >= btn_down_x && x_col < btn_down_x + btn_w) {
-                int old = app_launcher_selected;
-                app_launcher_selected = (app_launcher_selected + 1) % app_count;
-                if (old != app_launcher_selected) app_launcher_show();
-            }
-        }
+        int x_col = event->touch.x / cw;
+        int y_col = event->touch.y / ch;
+
+        // Create a modified touch event with character coordinates
+        event_t char_event = *event;
+        char_event.touch.x = x_col;
+        char_event.touch.y = y_col;
+
+        // Try button widgets
+        if (btn_up && ui_button_handle_touch(btn_up, &char_event)) return;
+        if (btn_open && ui_button_handle_touch(btn_open, &char_event)) return;
+        if (btn_down && ui_button_handle_touch(btn_down, &char_event)) return;
     }
 }
