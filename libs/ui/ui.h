@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "os_core.h"
 #include "text_mode.h"
+#include "ui_button.h"
 
 #ifdef __cplusplus
 extern "C" {
