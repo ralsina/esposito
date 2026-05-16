@@ -300,7 +300,7 @@ void ui_list_draw(const ui_list_widget_t *widget) {
         text_mode_print_at_attr_bg(title_x, title_y, " ", widget->title_bg, widget->title_bg, TEXT_ATTR_NORMAL);
 
         // Draw title text
-        text_mode_print_at_attr_bg(title_x + 1, title_y, widget->title, widget->title_fg, widget->title_bg, TEXT_ATTR_BOLD);
+        text_mode_print_at_attr_bg(title_x + 1, title_y, widget->title, widget->title_fg, widget->title_bg, TEXT_ATTR_NORMAL);
 
         // Draw space padding after title
         int title_len = strlen(widget->title);
@@ -363,14 +363,15 @@ void ui_list_draw(const ui_list_widget_t *widget) {
             }
 
             // Draw item text
-            uint8_t fg = is_selected ? widget->selected_fg : widget->normal_fg;
-            uint8_t bg = is_selected ? widget->selected_bg : widget->normal_bg;
+            uint8_t fg = is_selected ? TEXT_COLOR_BLACK : widget->normal_fg;
+            uint8_t bg = is_selected ? TEXT_COLOR_BRIGHT_GREEN : widget->normal_bg;
 
             if (is_selected) {
-                text_mode_print_at_attr_bg(x, y, ">", fg, bg, TEXT_ATTR_BOLD);
-                text_mode_print_at_attr_bg(x + 1, y, truncated, fg, bg, TEXT_ATTR_NORMAL);
+                text_mode_print_at_attr_bg(x, y, "> ", fg, bg, TEXT_ATTR_BOLD);
+                text_mode_print_at_attr_bg(x + 2, y, truncated, fg, bg, TEXT_ATTR_NORMAL);
             } else {
-                text_mode_print_at_attr_bg(x, y, truncated, fg, bg, TEXT_ATTR_NORMAL);
+                text_mode_print_at_attr_bg(x, y, "  ", fg, bg, TEXT_ATTR_NORMAL);
+                text_mode_print_at_attr_bg(x + 2, y, truncated, fg, bg, TEXT_ATTR_NORMAL);
             }
         }
     }

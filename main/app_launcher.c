@@ -31,25 +31,46 @@ static ui_button_t *btn_up = NULL;
 static ui_button_t *btn_open = NULL;
 static ui_button_t *btn_down = NULL;
 
+// List widget for app list
+static ui_list_widget_t *app_list = NULL;
+
 static int previous_selected = -1;
 
 // Forward declarations
 static void app_launcher_show(void);
 
+// List widget callbacks
+static void on_app_list_selection_changed(ui_list_widget_t *list, int new_selection) {
+    (void)list;
+    app_launcher_selected = new_selection;
+}
+
+static void on_app_list_item_selected(ui_list_widget_t *list, int item_index) {
+    (void)list;
+    if (app_count > 0 && item_index >= 0 && item_index < app_count) {
+        ESP_LOGI(TAG, "Launching app: %s", app_names[item_index]);
+        app_launcher_active = false;
+        previous_selected = -1;
+        os_load_app(app_names[item_index]);
+    }
+}
+
 // Button widget callbacks
 static void on_launcher_up_click(ui_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
-    int old = app_launcher_selected;
-    app_launcher_selected = (app_launcher_selected - 1 + app_count) % app_count;
-    if (old != app_launcher_selected) app_launcher_show();
+    if (app_list && app_count > 0) {
+        int new_selection = (app_launcher_selected - 1 + app_count) % app_count;
+        app_launcher_selected = new_selection;
+        ui_list_set_selection(app_list, new_selection);
+    }
+    app_launcher_show();
 }
 
 static void on_launcher_open_click(ui_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     if (app_count > 0) {
-        ESP_LOGI(TAG, "Launching app: %s", app_names[app_launcher_selected]);
         app_launcher_active = false;
         previous_selected = -1;
         os_load_app(app_names[app_launcher_selected]);
@@ -59,9 +80,12 @@ static void on_launcher_open_click(ui_button_t *button, void *user_data) {
 static void on_launcher_down_click(ui_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
-    int old = app_launcher_selected;
-    app_launcher_selected = (app_launcher_selected + 1) % app_count;
-    if (old != app_launcher_selected) app_launcher_show();
+    if (app_list && app_count > 0) {
+        int new_selection = (app_launcher_selected + 1) % app_count;
+        app_launcher_selected = new_selection;
+        ui_list_set_selection(app_list, new_selection);
+    }
+    app_launcher_show();
 }
 
 static void sort_app_names(void) {
@@ -81,25 +105,60 @@ static void app_launcher_show_static(void) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
 
-    ui_label_attr((cols - 20) / 2, HEADER_ROW, "Esposito OS App Launcher", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    ui_separator(HEADER_ROW + 1);
+    // Create or update list widget
+    if (!app_list) {
+        int list_height = rows - 6; // Leave room for buttons and margins
+        app_list = ui_list_create(1, 1, cols - 2, list_height);
+        ui_list_set_title(app_list, "App Launcher");
+        ui_list_set_colors(app_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                           TEXT_COLOR_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+        ui_list_set_border(app_list, true);
+        ui_list_set_scrollbar(app_list, true);
+        ui_list_set_callbacks(app_list, on_app_list_selection_changed,
+                              on_app_list_item_selected, NULL);
+    } else {
+        // Update dimensions if screen size changed
+        app_list->x = 1;
+        app_list->y = 1;
+        app_list->width = cols - 2;
+        app_list->height = rows - 6;
+    }
+
+    // Update list items if apps are available
+    if (app_count > 0) {
+        // Create persistent array of display name pointers
+        static const char *display_ptrs[APP_LOADER_MAX_APPS];
+        for (int i = 0; i < app_count; i++) {
+            display_ptrs[i] = app_display_names[i];
+        }
+
+        ui_list_set_items(app_list, display_ptrs, app_count);
+        ui_list_set_selection(app_list, app_launcher_selected);
+        ui_list_draw(app_list);
+    }
 
     // Create button widgets if they don't exist
     if (!btn_up || !btn_open || !btn_down) {
+        int btn_h = 3;  // 3 rows tall
+        int btn_row = rows - btn_h - 1;  // Position at bottom
         int btn_w = 13;
         int gap = 2;
-        int btn_row = rows - 3;
-        int btn_up_x = 2;
+
+        // Calculate total width and center the buttons
+        int total_width = (btn_w * 3) + (gap * 2);
+        int start_x = (cols - total_width) / 2;
+
+        int btn_up_x = start_x;
         int btn_open_x = btn_up_x + btn_w + gap;
         int btn_down_x = btn_open_x + btn_w + gap;
 
-        btn_up = ui_button_create(btn_up_x, btn_row, btn_w, 1, "  UP  ");
+        btn_up = ui_button_create(btn_up_x, btn_row, btn_w, btn_h, "  UP  ");
         ui_button_set_callback(btn_up, on_launcher_up_click, NULL);
 
-        btn_open = ui_button_create(btn_open_x, btn_row, btn_w, 1, " OPEN ");
+        btn_open = ui_button_create(btn_open_x, btn_row, btn_w, btn_h, " OPEN ");
         ui_button_set_callback(btn_open, on_launcher_open_click, NULL);
 
-        btn_down = ui_button_create(btn_down_x, btn_row, btn_w, 1, " DOWN ");
+        btn_down = ui_button_create(btn_down_x, btn_row, btn_w, btn_h, " DOWN ");
         ui_button_set_callback(btn_down, on_launcher_down_click, NULL);
     }
 
@@ -115,22 +174,15 @@ static void app_launcher_show(void) {
     if (first_render) {
         ui_clear();
         app_launcher_show_static();
-    }
-
-    int y = APPS_START_ROW;
-    for (int i = 0; i < app_count; i++) {
-        if (first_render || i == previous_selected || i == app_launcher_selected) {
-            uint16_t color = (i == app_launcher_selected) ? TEXT_COLOR_GREEN : TEXT_COLOR_WHITE;
-            char marker = (i == app_launcher_selected) ? '>' : ' ';
-            char line[80];
-            snprintf(line, sizeof(line), "%c %d. %.63s", marker, i + 1, app_display_names[i]);
-            ui_label(5, y, line, color);
+    } else {
+        // Only redraw the list if selection changed
+        if (previous_selected != app_launcher_selected && app_list) {
+            ui_list_draw(app_list);
+            text_mode_flush();
         }
-        y++;
     }
 
     previous_selected = app_launcher_selected;
-    ESP_LOGI(TAG, "App launcher updated, selected: %d", app_launcher_selected);
 }
 
 static void app_launcher_handle_key(char key) {
@@ -141,14 +193,24 @@ static void app_launcher_handle_key(char key) {
         case 'W':
         case 'A': // Up arrow (some keyboards send different codes)
             // Move up (previous app)
-            app_launcher_selected = (app_launcher_selected - 1 + app_count) % app_count;
+            if (app_list && app_count > 0) {
+                int new_selection = (app_launcher_selected - 1 + app_count) % app_count;
+                app_launcher_selected = new_selection;
+                ui_list_set_selection(app_list, new_selection);
+                app_launcher_show();
+            }
             break;
 
         case 's':
         case 'S':
         case 'B': // Down arrow (some keyboards send different codes)
             // Move down (next app)
-            app_launcher_selected = (app_launcher_selected + 1) % app_count;
+            if (app_list && app_count > 0) {
+                int new_selection = (app_launcher_selected + 1) % app_count;
+                app_launcher_selected = new_selection;
+                ui_list_set_selection(app_list, new_selection);
+                app_launcher_show();
+            }
             break;
 
         case '\n':
@@ -239,6 +301,11 @@ void app_launcher_handle_event(event_t *event) {
         event_t char_event = *event;
         char_event.touch.x = x_col;
         char_event.touch.y = y_col;
+
+        // Try list widget first
+        if (app_list && ui_list_handle_touch(app_list, &char_event)) {
+            return; // List widget handled the touch
+        }
 
         // Try button widgets
         if (btn_up && ui_button_handle_touch(btn_up, &char_event)) return;

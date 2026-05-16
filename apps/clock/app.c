@@ -299,11 +299,7 @@ static int resolve_location(const char *location, char *lat_out, size_t lat_size
     }
 
     snprintf(geocode_url, sizeof(geocode_url), WEATHER_GEOCODE_URL_FMT, encoded);
-    os_log(TAG, "Geocode HTTPS test: URL=%s", geocode_url);
     int geocode_result = os_http_get(geocode_url, geocode_response, sizeof(geocode_response), WEATHER_HTTP_TIMEOUT_MS);
-    os_log(TAG, "Geocode HTTPS result=%d bytes=%u response_start=%s",
-           geocode_result, (unsigned)strlen(geocode_response),
-           geocode_result > 0 ? geocode_response : "none");
     if (geocode_result <= 0) {
         return 0;
     }
@@ -430,27 +426,20 @@ static void refresh_weather_if_needed(int force) {
     if (!force && weather.warmup_until > 0 && now < weather.warmup_until) {
         snprintf(weather.status, sizeof(weather.status), "Weather warming up");
         snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: warmup until %lld", (long long)weather.warmup_until);
-        os_log(TAG, "Weather refresh delayed: warmup_until=%lld now=%lld",
-               (long long)weather.warmup_until, (long long)now);
         weather.next_refresh_at = weather.warmup_until;
         return;
     }
 
     if (!force && now < weather.next_refresh_at) {
-        os_log(TAG, "Weather refresh skipped: next=%lld now=%lld status=%s",
-               (long long)weather.next_refresh_at, (long long)now, weather.status);
         return;
     }
 
-    os_log(TAG, "Weather refresh start: force=%d now=%lld wifi=%d",
-           force, (long long)now, wifi_is_connected());
     snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: refresh start");
 
     if (!wifi_is_connected()) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather: WiFi disconnected");
         snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: wifi disconnected");
-        os_log(TAG, "Weather refresh aborted: WiFi disconnected");
         weather.next_refresh_at = now + 30;
         return;
     }
@@ -477,7 +466,6 @@ static void refresh_weather_if_needed(int force) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather location unresolved");
         snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: location=%s", location);
-        os_log(TAG, "Weather location resolve failed: %s", location);
         weather.next_refresh_at = now + 30;
         return;
     }
@@ -487,13 +475,9 @@ static void refresh_weather_if_needed(int force) {
 
     char response[768];
     int result = -1;
-    os_log(TAG, "Weather HTTPS test: URL=%s", weather_url);
     for (int attempt = 1; attempt <= WEATHER_HTTP_ATTEMPTS; attempt++) {
         response[0] = '\0';
         result = os_http_get(weather_url, response, sizeof(response), WEATHER_HTTP_TIMEOUT_MS);
-        os_log(TAG, "Weather HTTPS attempt=%d result=%d bytes=%u response_start=%s",
-               attempt, result, (unsigned)strlen(response),
-               result > 0 ? response : "none");
         if (result > 0) {
             break;
         }
@@ -505,18 +489,15 @@ static void refresh_weather_if_needed(int force) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather fetch failed (%d)", result);
         snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: fetch failed %d", result);
-        os_log(TAG, "Weather fetch failed after %d attempts: result=%d", WEATHER_HTTP_ATTEMPTS, result);
         weather.next_refresh_at = now + 15;
         return;
     }
 
     JSONStatus_t json_status = JSON_Validate(response, strlen(response));
-    os_log(TAG, "Weather JSON validate=%d", json_status);
     if (json_status != JSONSuccess) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
         snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: validate failed %d", json_status);
-        os_log(TAG, "Weather parse failed at validate: %d", json_status);
         weather.next_refresh_at = now + 60;
         return;
     }
@@ -530,7 +511,6 @@ static void refresh_weather_if_needed(int force) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
         snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: search failed");
-        os_log(TAG, "Weather parse failed: current fields not found");
         weather.next_refresh_at = now + 60;
         return;
     }
@@ -543,7 +523,6 @@ static void refresh_weather_if_needed(int force) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
         snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: value too long");
-        os_log(TAG, "Weather parse failed: value length too long");
         weather.next_refresh_at = now + 60;
         return;
     }
@@ -558,7 +537,6 @@ static void refresh_weather_if_needed(int force) {
         weather.has_data = false;
         snprintf(weather.status, sizeof(weather.status), "Weather parse failed");
         snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: value parse failed");
-        os_log(TAG, "Weather parse failed at values: temp=%s code=%s", temp_buffer, code_buffer);
         weather.next_refresh_at = now + 60;
         return;
     }
@@ -568,7 +546,6 @@ static void refresh_weather_if_needed(int force) {
     weather.weather_code = code;
     snprintf(weather.status, sizeof(weather.status), "Weather updated");
     snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: %s %s", timezone, location);
-    os_log(TAG, "Weather updated: temp_tenths=%d weather_code=%d", temp_tenths, code);
     weather.next_refresh_at = now + WEATHER_REFRESH_SECONDS;
 }
 
@@ -734,12 +711,8 @@ void app_init(app_context_t *ctx) {
     weather.next_refresh_at = weather.warmup_until;
     snprintf(weather.status, sizeof(weather.status), "Weather warming up");
     snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: init warmup until %lld", (long long)weather.warmup_until);
-    os_log(TAG, "Weather init warmup_until=%lld", (long long)weather.warmup_until);
-    os_log(TAG, "Weather init status: %s", weather.status);
-    os_log(TAG, "Weather init debug: %s", weather.debug);
     draw_static_clock();
     draw_clock();
-    os_log(TAG, "Clock app initialized");
 }
 
 void app_checkpoint(app_context_t *ctx) {
