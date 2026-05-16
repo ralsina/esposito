@@ -13,6 +13,10 @@ void app_heap_reset(void);
 void app_heap_release(void);
 void app_heap_log_stats(const char *label);
 
+// Temporarily expand app heap for large allocations (like HTTPS)
+bool app_heap_expand_temp(size_t extra_size);
+void app_heap_shrink_temp(void);
+
 void *app_malloc(size_t size);
 void *app_calloc(size_t count, size_t size);
 void *app_realloc(void *ptr, size_t size);

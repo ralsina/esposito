@@ -61,7 +61,7 @@ bool app_loader_load(const char *app_name) {
     if (!ctx) {
         ESP_LOGE(TAG, "❌ No app context available - need to create one");
         // Create a new app context
-        ctx = calloc(1, sizeof(app_context_t));
+        ctx = app_calloc(1, sizeof(app_context_t));
         if (!ctx) {
             ESP_LOGE(TAG, "❌ Failed to allocate app context");
             return false;

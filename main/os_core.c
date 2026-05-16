@@ -403,16 +403,25 @@ int os_http_get(const char *url, char *out, size_t out_size, int timeout_ms) {
         .truncated = false,
     };
 
+    // Log memory before HTTPS request
+    size_t free_heap = esp_get_free_heap_size();
+    size_t largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    ESP_LOGI(TAG, "HTTP: free_heap=%u, largest=%u, url=%s",
+             (unsigned)free_heap, (unsigned)largest_free, url);
+
     esp_http_client_config_t config = {
         .url = url,
         .timeout_ms = timeout_ms > 0 ? timeout_ms : 5000,
         .event_handler = os_http_get_event_handler,
         .user_data = &ctx,
         .crt_bundle_attach = esp_crt_bundle_attach,
+        .buffer_size = 1024,  // Smaller buffer to save memory
+        .buffer_size_tx = 512,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {
+        ESP_LOGE(TAG, "HTTP: client init failed");
         return -1;
     }
 

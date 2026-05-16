@@ -14,6 +14,11 @@ static void *app_heap_storage = NULL;
 static size_t app_heap_size = 0;
 static multi_heap_handle_t app_heap = NULL;
 
+// Temporary expansion support
+static void *temp_heap_storage = NULL;
+static size_t temp_heap_size = 0;
+static multi_heap_handle_t temp_heap = NULL;
+
 static bool app_heap_ensure_ready(void) {
     if (app_heap) {
         return true;

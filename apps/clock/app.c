@@ -9,8 +9,8 @@
 
 static const char *TAG = "clock";
 
-#define WEATHER_FORECAST_URL_FMT "http://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&current=temperature_2m,weather_code&timezone=%s"
-#define WEATHER_GEOCODE_URL_FMT "http://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json"
+#define WEATHER_FORECAST_URL_FMT "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&current=temperature_2m,weather_code&timezone=%s"
+#define WEATHER_GEOCODE_URL_FMT "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json"
 #define SETTINGS_KEY_TIMEZONE "time/timezone"
 #define SETTINGS_KEY_LOCATION "weather/location"
 #define DEFAULT_TIMEZONE "UTC"
@@ -299,7 +299,11 @@ static int resolve_location(const char *location, char *lat_out, size_t lat_size
     }
 
     snprintf(geocode_url, sizeof(geocode_url), WEATHER_GEOCODE_URL_FMT, encoded);
+    os_log(TAG, "Geocode HTTPS test: URL=%s", geocode_url);
     int geocode_result = os_http_get(geocode_url, geocode_response, sizeof(geocode_response), WEATHER_HTTP_TIMEOUT_MS);
+    os_log(TAG, "Geocode HTTPS result=%d bytes=%u response_start=%s",
+           geocode_result, (unsigned)strlen(geocode_response),
+           geocode_result > 0 ? geocode_response : "none");
     if (geocode_result <= 0) {
         return 0;
     }
@@ -483,10 +487,13 @@ static void refresh_weather_if_needed(int force) {
 
     char response[768];
     int result = -1;
+    os_log(TAG, "Weather HTTPS test: URL=%s", weather_url);
     for (int attempt = 1; attempt <= WEATHER_HTTP_ATTEMPTS; attempt++) {
         response[0] = '\0';
         result = os_http_get(weather_url, response, sizeof(response), WEATHER_HTTP_TIMEOUT_MS);
-        os_log(TAG, "Weather HTTP attempt=%d result=%d bytes=%u", attempt, result, (unsigned)strlen(response));
+        os_log(TAG, "Weather HTTPS attempt=%d result=%d bytes=%u response_start=%s",
+               attempt, result, (unsigned)strlen(response),
+               result > 0 ? response : "none");
         if (result > 0) {
             break;
         }
