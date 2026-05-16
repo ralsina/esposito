@@ -29,12 +29,17 @@ struct ui_list_widget_t {
     int width;
     int height;
 
+    // Title
+    char *title;            // Title text (owned by widget)
+
     // Colors
     uint8_t normal_fg;       // Normal item text color
     uint8_t normal_bg;       // Normal item background
     uint8_t selected_fg;     // Selected item text color
     uint8_t selected_bg;     // Selected item background
     uint8_t border_fg;       // Border color
+    uint8_t title_fg;        // Title text color
+    uint8_t title_bg;        // Title background color
 
     // State
     bool visible;
@@ -54,6 +59,7 @@ void ui_list_destroy(ui_list_widget_t *widget);
 
 // Configure list widget
 void ui_list_set_items(ui_list_widget_t *widget, const char **items, int count);
+void ui_list_set_title(ui_list_widget_t *widget, const char *title);
 void ui_list_set_colors(ui_list_widget_t *widget, uint8_t normal_fg, uint8_t normal_bg,
                         uint8_t selected_fg, uint8_t selected_bg, uint8_t border_fg);
 void ui_list_set_callbacks(ui_list_widget_t *widget,

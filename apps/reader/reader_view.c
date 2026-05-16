@@ -200,15 +200,14 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
 void reader_view_draw_toc(reader_state_t *state) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();
-    int window_height = rows - 3; // Reserve 3 rows for buttons at bottom
-    int list_height = window_height - 3; // Account for title (1) and margins (2)
+    int list_height = rows - 5; // Reserve space for title, borders, and button row (3 rows)
 
     ui_clear();
-    ui_window(0, 0, cols, window_height, "Table of Contents");
 
     // Create or update TOC list widget
     if (!state->toc_list) {
-        state->toc_list = ui_list_create(2, 2, cols - 4, list_height);
+        state->toc_list = ui_list_create(1, 1, cols - 2, list_height);
+        ui_list_set_title(state->toc_list, "Table of Contents");
         ui_list_set_colors(state->toc_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
                            TEXT_COLOR_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
         ui_list_set_border(state->toc_list, true);
@@ -219,9 +218,9 @@ void reader_view_draw_toc(reader_state_t *state) {
                               on_toc_list_item_selected, state);
     } else {
         // Update dimensions if screen size changed
-        state->toc_list->x = 2;
-        state->toc_list->y = 2;
-        state->toc_list->width = cols - 4;
+        state->toc_list->x = 1;
+        state->toc_list->y = 1;
+        state->toc_list->width = cols - 2;
         state->toc_list->height = list_height;
     }
 
@@ -306,11 +305,40 @@ void reader_view_update_toc_selection(const reader_state_t *state, int previous_
 void reader_view_draw_file_list(reader_state_t *state) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();
-    int list_rows = rows - 5;
+    int list_height = rows - 5; // Account for title (1), borders (2), and button row (3)
 
     ui_clear();
-    ui_window(0, 0, cols, rows - 3, "Select a Book"); // Make room for buttons
-    ui_menu_draw(1, 1, list_rows, state->file_ptrs, state->file_count, state->file_selected);
+
+    // Create or update file list widget
+    if (!state->file_list) {
+        state->file_list = ui_list_create(1, 1, cols - 2, list_height);
+        ui_list_set_title(state->file_list, "Select a Book");
+        ui_list_set_colors(state->file_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                           TEXT_COLOR_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+        ui_list_set_border(state->file_list, true);
+        ui_list_set_scrollbar(state->file_list, true);
+
+        // Set up callbacks
+        extern void on_file_list_selection_changed(ui_list_widget_t *list, int new_selection);
+        extern void on_file_list_item_selected(ui_list_widget_t *list, int item_index);
+        ui_list_set_callbacks(state->file_list, on_file_list_selection_changed,
+                              on_file_list_item_selected, state);
+    } else {
+        // Update dimensions if screen size changed
+        state->file_list->x = 1;
+        state->file_list->y = 1;
+        state->file_list->width = cols - 2;
+        state->file_list->height = list_height;
+    }
+
+    // Update list items if files are available
+    if (state->file_count > 0) {
+        ui_list_set_items(state->file_list, state->file_ptrs, state->file_count);
+        ui_list_set_selection(state->file_list, state->file_selected);
+        ui_list_draw(state->file_list);
+    } else {
+        ui_label(2, 2, "No books found", TEXT_COLOR_YELLOW);
+    }
 
     int button_row = rows - 3;
     int button_width = FILE_LIST_BTN_WIDTH;

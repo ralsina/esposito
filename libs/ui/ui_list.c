@@ -20,12 +20,16 @@ ui_list_widget_t* ui_list_create(int x, int y, int width, int height) {
     widget->width = width;
     widget->height = height;
 
+    widget->title = NULL;
+
     // Default colors
     widget->normal_fg = TEXT_COLOR_WHITE;
     widget->normal_bg = TEXT_COLOR_BLACK;
     widget->selected_fg = TEXT_COLOR_WHITE;
     widget->selected_bg = TEXT_COLOR_BLUE;
     widget->border_fg = TEXT_COLOR_CYAN;
+    widget->title_fg = TEXT_COLOR_BRIGHT_CYAN;
+    widget->title_bg = TEXT_COLOR_BLACK;
 
     widget->visible = true;
     widget->enabled = true;
@@ -43,7 +47,29 @@ void ui_list_destroy(ui_list_widget_t *widget) {
     if (!widget) {
         return;
     }
+    if (widget->title) {
+        free(widget->title);
+    }
     free(widget);
+}
+
+void ui_list_set_title(ui_list_widget_t *widget, const char *title) {
+    if (!widget) {
+        return;
+    }
+
+    if (widget->title) {
+        free(widget->title);
+        widget->title = NULL;
+    }
+
+    if (title) {
+        size_t len = strlen(title);
+        widget->title = (char*)malloc(len + 1);
+        if (widget->title) {
+            memcpy(widget->title, title, len + 1);
+        }
+    }
 }
 
 void ui_list_set_items(ui_list_widget_t *widget, const char **items, int count) {
@@ -234,7 +260,7 @@ static void draw_scrollbar(const ui_list_widget_t *widget) {
 
     // Draw scrollbar track
     for (int i = 0; i < content_height; i++) {
-        text_mode_print_at_color(content_x, content_y + i, "║", TEXT_COLOR_BRIGHT_BLACK);
+        text_mode_print_at_color(content_x, content_y + i, "│", TEXT_COLOR_BRIGHT_BLACK);
     }
 
     // Draw scrollbar thumb
@@ -254,9 +280,36 @@ void ui_list_draw(const ui_list_widget_t *widget) {
     // Draw border if enabled
     draw_list_border(widget);
 
-    // Calculate content area
+    // Draw title if present
+    if (widget->title) {
+        int title_x = widget->x + 2;
+        int title_y = widget->y;
+
+        // Draw title background (top border with corners)
+        for (int x = widget->x; x < widget->x + widget->width; x++) {
+            uint8_t attr = TEXT_ATTR_BORDER_TOP;
+            if (x == widget->x) {
+                attr |= TEXT_ATTR_BORDER_LEFT;
+            } else if (x == widget->x + widget->width - 1) {
+                attr |= TEXT_ATTR_BORDER_RIGHT;
+            }
+            text_mode_print_at_attr_bg(x, title_y, " ", widget->border_fg, widget->title_bg, attr);
+        }
+
+        // Draw space padding before title
+        text_mode_print_at_attr_bg(title_x, title_y, " ", widget->title_bg, widget->title_bg, TEXT_ATTR_NORMAL);
+
+        // Draw title text
+        text_mode_print_at_attr_bg(title_x + 1, title_y, widget->title, widget->title_fg, widget->title_bg, TEXT_ATTR_BOLD);
+
+        // Draw space padding after title
+        int title_len = strlen(widget->title);
+        text_mode_print_at_attr_bg(title_x + 1 + title_len, title_y, " ", widget->title_bg, widget->title_bg, TEXT_ATTR_NORMAL);
+    }
+
+    // Calculate content area (below title)
     int content_x = widget->x + 1; // Inside left border
-    int content_y = widget->y + 1; // Below top border
+    int content_y = widget->y + 1; // Inside top border
     int content_width = widget->width - 2; // Excluding borders
     int content_height = widget->height - 2; // Excluding borders
 
@@ -265,6 +318,12 @@ void ui_list_draw(const ui_list_widget_t *widget) {
         content_y = widget->y;
         content_width = widget->width;
         content_height = widget->height;
+    }
+
+    // Adjust for title (takes an extra row)
+    if (widget->title && widget->draw_border) {
+        content_y = widget->y + 2; // Skip title row
+        content_height -= 1; // Reduce available height
     }
 
     if (content_width < 1 || content_height < 1) {

@@ -109,6 +109,30 @@ void on_toc_list_item_selected(ui_list_widget_t *list, int item_index) {
     toc_jump_to_selected(state, &bold_pending, &underline_pending);
 }
 
+// File list widget callbacks
+void on_file_list_selection_changed(ui_list_widget_t *list, int new_selection) {
+    if (!list) {
+        return;
+    }
+    reader_state_t *state = (reader_state_t*)list->user_data;
+    if (!state) {
+        return;
+    }
+    state->file_selected = new_selection;
+}
+
+void on_file_list_item_selected(ui_list_widget_t *list, int item_index) {
+    if (!list) {
+        return;
+    }
+    reader_state_t *state = (reader_state_t*)list->user_data;
+    if (!state) {
+        return;
+    }
+    int bold_pending = 0, underline_pending = 0;
+    open_selected_book(state, &bold_pending, &underline_pending);
+}
+
 int reader_events_open_book(reader_state_t *state, const char *path, int *bold_pending, int *underline_pending) {
     md_clear_remainder();
     *bold_pending = 0;
@@ -155,13 +179,19 @@ static void exit_to_file_list(reader_state_t *state) {
 }
 
 static void handle_file_list_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
-    if (key == 'w' || key == 'W') {
-        change_file_selection(state, -1);
-    } else if (key == 's' || key == 'S') {
-        change_file_selection(state, 1);
-    } else if (key == '\n' || key == '\r') {
-        open_selected_book(state, bold_pending, underline_pending);
+    // Try list widget first for navigation keys
+    if (state->file_list && ui_list_handle_key(state->file_list, key)) {
+        // Check if we switched to reading mode (Enter was pressed)
+        if (state->mode == MODE_READING) {
+            return; // Don't redraw file list, we're now in reading mode
+        }
+        // List widget handled the key, redraw the updated list
+        ui_list_draw(state->file_list);
+        text_mode_flush();
+        return;
     }
+
+    // ESC key handling is done in dispatch_keyboard
 }
 
 static void enter_toc_mode(reader_state_t *state) {
@@ -358,6 +388,38 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
         if (state->mode == MODE_TOC && state->toc_list &&
             ui_list_handle_touch(state->toc_list, &char_event)) {
             return; // List widget handled the touch
+        }
+
+        // Check button area first for file list mode (buttons are at bottom)
+        if (state->mode == MODE_FILE_LIST) {
+            // Check exit button separately (needs launch_app_list)
+            if (state->btn_exit && ui_button_handle_touch(state->btn_exit, &char_event)) {
+                // Exit button was pressed - launch app list
+                reader_close_current_file(state);
+                config_set_string(KEY_LAST_FILE, "");
+                if (launch_app_list) {
+                    launch_app_list();
+                }
+                return;
+            }
+
+            // Check other buttons
+            if (state->btn_up && ui_button_handle_touch(state->btn_up, &char_event)) return;
+            if (state->btn_open && ui_button_handle_touch(state->btn_open, &char_event)) return;
+            if (state->btn_down && ui_button_handle_touch(state->btn_down, &char_event)) return;
+        }
+
+        // Try list widget for file list mode (only if buttons didn't handle it)
+        if (state->mode == MODE_FILE_LIST && state->file_list &&
+            ui_list_handle_touch(state->file_list, &char_event)) {
+            // Check if we switched to reading mode (book was opened)
+            if (state->mode == MODE_READING) {
+                return; // Don't redraw file list, we're now in reading mode
+            }
+            // List widget handled the touch, redraw the updated list
+            ui_list_draw(state->file_list);
+            text_mode_flush();
+            return;
         }
 
         // Check exit button separately for file list mode (needs launch_app_list)
