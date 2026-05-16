@@ -85,6 +85,30 @@ void on_reading_back_click(ui_button_t *button, void *user_data) {
     exit_to_file_list(state);
 }
 
+// TOC list widget callbacks
+void on_toc_list_selection_changed(ui_list_widget_t *list, int new_selection) {
+    if (!list) {
+        return;
+    }
+    reader_state_t *state = (reader_state_t*)list->user_data;
+    if (!state) {
+        return;
+    }
+    state->toc_selected = new_selection;
+}
+
+void on_toc_list_item_selected(ui_list_widget_t *list, int item_index) {
+    if (!list) {
+        return;
+    }
+    reader_state_t *state = (reader_state_t*)list->user_data;
+    if (!state) {
+        return;
+    }
+    int bold_pending = 0, underline_pending = 0;
+    toc_jump_to_selected(state, &bold_pending, &underline_pending);
+}
+
 int reader_events_open_book(reader_state_t *state, const char *path, int *bold_pending, int *underline_pending) {
     md_clear_remainder();
     *bold_pending = 0;
@@ -227,7 +251,11 @@ static void toc_move_selection(reader_state_t *state, int delta) {
 }
 
 static void toc_jump_to_selected(reader_state_t *state, int *bold_pending, int *underline_pending) {
-    if (state->toc_count <= 0) {
+    if (!state || state->toc_count <= 0 || !state->toc) {
+        return;
+    }
+
+    if (state->toc_selected < 0 || state->toc_selected >= state->toc_count) {
         return;
     }
 
@@ -248,18 +276,20 @@ static void handle_toc_key(reader_state_t *state, char key, int *bold_pending, i
         toc_return_to_reading(state, bold_pending, underline_pending);
         return;
     }
-    if (key == 'w' || key == 'W') {
-        toc_move_selection(state, -1);
+
+    // Try list widget first for navigation keys
+    if (state->toc_list && ui_list_handle_key(state->toc_list, key)) {
+        // Check if we switched to reading mode (Enter was pressed)
+        if (state->mode == MODE_READING) {
+            return; // Don't redraw TOC, we're now in reading mode
+        }
+        // List widget handled the key, redraw the updated list
+        ui_list_draw(state->toc_list);
+        text_mode_flush();
         return;
     }
-    if (key == 's' || key == 'S') {
-        toc_move_selection(state, 1);
-        return;
-    }
-    if (key == '\n' || key == '\r') {
-        toc_jump_to_selected(state, bold_pending, underline_pending);
-        return;
-    }
+
+    // Fall back to button handling for other keys if needed
 }
 
 static void handle_toc_touch(reader_state_t *state, int x_col, int *bold_pending, int *underline_pending) {
@@ -313,7 +343,7 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
     }
 
     if (state->mode == MODE_TOC || state->mode == MODE_FILE_LIST) {
-        // Convert pixel coordinates to character coordinates for button widgets
+        // Convert pixel coordinates to character coordinates for widgets
         // Screen is 320x240 pixels, text grid is 64x30 characters
         // Character size: 320/64 = 5 pixels wide, 240/30 = 8 pixels tall
         int x_col = event->touch.x / 5;   // 5 pixels per character column
@@ -323,6 +353,12 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
         event_t char_event = *event;
         char_event.touch.x = x_col;
         char_event.touch.y = y_col;
+
+        // Try list widget first for TOC mode
+        if (state->mode == MODE_TOC && state->toc_list &&
+            ui_list_handle_touch(state->toc_list, &char_event)) {
+            return; // List widget handled the touch
+        }
 
         // Check exit button separately for file list mode (needs launch_app_list)
         if (state->mode == MODE_FILE_LIST && state->btn_exit &&
@@ -336,7 +372,7 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
             return;
         }
 
-        // Try other button widgets with character coordinates
+        // Try button widgets with character coordinates
         if (state->btn_up && ui_button_handle_touch(state->btn_up, &char_event)) return;
         if (state->btn_open && ui_button_handle_touch(state->btn_open, &char_event)) return;
         if (state->btn_down && ui_button_handle_touch(state->btn_down, &char_event)) return;

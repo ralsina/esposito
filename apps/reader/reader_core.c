@@ -68,6 +68,13 @@ void reader_free_file_list(reader_state_t *state) {
     state->file_selected = 0;
 }
 
+void reader_free_toc_titles(reader_state_t *state) {
+    if (state->toc_titles) {
+        free(state->toc_titles);
+        state->toc_titles = NULL;
+    }
+}
+
 void reader_scan_md_files(reader_state_t *state) {
     reader_free_file_list(state);
 

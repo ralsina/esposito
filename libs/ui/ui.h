@@ -7,6 +7,7 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "ui_button.h"
+#include "ui_list.h"
 
 #ifdef __cplusplus
 extern "C" {

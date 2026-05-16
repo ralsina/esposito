@@ -6,6 +6,7 @@
 #include "ui.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define FILE_LIST_BTN_WIDTH 13
@@ -200,26 +201,49 @@ void reader_view_draw_toc(reader_state_t *state) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();
     int window_height = rows - 3; // Reserve 3 rows for buttons at bottom
-    int list_rows = window_height - 4; // Account for title (1), top/bottom borders (2), and top margin (1)
+    int list_height = window_height - 3; // Account for title (1) and margins (2)
 
     ui_clear();
     ui_window(0, 0, cols, window_height, "Table of Contents");
 
-    if (state->toc_count == 0) {
-        ui_label(2, 2, "No headings found", TEXT_COLOR_YELLOW);
+    // Create or update TOC list widget
+    if (!state->toc_list) {
+        state->toc_list = ui_list_create(2, 2, cols - 4, list_height);
+        ui_list_set_colors(state->toc_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                           TEXT_COLOR_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+        ui_list_set_border(state->toc_list, true);
+        ui_list_set_scrollbar(state->toc_list, true);
+
+        // Set up callbacks
+        ui_list_set_callbacks(state->toc_list, on_toc_list_selection_changed,
+                              on_toc_list_item_selected, state);
     } else {
-        int scroll = toc_scroll_for_selection(state->toc_selected, list_rows);
+        // Update dimensions if screen size changed
+        state->toc_list->x = 2;
+        state->toc_list->y = 2;
+        state->toc_list->width = cols - 4;
+        state->toc_list->height = list_height;
+    }
 
-        for (int i = 0; i < list_rows && (i + scroll) < state->toc_count; i++) {
-            int idx = i + scroll;
-            draw_toc_row(state, i, idx, idx == state->toc_selected);
+    // Update list items if TOC is available
+    if (state->toc_count > 0) {
+        // Allocate or reallocate titles array if needed
+        if (!state->toc_titles) {
+            state->toc_titles = (const char **)malloc(sizeof(char *) * state->toc_count);
         }
 
-        for (int i = state->toc_count - scroll; i < list_rows; i++) {
-            if (i >= 0) {
-                draw_toc_row(state, i, -1, 0);
+        if (state->toc_titles) {
+            for (int i = 0; i < state->toc_count; i++) {
+                state->toc_titles[i] = state->toc[i].title;
             }
+
+            ui_list_set_items(state->toc_list, state->toc_titles, state->toc_count);
+            ui_list_set_selection(state->toc_list, state->toc_selected);
         }
+
+        ui_list_draw(state->toc_list);
+    } else {
+        ui_label(2, 2, "No headings found", TEXT_COLOR_YELLOW);
     }
 
     int button_row = rows - 3;
@@ -268,31 +292,15 @@ void reader_view_draw_toc(reader_state_t *state) {
 }
 
 void reader_view_update_toc_selection(const reader_state_t *state, int previous_selected) {
-    int rows = text_mode_get_rows();
-    int window_height = rows - 3; // Reserve 3 rows for buttons at bottom
-    int list_rows = window_height - 4; // Account for title, borders, and margins
-
-    if (state->toc_count == 0) {
+    if (!state->toc_list || state->toc_count == 0) {
         return;
     }
 
-    int old_scroll = toc_scroll_for_selection(previous_selected, list_rows);
-    int new_scroll = toc_scroll_for_selection(state->toc_selected, list_rows);
+    // Update list widget selection
+    ui_list_set_selection(state->toc_list, state->toc_selected);
 
-    if (old_scroll != new_scroll) {
-        reader_view_draw_toc((reader_state_t *)state);
-        return;
-    }
-
-    int old_row = previous_selected - new_scroll;
-    int new_row = state->toc_selected - new_scroll;
-
-    if (old_row >= 0 && old_row < list_rows) {
-        draw_toc_row(state, old_row, previous_selected, 0);
-    }
-    if (new_row >= 0 && new_row < list_rows) {
-        draw_toc_row(state, new_row, state->toc_selected, 1);
-    }
+    // Redraw the list
+    ui_list_draw(state->toc_list);
 }
 
 void reader_view_draw_file_list(reader_state_t *state) {

@@ -65,6 +65,7 @@ typedef struct {
     toc_entry_t *toc;
     int toc_count;
     int toc_selected;
+    const char **toc_titles;  // Persistent array of title pointers for list widget
 
     // Button widgets (managed by UI library)
     ui_button_t *btn_up;
@@ -73,6 +74,10 @@ typedef struct {
     ui_button_t *btn_exit;
     ui_button_t *btn_jump;
     ui_button_t *btn_back;
+
+    // List widgets
+    ui_list_widget_t *toc_list;
+    ui_list_widget_t *file_list;
 
     // Button coordinates for file list (temporary, until file list uses widgets)
     int btn_up_x;
