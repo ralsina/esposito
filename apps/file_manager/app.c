@@ -647,6 +647,7 @@ static int handle_pending_open_choice(char key) {
 static void draw_pane(int pane_index, int x, int width, int height) {
     fm_pane_t *pane = &state.panes[pane_index];
     int active = pane_index == state.active_pane;
+    int selected_index = pane_selected_index(pane);
 
     char title[FM_MAX_PATH + 16];
     char path_display[FM_MAX_PATH + 1];
@@ -660,7 +661,8 @@ static void draw_pane(int pane_index, int x, int width, int height) {
         snprintf(path_display, sizeof(path_display), "~%s", pane->cwd + start);
     }
 
-    snprintf(title, sizeof(title), "%c %s", active ? '*' : ' ', path_display);
+    snprintf(title, sizeof(title), "%c %s [%d/%d]", active ? '*' : ' ', path_display,
+             selected_index < 0 ? 0 : selected_index + 1, pane->entry_count);
 
     ui_column_draw(x, 0, width, height, title, active,
                    (const char **)pane->display_list, pane->entry_count, pane->selected, pane->scroll);
@@ -682,14 +684,7 @@ static void render(void) {
     draw_pane(0, 0, left_width, pane_height);
     draw_pane(1, left_width, right_width, pane_height);
 
-    fm_pane_t *active = &state.panes[state.active_pane];
-    int selected_index = pane_selected_index(active);
-    char right[32];
-    snprintf(right, sizeof(right), "P%d %d/%d", state.active_pane + 1,
-             selected_index < 0 ? 0 : selected_index + 1,
-             active->entry_count);
-
-    ui_status_bar(rows - 2, state.status, right);
+    ui_status_bar(rows - 2, state.status, "R reload Tab pane Esc up/exit");
     ui_label(1, rows - 1, "W/S move A/D switch Enter open M rename N file K dir C copy X del", TEXT_COLOR_BRIGHT_BLACK);
 
     text_mode_flush();
