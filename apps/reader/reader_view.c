@@ -203,6 +203,7 @@ void reader_view_draw_toc(reader_state_t *state) {
     int list_height = rows - 5; // Reserve space for title, borders, and button row (3 rows)
 
     ui_clear();
+    reader_view_clear_widgets(state); // Clean up any existing widgets
 
     // Create or update TOC list widget
     if (!state->toc_list) {
@@ -302,12 +303,51 @@ void reader_view_update_toc_selection(const reader_state_t *state, int previous_
     ui_list_draw(state->toc_list);
 }
 
+void reader_view_clear_widgets(reader_state_t *state) {
+    // Destroy all button widgets
+    if (state->btn_up) {
+        free(state->btn_up);
+        state->btn_up = NULL;
+    }
+    if (state->btn_open) {
+        free(state->btn_open);
+        state->btn_open = NULL;
+    }
+    if (state->btn_down) {
+        free(state->btn_down);
+        state->btn_down = NULL;
+    }
+    if (state->btn_exit) {
+        free(state->btn_exit);
+        state->btn_exit = NULL;
+    }
+    if (state->btn_jump) {
+        free(state->btn_jump);
+        state->btn_jump = NULL;
+    }
+    if (state->btn_back) {
+        free(state->btn_back);
+        state->btn_back = NULL;
+    }
+
+    // Destroy list widgets
+    if (state->toc_list) {
+        ui_list_destroy(state->toc_list);
+        state->toc_list = NULL;
+    }
+    if (state->file_list) {
+        ui_list_destroy(state->file_list);
+        state->file_list = NULL;
+    }
+}
+
 void reader_view_draw_file_list(reader_state_t *state) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();
     int list_height = rows - 5; // Account for title (1), borders (2), and button row (3)
 
     ui_clear();
+    reader_view_clear_widgets(state); // Clean up any existing widgets
 
     // Create or update file list widget
     if (!state->file_list) {

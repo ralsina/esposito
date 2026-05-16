@@ -54,11 +54,11 @@ typedef struct {
 
     // Goto state
     char goto_buf[8];
-    ui_text_input_widget_t goto_widget;
+    ui_text_input_widget_t *goto_widget;
 
     // Search state
     char search_buf[64];
-    ui_text_input_widget_t search_widget;
+    ui_text_input_widget_t *search_widget;
     char search_status[80];
 
     // TOC state

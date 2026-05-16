@@ -18,6 +18,10 @@ static char ascii_lower(char ch) {
     return ch;
 }
 
+static void reader_nav_search_forward(reader_state_t *state, const char *query, int *bold_pending, int *underline_pending);
+static void on_goto_confirm(ui_text_input_widget_t *widget);
+static void on_goto_cancel(ui_text_input_widget_t *widget);
+
 static int contains_substring_nocase(const char *text, const char *needle) {
     if (!needle || !needle[0]) {
         return 0;
@@ -167,57 +171,114 @@ void reader_nav_prev_page(reader_state_t *state, int *bold_pending, int *underli
 void reader_nav_start_goto(reader_state_t *state) {
     state->mode = MODE_GOTO;
     state->goto_buf[0] = '\0';
-    
-    state->goto_widget.title = "Go to Page";
-    state->goto_widget.label = "Page:";
-    state->goto_widget.buffer = state->goto_buf;
-    state->goto_widget.max_len = sizeof(state->goto_buf);
-    state->goto_widget.mask_input = false;
-    state->goto_widget.hint_left = "Type number  Enter Confirm";
-    state->goto_widget.hint_right = "ESC Cancel";
-    
-    ui_text_input_widget_draw(&state->goto_widget);
+
+    // Create goto widget if it doesn't exist
+    if (!state->goto_widget) {
+        int cols = text_mode_get_cols();
+        int rows = text_mode_get_rows();
+
+        state->goto_widget = ui_text_input_create(0, rows - 4, cols, 4);
+        ui_text_input_set_title(state->goto_widget, "Go to Page");
+        ui_text_input_set_label(state->goto_widget, "Page:");
+        ui_text_input_set_hints(state->goto_widget, "Type number  Enter Confirm", "ESC Cancel");
+        ui_text_input_set_callbacks(state->goto_widget, NULL, on_goto_confirm, on_goto_cancel, state);
+    }
+
+    // Set buffer and redraw
+    ui_text_input_set_buffer(state->goto_widget, state->goto_buf, sizeof(state->goto_buf));
+    ui_text_input_draw(state->goto_widget);
     text_mode_flush();
 }
 
 void reader_nav_handle_goto_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
-    // Create a minimal event for the widget handler
-    event_t event = {
-        .type = EVENT_KEYBOARD,
-        .keyboard = {
-            .key = key,
-            .pressed = 1,
-            .modifiers = 0
-        }
-    };
-    
-    int result = ui_text_input_widget_handle_event(&state->goto_widget, &event);
-    
-    if (result == 1) {
-        // Enter confirmed
-        int page = atoi(state->goto_buf);
-        state->mode = MODE_READING;
-        reader_nav_goto_page(state, (page > 1) ? page : 1, bold_pending, underline_pending);
-    } else if (result == -1) {
-        // ESC cancelled
-        state->mode = MODE_READING;
-        reader_view_draw_reading_page(state, bold_pending, underline_pending);
+    if (!state->goto_widget) {
+        return;
     }
-    // result == 0 means still editing, widget handles redraw
+
+    // Let the widget handle the key
+    if (ui_text_input_handle_key(state->goto_widget, key)) {
+        // Widget handled the key, only redraw if still in goto mode
+        if (state->mode == MODE_GOTO) {
+            ui_text_input_draw(state->goto_widget);
+            text_mode_flush();
+        }
+    }
+    // Callbacks handle mode switching and page navigation
+}
+
+static void on_goto_confirm(ui_text_input_widget_t *widget) {
+    if (!widget || !widget->user_data) {
+        return;
+    }
+    reader_state_t *state = (reader_state_t*)widget->user_data;
+    int bold_pending = 0, underline_pending = 0;
+
+    // Parse and go to page
+    int page = 0;
+    if (state->goto_buf[0] != '\0') {
+        page = atoi(state->goto_buf);
+    }
+    reader_nav_goto_page(state, (page > 1) ? page : 1, &bold_pending, &underline_pending);
+}
+
+static void on_goto_cancel(ui_text_input_widget_t *widget) {
+    if (!widget || !widget->user_data) {
+        return;
+    }
+    reader_state_t *state = (reader_state_t*)widget->user_data;
+    int bold_pending = 0, underline_pending = 0;
+
+    // Return to reading mode
+    state->mode = MODE_READING;
+    reader_view_draw_reading_page(state, &bold_pending, &underline_pending);
+    text_mode_flush();
+}
+
+static void on_search_confirm(ui_text_input_widget_t *widget) {
+    if (!widget || !widget->user_data) {
+        return;
+    }
+    reader_state_t *state = (reader_state_t*)widget->user_data;
+    int bold_pending = 0, underline_pending = 0;
+
+    // Perform the search
+    reader_nav_search_forward(state, state->search_buf, &bold_pending, &underline_pending);
+}
+
+static void on_search_cancel(ui_text_input_widget_t *widget) {
+    if (!widget || !widget->user_data) {
+        return;
+    }
+    reader_state_t *state = (reader_state_t*)widget->user_data;
+    int bold_pending = 0, underline_pending = 0;
+
+    // Return to reading mode
+    state->mode = MODE_READING;
+    reader_view_draw_reading_page(state, &bold_pending, &underline_pending);
+    text_mode_flush();
 }
 
 void reader_nav_start_search(reader_state_t *state) {
     state->mode = MODE_SEARCH;
 
-    state->search_widget.title = "Search Forward";
-    state->search_widget.label = "Text:";
-    state->search_widget.buffer = state->search_buf;
-    state->search_widget.max_len = sizeof(state->search_buf);
-    state->search_widget.mask_input = false;
-    state->search_widget.hint_left = "Type text  Enter Search";
-    state->search_widget.hint_right = "ESC Cancel";
+    // Clear previous search buffer
+    state->search_buf[0] = '\0';
 
-    ui_text_input_widget_draw(&state->search_widget);
+    // Create search widget if it doesn't exist
+    if (!state->search_widget) {
+        int cols = text_mode_get_cols();
+        int rows = text_mode_get_rows();
+
+        state->search_widget = ui_text_input_create(0, rows - 4, cols, 4);
+        ui_text_input_set_title(state->search_widget, "Search Forward");
+        ui_text_input_set_label(state->search_widget, "Text:");
+        ui_text_input_set_hints(state->search_widget, "Type text  Enter Search", "ESC Cancel");
+        ui_text_input_set_callbacks(state->search_widget, NULL, on_search_confirm, on_search_cancel, state);
+    }
+
+    // Set buffer and redraw
+    ui_text_input_set_buffer(state->search_widget, state->search_buf, sizeof(state->search_buf));
+    ui_text_input_draw(state->search_widget);
     text_mode_flush();
 }
 
@@ -232,9 +293,12 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
     int start_page = state->page_number;
 
     md_clear_remainder();
+    // Start from the NEXT page to avoid finding the same result again
     fseek(state->file, start_offset, SEEK_SET);
+    // Skip the current page by advancing past it
+    md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
 
-    int page = start_page;
+    int page = start_page + 1;  // Start from next page
     while (1) {
         uint32_t page_offset = (uint32_t)ftell(state->file);
         int line_count = md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
@@ -266,21 +330,17 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
 }
 
 void reader_nav_handle_search_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
-    event_t event = {
-        .type = EVENT_KEYBOARD,
-        .keyboard = {
-            .key = key,
-            .pressed = 1,
-            .modifiers = 0
-        }
-    };
-
-    int result = ui_text_input_widget_handle_event(&state->search_widget, &event);
-    if (result == 1) {
-        state->mode = MODE_READING;
-        reader_nav_search_forward(state, state->search_buf, bold_pending, underline_pending);
-    } else if (result == -1) {
-        state->mode = MODE_READING;
-        reader_view_draw_reading_page(state, bold_pending, underline_pending);
+    if (!state->search_widget) {
+        return;
     }
+
+    // Let the widget handle the key
+    if (ui_text_input_handle_key(state->search_widget, key)) {
+        // Widget handled the key, only redraw if still in search mode
+        if (state->mode == MODE_SEARCH) {
+            ui_text_input_draw(state->search_widget);
+            text_mode_flush();
+        }
+    }
+    // Callbacks handle mode switching and search execution
 }

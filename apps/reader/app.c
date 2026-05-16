@@ -37,6 +37,17 @@ void app_close(app_context_t *ctx) {
     reader_close_current_file(&state);
     reader_free_file_list(&state);
     reader_free_toc_titles(&state);
+
+    // Clean up widgets
+    if (state.search_widget) {
+        ui_text_input_destroy(state.search_widget);
+        state.search_widget = NULL;
+    }
+    if (state.goto_widget) {
+        ui_text_input_destroy(state.goto_widget);
+        state.goto_widget = NULL;
+    }
+
     config_unbind_app();
     text_mode_clear(TEXT_COLOR_BLACK);
 }

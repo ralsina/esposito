@@ -51,13 +51,16 @@ typedef struct {
     int pending_edit_is_dir;
     char pending_edit_path[FM_MAX_PATH];
     char pending_name[FM_MAX_NAME];
-    ui_text_input_widget_t name_input;
+    ui_text_input_widget_t *name_input;
 } file_manager_t;
 
 static const char *TAG = "file_manager";
 static file_manager_t state;
 
 static void render(void);
+static void apply_name_input(void);
+static void on_name_confirm(ui_text_input_widget_t *widget);
+static void on_name_cancel(ui_text_input_widget_t *widget);
 
 static void trim_spaces(char *text) {
     if (!text || !text[0]) {
@@ -588,6 +591,18 @@ static void active_delete_selected(void) {
     set_status(entry->is_dir ? "Directory deleted" : "File deleted");
 }
 
+static void on_name_confirm(ui_text_input_widget_t *widget) {
+    (void)widget;
+    apply_name_input();
+}
+
+static void on_name_cancel(ui_text_input_widget_t *widget) {
+    (void)widget;
+    clear_pending_edit();
+    set_status("Canceled");
+    render();
+}
+
 static void apply_name_input(void) {
     trim_spaces(state.pending_name);
     if (state.pending_name[0] == '\0') {
@@ -690,7 +705,8 @@ static void draw_pane(int pane_index, int x, int width, int height) {
 
 static void render(void) {
     if (state.input_mode != INPUT_MODE_NONE) {
-        ui_text_input_widget_draw(&state.name_input);
+        ui_text_input_set_buffer(state.name_input, state.pending_name, sizeof(state.pending_name));
+        ui_text_input_draw(state.name_input);
         text_mode_flush();
         return;
     }
@@ -802,13 +818,14 @@ void app_init(app_context_t *ctx) {
     clear_pending_open();
     clear_pending_edit();
 
-    state.name_input.title = "File Manager";
-    state.name_input.label = "Name:";
-    state.name_input.buffer = state.pending_name;
-    state.name_input.max_len = sizeof(state.pending_name);
-    state.name_input.mask_input = false;
-    state.name_input.hint_left = "Type name  Enter Confirm";
-    state.name_input.hint_right = "ESC Cancel";
+    // Create text input widget
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+    state.name_input = ui_text_input_create(0, rows - 4, cols, 4);
+    ui_text_input_set_title(state.name_input, "File Manager");
+    ui_text_input_set_label(state.name_input, "Name:");
+    ui_text_input_set_hints(state.name_input, "Type name  Enter Confirm", "ESC Cancel");
+    ui_text_input_set_callbacks(state.name_input, NULL, on_name_confirm, on_name_cancel, NULL);
 
     int config_ok = config_bind_app("file_manager");
     char left_selected[FM_MAX_PATH];
@@ -853,13 +870,9 @@ void app_event(app_context_t *ctx, event_t *event) {
     char key = event->keyboard.key;
 
     if (state.input_mode != INPUT_MODE_NONE) {
-        int result = ui_text_input_widget_handle_event(&state.name_input, event);
-        if (result == 1) {
-            apply_name_input();
-        } else if (result == -1) {
-            clear_pending_edit();
-            set_status("Canceled");
-            render();
+        if (ui_text_input_handle_key(state.name_input, key)) {
+            ui_text_input_draw(state.name_input);
+            text_mode_flush();
         }
         return;
     }
@@ -923,6 +936,12 @@ void app_checkpoint(app_context_t *ctx) {
 void app_close(app_context_t *ctx) {
     (void)ctx;
     save_state();
+
+    // Clean up text input widget
+    if (state.name_input) {
+        ui_text_input_destroy(state.name_input);
+        state.name_input = NULL;
+    }
     for (int pane_index = 0; pane_index < FM_PANES; pane_index++) {
         pane_free_display_list(&state.panes[pane_index]);
         if (state.panes[pane_index].entries) {

@@ -33,7 +33,10 @@
       "Bash(./build.sh *)",
       "Bash(xargs cat *)",
       "Bash(xtensa-esp32-elf-size *)",
-      "Bash(python3 -m esptool --chip esp32 --before default_reset --after hard_reset write_flash)"
+      "Bash(python3 -m esptool --chip esp32 --before default_reset --after hard_reset write_flash)",
+      "Bash(bash *)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(git push *)"
     ]
   }
 }

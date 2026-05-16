@@ -29,10 +29,10 @@ static int msg_timer = 0;
 static int selected = 0;
 static int scan_count = 0;
 static int scan_selected = 0;
-static ui_text_input_widget_t ssid_input;
-static ui_text_input_widget_t password_input;
-static ui_text_input_widget_t timezone_input;
-static ui_text_input_widget_t location_input;
+static ui_text_input_widget_t *ssid_input;
+static ui_text_input_widget_t *password_input;
+static ui_text_input_widget_t *timezone_input;
+static ui_text_input_widget_t *location_input;
 
 #define SETTINGS_KEY_TIMEZONE "time/timezone"
 #define SETTINGS_KEY_LOCATION "weather/location"
@@ -331,16 +331,20 @@ static void render(void) {
             draw_scan_results();
             break;
         case STATE_ENTER_SSID:
-            ui_text_input_widget_draw(&ssid_input);
+            ui_text_input_set_buffer(ssid_input, input_ssid, sizeof(input_ssid));
+            ui_text_input_draw(ssid_input);
             break;
         case STATE_ENTER_PASSWORD:
-            ui_text_input_widget_draw(&password_input);
+            ui_text_input_set_buffer(password_input, input_password, sizeof(input_password));
+            ui_text_input_draw(password_input);
             break;
         case STATE_ENTER_TIMEZONE:
-            ui_text_input_widget_draw(&timezone_input);
+            ui_text_input_set_buffer(timezone_input, input_timezone, sizeof(input_timezone));
+            ui_text_input_draw(timezone_input);
             break;
         case STATE_ENTER_LOCATION:
-            ui_text_input_widget_draw(&location_input);
+            ui_text_input_set_buffer(location_input, input_location, sizeof(input_location));
+            ui_text_input_draw(location_input);
             break;
         case STATE_MESSAGE:
             draw_message();
@@ -373,37 +377,30 @@ void app_init(app_context_t *ctx) {
     os_settings_get_string(SETTINGS_KEY_TIMEZONE, "UTC", input_timezone, sizeof(input_timezone));
     os_settings_get_string(SETTINGS_KEY_LOCATION, "40.4168,-3.7038", input_location, sizeof(input_location));
 
-    ssid_input.title = "Enter SSID";
-    ssid_input.label = "SSID:";
-    ssid_input.buffer = input_ssid;
-    ssid_input.max_len = sizeof(input_ssid);
-    ssid_input.mask_input = false;
-    ssid_input.hint_left = "Type to enter  Enter Confirm";
-    ssid_input.hint_right = "ESC Cancel";
+    // Create text input widgets
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
 
-    password_input.title = "Enter Password";
-    password_input.label = "Password:";
-    password_input.buffer = input_password;
-    password_input.max_len = sizeof(input_password);
-    password_input.mask_input = true;
-    password_input.hint_left = "Type to enter  Enter Confirm";
-    password_input.hint_right = "ESC Cancel";
+    ssid_input = ui_text_input_create(0, rows - 4, cols, 4);
+    ui_text_input_set_title(ssid_input, "Enter SSID");
+    ui_text_input_set_label(ssid_input, "SSID:");
+    ui_text_input_set_hints(ssid_input, "Type to enter  Enter Confirm", "ESC Cancel");
 
-    timezone_input.title = "Set Timezone";
-    timezone_input.label = "Timezone:";
-    timezone_input.buffer = input_timezone;
-    timezone_input.max_len = sizeof(input_timezone);
-    timezone_input.mask_input = false;
-    timezone_input.hint_left = "Ex: UTC or Europe/Madrid";
-    timezone_input.hint_right = "ESC Cancel";
+    password_input = ui_text_input_create(0, rows - 4, cols, 4);
+    ui_text_input_set_title(password_input, "Enter Password");
+    ui_text_input_set_label(password_input, "Password:");
+    ui_text_input_set_mask(password_input, true);
+    ui_text_input_set_hints(password_input, "Type to enter  Enter Confirm", "ESC Cancel");
 
-    location_input.title = "Set Location";
-    location_input.label = "Location:";
-    location_input.buffer = input_location;
-    location_input.max_len = sizeof(input_location);
-    location_input.mask_input = false;
-    location_input.hint_left = "City or lat,lon";
-    location_input.hint_right = "ESC Cancel";
+    timezone_input = ui_text_input_create(0, rows - 4, cols, 4);
+    ui_text_input_set_title(timezone_input, "Set Timezone");
+    ui_text_input_set_label(timezone_input, "Timezone:");
+    ui_text_input_set_hints(timezone_input, "Ex: UTC or Europe/Madrid", "ESC Cancel");
+
+    location_input = ui_text_input_create(0, rows - 4, cols, 4);
+    ui_text_input_set_title(location_input, "Set Location");
+    ui_text_input_set_label(location_input, "Location:");
+    ui_text_input_set_hints(location_input, "City or lat,lon", "ESC Cancel");
 
     render();
     os_log(TAG, "Settings app initialized");
@@ -415,6 +412,25 @@ void app_checkpoint(app_context_t *ctx) {
 
 void app_close(app_context_t *ctx) {
     os_log(TAG, "Settings app cleanup");
+
+    // Clean up text input widgets
+    if (ssid_input) {
+        ui_text_input_destroy(ssid_input);
+        ssid_input = NULL;
+    }
+    if (password_input) {
+        ui_text_input_destroy(password_input);
+        password_input = NULL;
+    }
+    if (timezone_input) {
+        ui_text_input_destroy(timezone_input);
+        timezone_input = NULL;
+    }
+    if (location_input) {
+        ui_text_input_destroy(location_input);
+        location_input = NULL;
+    }
+
     text_mode_clear(TEXT_COLOR_BLACK);
 }
 
@@ -525,43 +541,49 @@ static void handle_scan_key(char key) {
 }
 
 static void handle_text_entry_event(event_t *event) {
-    const ui_text_input_widget_t *widget = NULL;
+    ui_text_input_widget_t *widget = NULL;
     if (state == STATE_ENTER_SSID) {
-        widget = &ssid_input;
+        widget = ssid_input;
     } else if (state == STATE_ENTER_PASSWORD) {
-        widget = &password_input;
+        widget = password_input;
     } else if (state == STATE_ENTER_TIMEZONE) {
-        widget = &timezone_input;
+        widget = timezone_input;
     } else if (state == STATE_ENTER_LOCATION) {
-        widget = &location_input;
+        widget = location_input;
     }
     if (!widget) {
         return;
     }
 
-    int result = ui_text_input_widget_handle_event(widget, event);
-    if (result == 1) {
-        if (state == STATE_ENTER_TIMEZONE) {
-            os_settings_set_string(SETTINGS_KEY_TIMEZONE, input_timezone);
-            set_status("Timezone saved");
-        } else if (state == STATE_ENTER_LOCATION) {
-            trim_spaces(input_location);
-            char resolved_location[64];
-            if (!resolve_location(input_location, resolved_location, sizeof(resolved_location))) {
-                state = STATE_MESSAGE;
-                set_status("Location lookup failed");
-                render();
-                return;
-            }
-            snprintf(input_location, sizeof(input_location), "%s", resolved_location);
-            os_settings_set_string(SETTINGS_KEY_LOCATION, input_location);
-            set_status("Location saved as lat,lon");
-        }
-    }
+    char key = event->keyboard.key;
+    if (ui_text_input_handle_key(widget, key)) {
+        ui_text_input_draw(widget);
+        text_mode_flush();
 
-    if (result != 0) {
-        state = STATE_MAIN;
-        render();
+        // Handle confirmations based on state
+        if (key == '\n' || key == '\r') {
+            if (state == STATE_ENTER_TIMEZONE) {
+                os_settings_set_string(SETTINGS_KEY_TIMEZONE, input_timezone);
+                set_status("Timezone saved");
+            } else if (state == STATE_ENTER_LOCATION) {
+                trim_spaces(input_location);
+                char resolved_location[64];
+                if (!resolve_location(input_location, resolved_location, sizeof(resolved_location))) {
+                    state = STATE_MESSAGE;
+                    set_status("Location lookup failed");
+                    render();
+                    return;
+                }
+                snprintf(input_location, sizeof(input_location), "%s", resolved_location);
+                os_settings_set_string(SETTINGS_KEY_LOCATION, input_location);
+                set_status("Location saved as lat,lon");
+            }
+            state = STATE_MAIN;
+            render();
+        } else if (key == 27) { // ESC
+            state = STATE_MAIN;
+            render();
+        }
     }
 }
 
