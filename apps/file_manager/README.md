@@ -17,7 +17,7 @@ A directory browser for `/sdcard`.
 - Delete selected file or empty directory with `X`
 - Copy selected file to other pane with `C` (auto-unique destination name)
 - Open selected file with app association using `Enter`
-- Handles ambiguous extensions (for example `.md`) via one-key choice (`1`/`2`)
+- Handles ambiguous extensions (for example `.md`) via one-key choice (`Q`/`W`, then `E`/`R`...)
 - Persist pane paths, selected entries, and active pane between launches
 
 ## Controls
@@ -34,7 +34,7 @@ A directory browser for `/sdcard`.
 | M | Rename selected file or directory |
 | C | Copy selected file to other pane |
 | X | Delete selected file or empty directory |
-| 1 / 2 | Resolve app choice when extension has multiple handlers |
+| Q / W / E / R | Resolve app choice when extension has multiple handlers |
 
 ## Notes
 

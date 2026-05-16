@@ -19,6 +19,7 @@
 #define FM_STATUS_MAX 128
 #define FM_PANES 2
 #define FM_OPEN_WITH_MAX 4
+static const char FM_OPEN_WITH_KEYS[] = "qwertyuiop";
 
 typedef struct {
     char name[FM_MAX_NAME];
@@ -512,7 +513,8 @@ static void active_open_with(void) {
     }
 
     char message[FM_STATUS_MAX];
-    snprintf(message, sizeof(message), "Open with: 1:%s 2:%s", apps[0], apps[1]);
+    snprintf(message, sizeof(message), "Open with: %c:%s %c:%s",
+             FM_OPEN_WITH_KEYS[0], apps[0], FM_OPEN_WITH_KEYS[1], apps[1]);
     set_status(message);
 }
 
@@ -643,9 +645,14 @@ static int handle_pending_open_choice(char key) {
         return 1;
     }
 
-    if (key < '1' || key > '9') return 1;
+    int choice = -1;
+    for (int index = 0; FM_OPEN_WITH_KEYS[index] != '\0'; index++) {
+        if (key == FM_OPEN_WITH_KEYS[index] || key == (char)(FM_OPEN_WITH_KEYS[index] - 'a' + 'A')) {
+            choice = index;
+            break;
+        }
+    }
 
-    int choice = key - '1';
     if (choice < 0 || choice >= state.pending_open_count) return 1;
 
     const char *app_name = state.pending_open_apps[choice];
