@@ -7,6 +7,7 @@
 #include "reader_toc.h"
 #include "reader_view.h"
 #include "text_mode.h"
+#include "ui_button.h"
 
 #include <string.h>
 
@@ -16,6 +17,72 @@
 
 static int load_current_page(reader_state_t *state, int *bold_pending, int *underline_pending) {
     return reader_load_current_page(state, bold_pending, underline_pending);
+}
+
+// Forward declarations for static functions
+static void toc_return_to_reading(reader_state_t *state, int *bold_pending, int *underline_pending);
+static void toc_move_selection(reader_state_t *state, int delta);
+static void toc_jump_to_selected(reader_state_t *state, int *bold_pending, int *underline_pending);
+static void change_file_selection(reader_state_t *state, int delta);
+static void open_selected_book(reader_state_t *state, int *bold_pending, int *underline_pending);
+static void exit_to_app_list(int *bold_pending, int *underline_pending, void (*launch_app_list)(void));
+static void enter_toc_mode(reader_state_t *state);
+static void exit_to_file_list(reader_state_t *state);
+
+// Button widget callbacks
+void on_file_list_up_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    change_file_selection(state, -1);
+}
+
+void on_file_list_open_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    int bold_pending = 0, underline_pending = 0;
+    open_selected_book(state, &bold_pending, &underline_pending);
+}
+
+void on_file_list_down_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    change_file_selection(state, 1);
+}
+
+void on_file_list_exit_click(ui_button_t *button, void *user_data) {
+    // This needs special handling - we'll set a flag and handle it in the main loop
+    // For now, do nothing - the file list exit is handled via ESC key
+}
+
+void on_toc_up_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    int bold_pending = 0, underline_pending = 0;
+    toc_move_selection(state, -1);
+}
+
+void on_toc_jump_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    int bold_pending = 0, underline_pending = 0;
+    toc_jump_to_selected(state, &bold_pending, &underline_pending);
+}
+
+void on_toc_down_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    int bold_pending = 0, underline_pending = 0;
+    toc_move_selection(state, 1);
+}
+
+void on_toc_back_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    int bold_pending = 0, underline_pending = 0;
+    toc_return_to_reading(state, &bold_pending, &underline_pending);
+}
+
+void on_reading_toc_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    enter_toc_mode(state);
+}
+
+void on_reading_back_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    exit_to_file_list(state);
 }
 
 int reader_events_open_book(reader_state_t *state, const char *path, int *bold_pending, int *underline_pending) {
@@ -108,31 +175,28 @@ static void handle_reading_key(reader_state_t *state, char key, int *bold_pendin
 }
 
 static void handle_file_list_touch(reader_state_t *state, int x_col, int *bold_pending, int *underline_pending, void (*launch_app_list)(void)) {
-    if (x_col >= state->btn_up_x && x_col < state->btn_up_x + state->btn_w) {
-        change_file_selection(state, -1);
-    } else if (x_col >= state->btn_open_x && x_col < state->btn_open_x + state->btn_w) {
-        open_selected_book(state, bold_pending, underline_pending);
-    } else if (x_col >= state->btn_down_x && x_col < state->btn_down_x + state->btn_w) {
-        change_file_selection(state, 1);
-    } else if (x_col >= state->btn_exit_x && x_col < state->btn_exit_x + state->btn_w) {
-        reader_close_current_file(state);
-        config_set_string(KEY_LAST_FILE, "");
-        launch_app_list();
-    }
+    // This function is no longer needed - touch is handled by dispatch_touch using button widgets
+    // Kept for compatibility but should not be called
 }
 
 static void handle_reading_touch(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending) {
-    int char_width = text_mode_get_char_width();
-    int char_height = text_mode_get_char_height();
-    int cols = text_mode_get_cols();
-    int toc_x_start = (cols - (READING_TOC_BUTTON_WIDTH + READING_BACK_BUTTON_WIDTH)) * char_width;
-    int back_x_start = (cols - READING_BACK_BUTTON_WIDTH) * char_width;
+    // Convert pixel coordinates to character coordinates for button widgets
+    int x_col = event->touch.x / 5;   // 5 pixels per character column
+    int y_col = event->touch.y / 8;   // 8 pixels per character row
 
-    if (event->touch.y < char_height * 2 && event->touch.x >= back_x_start) {
-        exit_to_file_list(state);
-    } else if (event->touch.y < char_height * 2 && event->touch.x >= toc_x_start && event->touch.x < back_x_start) {
-        enter_toc_mode(state);
-    } else if (event->touch.x < TOUCH_PAGE_SPLIT_X) {
+    // Create a modified touch event with character coordinates
+    event_t char_event = *event;
+    char_event.touch.x = x_col;
+    char_event.touch.y = y_col;
+
+    // Check header buttons first (in row 0)
+    if (y_col == 0) {
+        if (state->btn_jump && ui_button_handle_touch(state->btn_jump, &char_event)) return;
+        if (state->btn_back && ui_button_handle_touch(state->btn_back, &char_event)) return;
+    }
+
+    // Page navigation touch zones
+    if (event->touch.x < TOUCH_PAGE_SPLIT_X) {
         reader_nav_prev_page(state, bold_pending, underline_pending);
     } else {
         reader_nav_next_page(state, bold_pending, underline_pending);
@@ -248,21 +312,36 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
         return;
     }
 
-    if (state->mode != MODE_FILE_LIST && state->mode != MODE_TOC) {
-        return;
-    }
+    if (state->mode == MODE_TOC || state->mode == MODE_FILE_LIST) {
+        // Convert pixel coordinates to character coordinates for button widgets
+        // Screen is 320x240 pixels, text grid is 64x30 characters
+        // Character size: 320/64 = 5 pixels wide, 240/30 = 8 pixels tall
+        int x_col = event->touch.x / 5;   // 5 pixels per character column
+        int y_col = event->touch.y / 8;   // 8 pixels per character row
 
-    int char_width = text_mode_get_char_width();
-    int char_height = text_mode_get_char_height();
-    if (event->touch.y < state->btn_row * char_height || event->touch.y >= (state->btn_row + 1) * char_height) {
-        return;
-    }
+        // Create a modified touch event with character coordinates
+        event_t char_event = *event;
+        char_event.touch.x = x_col;
+        char_event.touch.y = y_col;
 
-    int x_col = event->touch.x / char_width;
-    if (state->mode == MODE_FILE_LIST) {
-        handle_file_list_touch(state, x_col, bold_pending, underline_pending, launch_app_list);
-    } else {
-        handle_toc_touch(state, x_col, bold_pending, underline_pending);
+        // Check exit button separately for file list mode (needs launch_app_list)
+        if (state->mode == MODE_FILE_LIST && state->btn_exit &&
+            ui_button_handle_touch(state->btn_exit, &char_event)) {
+            // Exit button was pressed - launch app list
+            reader_close_current_file(state);
+            config_set_string(KEY_LAST_FILE, "");
+            if (launch_app_list) {
+                launch_app_list();
+            }
+            return;
+        }
+
+        // Try other button widgets with character coordinates
+        if (state->btn_up && ui_button_handle_touch(state->btn_up, &char_event)) return;
+        if (state->btn_open && ui_button_handle_touch(state->btn_open, &char_event)) return;
+        if (state->btn_down && ui_button_handle_touch(state->btn_down, &char_event)) return;
+        if (state->mode == MODE_TOC && state->btn_exit && ui_button_handle_touch(state->btn_exit, &char_event)) return;
+        return;
     }
 }
 

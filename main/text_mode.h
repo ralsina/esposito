@@ -39,11 +39,14 @@ typedef enum {
 // Text attributes
 typedef enum {
     TEXT_ATTR_NORMAL = 0,
-    TEXT_ATTR_BOLD = 1,
-    TEXT_ATTR_ITALIC = 2,
-    TEXT_ATTR_UNDERLINE = 4,
-    TEXT_ATTR_INVERSE = 8,
-    TEXT_ATTR_LINE_DRAWING = 16,
+    TEXT_ATTR_BOLD = 1,           // Bit 0: Bold text
+    TEXT_ATTR_ITALIC = 2,         // Bit 1: Italic text
+    TEXT_ATTR_UNDERLINE = 4,      // Bit 2: Underline (bottom border)
+    TEXT_ATTR_INVERSE = 8,        // Bit 3: Inverse colors
+    TEXT_ATTR_LINE_DRAWING = 16,  // Bit 4: VT100 line drawing mode
+    TEXT_ATTR_BORDER_TOP = 32,    // Bit 5: Top border line
+    TEXT_ATTR_BORDER_LEFT = 64,   // Bit 6: Left border line
+    TEXT_ATTR_BORDER_RIGHT = 128, // Bit 7: Right border line
 } text_attribute_t;
 
 // Cell data structure

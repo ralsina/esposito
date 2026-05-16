@@ -1,11 +1,10 @@
 #include "ui_button.h"
-#include "app_heap.h"
 #include "os_core.h"
 #include <stdlib.h>
 #include <string.h>
 
 ui_button_t* ui_button_create(int x, int y, int width, int height, const char *text) {
-    ui_button_t *button = (ui_button_t*)app_malloc(sizeof(ui_button_t));
+    ui_button_t *button = (ui_button_t*)malloc(sizeof(ui_button_t));
     if (!button) {
         return NULL;
     }
@@ -22,7 +21,13 @@ ui_button_t* ui_button_create(int x, int y, int width, int height, const char *t
     button->user_data = NULL;
 
     if (text) {
-        button->text = strdup(text);
+        size_t len = strlen(text);
+        button->text = (char*)malloc(len + 1);
+        if (button->text) {
+            memcpy(button->text, text, len + 1);
+        } else {
+            button->text = NULL;
+        }
     } else {
         button->text = NULL;
     }
@@ -39,7 +44,7 @@ void ui_button_destroy(ui_button_t *button) {
         free(button->text);
     }
 
-    app_free(button);
+    free(button);
 }
 
 void ui_button_draw(ui_button_t *button) {
@@ -47,21 +52,27 @@ void ui_button_draw(ui_button_t *button) {
         return;
     }
 
-    // Draw button background
+    // Draw button background with borders
     for (int dy = 0; dy < button->height; dy++) {
         for (int dx = 0; dx < button->width; dx++) {
-            text_mode_print_at_color(button->x + dx, button->y + dy, " ", button->bg_color);
-        }
-    }
+            uint8_t attr = TEXT_ATTR_NORMAL;
 
-    // Draw button border
-    for (int dx = 0; dx < button->width; dx++) {
-        text_mode_print_at_color(button->x + dx, button->y, "-", button->fg_color);
-        text_mode_print_at_color(button->x + dx, button->y + button->height - 1, "-", button->fg_color);
-    }
-    for (int dy = 1; dy < button->height - 1; dy++) {
-        text_mode_print_at_color(button->x, button->y + dy, "|", button->fg_color);
-        text_mode_print_at_color(button->x + button->width - 1, button->y + dy, "|", button->fg_color);
+            // Add borders on the edges
+            if (dy == 0) {
+                attr |= TEXT_ATTR_BORDER_TOP;
+            }
+            if (dy == button->height - 1) {
+                attr |= TEXT_ATTR_UNDERLINE; // Bottom border
+            }
+            if (dx == 0) {
+                attr |= TEXT_ATTR_BORDER_LEFT;
+            }
+            if (dx == button->width - 1) {
+                attr |= TEXT_ATTR_BORDER_RIGHT;
+            }
+
+            text_mode_print_at_attr_bg(button->x + dx, button->y + dy, " ", button->fg_color, button->bg_color, attr);
+        }
     }
 
     // Draw button text centered
@@ -71,7 +82,8 @@ void ui_button_draw(ui_button_t *button) {
         int text_y = button->y + (button->height - 1) / 2;
 
         if (text_x >= button->x && text_y >= button->y) {
-            text_mode_print_at_color(text_x, text_y, button->text, button->fg_color);
+            // Don't draw borders on the text itself
+            text_mode_print_at_attr_bg(text_x, text_y, button->text, button->fg_color, button->bg_color, TEXT_ATTR_NORMAL);
         }
     }
 }

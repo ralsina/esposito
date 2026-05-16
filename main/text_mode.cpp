@@ -241,8 +241,18 @@ static void update_cell(int x, int y) {
         }
     }
 
+    // Draw borders
     if (cell->attributes & TEXT_ATTR_UNDERLINE) {
         display_fill_rect(px, py + font_height - 1, font_width, 1, fg);
+    }
+    if (cell->attributes & TEXT_ATTR_BORDER_TOP) {
+        display_fill_rect(px, py, font_width, 1, fg);
+    }
+    if (cell->attributes & TEXT_ATTR_BORDER_LEFT) {
+        display_fill_rect(px, py, 1, font_height, fg);
+    }
+    if (cell->attributes & TEXT_ATTR_BORDER_RIGHT) {
+        display_fill_rect(px + font_width - 1, py, 1, font_height, fg);
     }
 }
 
@@ -661,9 +671,24 @@ bool text_mode_save_screenshot(void) {
                         && gw > 0 && (dx - 1) < gw && char_row < gh) {
                         pixel_set = glyph_bits[char_row * gw + (dx - 1)] != 0;
                     }
-                    // Underline
+                    // Underline (bottom border)
                     if (!pixel_set && (cell->attributes & TEXT_ATTR_UNDERLINE)
                         && char_row == font_height - 1) {
+                        pixel_set = true;
+                    }
+                    // Top border
+                    if (!pixel_set && (cell->attributes & TEXT_ATTR_BORDER_TOP)
+                        && char_row == 0) {
+                        pixel_set = true;
+                    }
+                    // Left border
+                    if (!pixel_set && (cell->attributes & TEXT_ATTR_BORDER_LEFT)
+                        && dx == 0) {
+                        pixel_set = true;
+                    }
+                    // Right border
+                    if (!pixel_set && (cell->attributes & TEXT_ATTR_BORDER_RIGHT)
+                        && dx == font_width - 1) {
                         pixel_set = true;
                     }
                 }

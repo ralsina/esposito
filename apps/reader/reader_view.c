@@ -1,5 +1,6 @@
 #include "reader_view.h"
 
+#include "reader_events.h"
 #include "reader_md.h"
 #include "text_mode.h"
 #include "ui.h"
@@ -138,15 +139,34 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
     }
     text_mode_print_at_attr(1, 0, file_name, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
 
-    int toc_btn_x = cols - 10;
-    int back_btn_x = cols - 5;
+    int toc_btn_x = cols - 15;
+    int back_btn_x = cols - 7;
 
-    int info_x = toc_btn_x - 2 - (int)strlen(page_info);
+    int info_x = toc_btn_x - 1 - (int)strlen(page_info);
     if (info_x > 0) {
         text_mode_print_at_attr(info_x, 0, page_info, TEXT_COLOR_CYAN, TEXT_ATTR_UNDERLINE);
     }
-    text_mode_print_at_attr_bg(toc_btn_x, 0, "[TOC]", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
-    text_mode_print_at_attr_bg(back_btn_x, 0, "[<<<]", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_INVERSE);
+
+    // Create/update reading mode header buttons
+    reader_state_t *mutable_state = (reader_state_t*)state;
+    if (!mutable_state->btn_jump) {
+        mutable_state->btn_jump = ui_button_create(toc_btn_x, 0, 7, 1, "TOC");
+        ui_button_set_callback(mutable_state->btn_jump, on_reading_toc_click, mutable_state);
+
+        mutable_state->btn_back = ui_button_create(back_btn_x, 0, 7, 1, "<<<");
+        ui_button_set_callback(mutable_state->btn_back, on_reading_back_click, mutable_state);
+    } else {
+        // Update positions if screen size changed
+        mutable_state->btn_jump->x = toc_btn_x;
+        mutable_state->btn_jump->y = 0;
+
+        mutable_state->btn_back->x = back_btn_x;
+        mutable_state->btn_back->y = 0;
+    }
+
+    // Draw header buttons
+    ui_button_draw(state->btn_jump);
+    ui_button_draw(state->btn_back);
 
     if (state->search_status[0]) {
         int status_len = (int)strlen(state->search_status);
@@ -179,10 +199,11 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
 void reader_view_draw_toc(reader_state_t *state) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();
-    int list_rows = rows - 5;
+    int window_height = rows - 3; // Reserve 3 rows for buttons at bottom
+    int list_rows = window_height - 4; // Account for title (1), top/bottom borders (2), and top margin (1)
 
     ui_clear();
-    ui_window(0, 0, cols, rows, "Table of Contents");
+    ui_window(0, 0, cols, window_height, "Table of Contents");
 
     if (state->toc_count == 0) {
         ui_label(2, 2, "No headings found", TEXT_COLOR_YELLOW);
@@ -204,40 +225,52 @@ void reader_view_draw_toc(reader_state_t *state) {
     int button_row = rows - 3;
     int button_width = FILE_LIST_BTN_WIDTH;
 
-    char spacer[64];
-    memset(spacer, ' ', button_width);
-    spacer[button_width] = '\0';
-
+    // Create button widgets
     int up_x = 2;
     int jump_x = up_x + button_width + FILE_LIST_BTN_GAP;
     int down_x = jump_x + button_width + FILE_LIST_BTN_GAP;
     int back_x = down_x + button_width + FILE_LIST_BTN_GAP;
 
-    text_mode_print_at_attr_bg(up_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(up_x + (button_width - 6) / 2, button_row, FILE_LIST_BTN_UP_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    // Create buttons if they don't exist
+    if (!state->btn_up) {
+        // Callbacks (defined in reader_events.c)
+        state->btn_up = ui_button_create(up_x, button_row, button_width, 3, "UP");
+        ui_button_set_callback(state->btn_up, on_toc_up_click, state);
 
-    text_mode_print_at_attr_bg(jump_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(jump_x + (button_width - 6) / 2, button_row, TOC_BTN_JUMP_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
+        state->btn_open = ui_button_create(jump_x, button_row, button_width, 3, "JUMP");
+        ui_button_set_callback(state->btn_open, on_toc_jump_click, state);
 
-    text_mode_print_at_attr_bg(down_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(down_x + (button_width - 6) / 2, button_row, FILE_LIST_BTN_DOWN_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+        state->btn_down = ui_button_create(down_x, button_row, button_width, 3, "DOWN");
+        ui_button_set_callback(state->btn_down, on_toc_down_click, state);
 
-    text_mode_print_at_attr_bg(back_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(back_x + (button_width - 6) / 2, button_row, TOC_BTN_BACK_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+        state->btn_exit = ui_button_create(back_x, button_row, button_width, 3, "EXIT");
+        ui_button_set_callback(state->btn_exit, on_toc_back_click, state);
+    } else {
+        // Update positions if screen size changed
+        state->btn_up->x = up_x;
+        state->btn_up->y = button_row;
 
-    state->btn_up_x = up_x;
-    state->btn_open_x = jump_x;
-    state->btn_down_x = down_x;
-    state->btn_exit_x = back_x;
-    state->btn_row = button_row;
-    state->btn_w = button_width;
+        state->btn_open->x = jump_x;
+        state->btn_open->y = button_row;
 
-    ui_status_bar(rows - 2, "W/S Navigate  Enter Jump", "ESC Cancel");
+        state->btn_down->x = down_x;
+        state->btn_down->y = button_row;
+
+        state->btn_exit->x = back_x;
+        state->btn_exit->y = button_row;
+    }
+
+    // Draw buttons
+    ui_button_draw(state->btn_up);
+    ui_button_draw(state->btn_open);
+    ui_button_draw(state->btn_down);
+    ui_button_draw(state->btn_exit);
 }
 
 void reader_view_update_toc_selection(const reader_state_t *state, int previous_selected) {
     int rows = text_mode_get_rows();
-    int list_rows = rows - 5;
+    int window_height = rows - 3; // Reserve 3 rows for buttons at bottom
+    int list_rows = window_height - 4; // Account for title, borders, and margins
 
     if (state->toc_count == 0) {
         return;
@@ -268,37 +301,48 @@ void reader_view_draw_file_list(reader_state_t *state) {
     int list_rows = rows - 5;
 
     ui_clear();
-    ui_window(0, 0, cols, rows, "Select a Book");
+    ui_window(0, 0, cols, rows - 3, "Select a Book"); // Make room for buttons
     ui_menu_draw(1, 1, list_rows, state->file_ptrs, state->file_count, state->file_selected);
 
     int button_row = rows - 3;
     int button_width = FILE_LIST_BTN_WIDTH;
-
-    char spacer[64];
-    memset(spacer, ' ', button_width);
-    spacer[button_width] = '\0';
 
     int up_x = 2;
     int open_x = up_x + button_width + FILE_LIST_BTN_GAP;
     int down_x = open_x + button_width + FILE_LIST_BTN_GAP;
     int exit_x = down_x + button_width + FILE_LIST_BTN_GAP;
 
-    text_mode_print_at_attr_bg(up_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(up_x + (button_width - 6) / 2, button_row, FILE_LIST_BTN_UP_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    // Create buttons if they don't exist
+    if (!state->btn_up) {
+        state->btn_up = ui_button_create(up_x, button_row, button_width, 3, "UP");
+        ui_button_set_callback(state->btn_up, on_file_list_up_click, state);
 
-    text_mode_print_at_attr_bg(open_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(open_x + (button_width - 6) / 2, button_row, FILE_LIST_BTN_OPEN_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
+        state->btn_open = ui_button_create(open_x, button_row, button_width, 3, "OPEN");
+        ui_button_set_callback(state->btn_open, on_file_list_open_click, state);
 
-    text_mode_print_at_attr_bg(down_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(down_x + (button_width - 6) / 2, button_row, FILE_LIST_BTN_DOWN_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+        state->btn_down = ui_button_create(down_x, button_row, button_width, 3, "DOWN");
+        ui_button_set_callback(state->btn_down, on_file_list_down_click, state);
 
-    text_mode_print_at_attr_bg(exit_x, button_row, spacer, TEXT_COLOR_BLACK, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr_bg(exit_x + (button_width - 6) / 2, button_row, FILE_LIST_BTN_EXIT_LABEL, TEXT_COLOR_BLACK, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+        state->btn_exit = ui_button_create(exit_x, button_row, button_width, 3, "EXIT");
+        ui_button_set_callback(state->btn_exit, on_file_list_exit_click, state);
+    } else {
+        // Update positions if screen size changed
+        state->btn_up->x = up_x;
+        state->btn_up->y = button_row;
 
-    state->btn_up_x = up_x;
-    state->btn_open_x = open_x;
-    state->btn_down_x = down_x;
-    state->btn_exit_x = exit_x;
-    state->btn_row = button_row;
-    state->btn_w = button_width;
+        state->btn_open->x = open_x;
+        state->btn_open->y = button_row;
+
+        state->btn_down->x = down_x;
+        state->btn_down->y = button_row;
+
+        state->btn_exit->x = exit_x;
+        state->btn_exit->y = button_row;
+    }
+
+    // Draw buttons
+    ui_button_draw(state->btn_up);
+    ui_button_draw(state->btn_open);
+    ui_button_draw(state->btn_down);
+    ui_button_draw(state->btn_exit);
 }

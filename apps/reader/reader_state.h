@@ -66,13 +66,24 @@ typedef struct {
     int toc_count;
     int toc_selected;
 
-    // File list touch button positions
+    // Button widgets (managed by UI library)
+    ui_button_t *btn_up;
+    ui_button_t *btn_open;
+    ui_button_t *btn_down;
+    ui_button_t *btn_exit;
+    ui_button_t *btn_jump;
+    ui_button_t *btn_back;
+
+    // Button coordinates for file list (temporary, until file list uses widgets)
     int btn_up_x;
     int btn_open_x;
     int btn_down_x;
     int btn_exit_x;
     int btn_row;
     int btn_w;
+
+    // Function pointer to launch app list (for exit button)
+    void (*launch_app_list)(void);
 } reader_state_t;
 
 #endif
