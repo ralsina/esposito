@@ -18,7 +18,7 @@ A directory browser for `/sdcard`.
 - Copy selected file to other pane with `C` (auto-unique destination name)
 - Open selected file with app association using `Enter`
 - Handles ambiguous extensions (for example `.md`) via one-key choice (`1`/`2`)
-- Persist pane paths and active pane between launches
+- Persist pane paths, selected entries, and active pane between launches
 
 ## Controls
 

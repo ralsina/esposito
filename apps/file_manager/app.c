@@ -351,6 +351,19 @@ static int pane_selected_index(fm_pane_t *pane) {
     return pane->selected;
 }
 
+static void pane_select_path(fm_pane_t *pane, const char *path) {
+    if (!pane || !path || path[0] == '\0') {
+        return;
+    }
+
+    for (int index = 0; index < pane->entry_count; index++) {
+        if (strcmp(pane->entries[index].path, path) == 0) {
+            pane->selected = index;
+            return;
+        }
+    }
+}
+
 static int make_unique_path(const char *directory, const char *base_name, char *out, size_t out_size) {
     char candidate[FM_MAX_PATH];
     snprintf(candidate, sizeof(candidate), "%s/%s", directory, base_name);
@@ -727,6 +740,21 @@ static void save_state(void) {
     config_set_string("left_dir", state.panes[0].cwd);
     config_set_string("right_dir", state.panes[1].cwd);
     config_set_int("active_pane", state.active_pane);
+
+    int left_selected_index = pane_selected_index(&state.panes[0]);
+    int right_selected_index = pane_selected_index(&state.panes[1]);
+    const char *left_selected_path = "";
+    const char *right_selected_path = "";
+
+    if (left_selected_index >= 0) {
+        left_selected_path = state.panes[0].entries[left_selected_index].path;
+    }
+    if (right_selected_index >= 0) {
+        right_selected_path = state.panes[1].entries[right_selected_index].path;
+    }
+
+    config_set_string("left_selected", left_selected_path);
+    config_set_string("right_selected", right_selected_path);
     config_unbind_app();
 }
 
@@ -776,11 +804,18 @@ void app_init(app_context_t *ctx) {
     state.name_input.hint_right = "ESC Cancel";
 
     int config_ok = config_bind_app("file_manager");
-    
+    char left_selected[FM_MAX_PATH];
+    char right_selected[FM_MAX_PATH];
+    left_selected[0] = '\0';
+    right_selected[0] = '\0';
+
     if (config_ok) {
         config_get_string("left_dir", FM_ROOT_PATH, state.panes[0].cwd, sizeof(state.panes[0].cwd));
         config_get_string("right_dir", FM_ROOT_PATH, state.panes[1].cwd, sizeof(state.panes[1].cwd));
         state.active_pane = config_get_int("active_pane", 0);
+        config_get_string("left_selected", "", left_selected, sizeof(left_selected));
+        config_get_string("right_selected", "", right_selected, sizeof(right_selected));
+
         config_unbind_app();
     }
 
@@ -794,6 +829,10 @@ void app_init(app_context_t *ctx) {
         }
         pane_scan_directory(&state.panes[pane_index]);
     }
+
+    pane_select_path(&state.panes[0], left_selected);
+    pane_select_path(&state.panes[1], right_selected);
+
     render();
 }
 
