@@ -136,6 +136,8 @@ static const os_symtab_entry_t symtab[] = {
     {"fseek",                   fseek},
     {"ftell",                   ftell},
     {"fgets",                   fgets},
+    {"rename",                  rename},
+    {"remove",                  remove},
     {"config_open_read",        config_open_read},
     {"config_open_write",       config_open_write},
     {"config_exists",           config_exists},

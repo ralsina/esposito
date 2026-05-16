@@ -134,6 +134,8 @@ SYMBOLS=(
     fseek
     ftell
     fgets
+    rename
+    remove
     config_open_read
     config_open_write
     config_exists

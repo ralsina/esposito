@@ -45,10 +45,45 @@ typedef struct {
     char pending_open_path[FM_MAX_PATH];
     const char *pending_open_apps[FM_OPEN_WITH_MAX];
     int pending_open_count;
+    int input_mode;
+    int pending_edit_pane;
+    int pending_edit_is_dir;
+    char pending_edit_path[FM_MAX_PATH];
+    char pending_name[FM_MAX_NAME];
+    ui_text_input_widget_t name_input;
 } file_manager_t;
 
 static const char *TAG = "file_manager";
 static file_manager_t state;
+
+static void render(void);
+
+static void trim_spaces(char *text) {
+    if (!text || !text[0]) {
+        return;
+    }
+
+    size_t start = 0;
+    while (text[start] == ' ' || text[start] == '\t') {
+        start++;
+    }
+
+    if (start > 0) {
+        memmove(text, text + start, strlen(text + start) + 1);
+    }
+
+    size_t len = strlen(text);
+    while (len > 0 && (text[len - 1] == ' ' || text[len - 1] == '\t')) {
+        text[len - 1] = '\0';
+        len--;
+    }
+}
+
+enum {
+    INPUT_MODE_NONE = 0,
+    INPUT_MODE_NEW_FILE,
+    INPUT_MODE_RENAME,
+};
 
 // Storage for app names returned by manifest lookup (static to avoid stack pressure)
 static char manifest_app_bufs[FM_OPEN_WITH_MAX][64];
@@ -164,6 +199,14 @@ static void clear_pending_open(void) {
     for (int index = 0; index < FM_OPEN_WITH_MAX; index++) {
         state.pending_open_apps[index] = NULL;
     }
+}
+
+static void clear_pending_edit(void) {
+    state.input_mode = INPUT_MODE_NONE;
+    state.pending_edit_pane = 0;
+    state.pending_edit_is_dir = 0;
+    state.pending_edit_path[0] = '\0';
+    state.pending_name[0] = '\0';
 }
 
 static void pane_clear_entries(fm_pane_t *pane);
@@ -460,6 +503,124 @@ static void active_open_with(void) {
     set_status(message);
 }
 
+static int build_child_path(const char *directory, const char *name, char *out, size_t out_size) {
+    if (!directory || !name || !out || out_size == 0 || name[0] == '\0') {
+        return 0;
+    }
+
+    if (strchr(name, '/')) {
+        return 0;
+    }
+
+    int written = snprintf(out, out_size, "%s/%s", directory, name);
+    if (written <= 0 || written >= (int)out_size) {
+        return 0;
+    }
+
+    return path_is_under_root(out);
+}
+
+static void start_new_file(void) {
+    clear_pending_edit();
+    state.input_mode = INPUT_MODE_NEW_FILE;
+    snprintf(state.pending_name, sizeof(state.pending_name), "%s", "newfile.txt");
+    render();
+}
+
+static void start_rename_selected(void) {
+    fm_pane_t *pane = &state.panes[state.active_pane];
+    int selected_index = pane_selected_index(pane);
+    if (selected_index < 0) {
+        set_status("Nothing selected");
+        return;
+    }
+
+    fm_entry_t *entry = &pane->entries[selected_index];
+    if (strcmp(entry->name, "..") == 0) {
+        set_status("Cannot rename parent entry");
+        return;
+    }
+
+    clear_pending_edit();
+    state.input_mode = INPUT_MODE_RENAME;
+    state.pending_edit_pane = state.active_pane;
+    state.pending_edit_is_dir = entry->is_dir;
+    snprintf(state.pending_edit_path, sizeof(state.pending_edit_path), "%s", entry->path);
+    snprintf(state.pending_name, sizeof(state.pending_name), "%s", entry->name);
+    render();
+}
+
+static void active_delete_selected(void) {
+    fm_pane_t *pane = &state.panes[state.active_pane];
+    int selected_index = pane_selected_index(pane);
+    if (selected_index < 0) {
+        set_status("Nothing selected");
+        return;
+    }
+
+    fm_entry_t *entry = &pane->entries[selected_index];
+    if (strcmp(entry->name, "..") == 0) {
+        set_status("Cannot delete parent entry");
+        return;
+    }
+
+    if (remove(entry->path) != 0) {
+        set_status(entry->is_dir ? "Delete failed (dir not empty?)" : "Delete failed");
+        return;
+    }
+
+    pane_scan_directory(pane);
+    set_status(entry->is_dir ? "Directory deleted" : "File deleted");
+}
+
+static void apply_name_input(void) {
+    trim_spaces(state.pending_name);
+    if (state.pending_name[0] == '\0') {
+        set_status("Name cannot be empty");
+        clear_pending_edit();
+        render();
+        return;
+    }
+
+    if (state.input_mode == INPUT_MODE_NEW_FILE) {
+        fm_pane_t *pane = &state.panes[state.active_pane];
+        char path[FM_MAX_PATH];
+        if (!build_child_path(pane->cwd, state.pending_name, path, sizeof(path))) {
+            set_status("Invalid file name");
+        } else if (path_exists(path)) {
+            set_status("File already exists");
+        } else {
+            FILE *file = fopen(path, "wb");
+            if (!file) {
+                set_status("Create file failed");
+            } else {
+                fclose(file);
+                pane_scan_directory(pane);
+                set_status("File created");
+            }
+        }
+    } else if (state.input_mode == INPUT_MODE_RENAME) {
+        fm_pane_t *pane = &state.panes[state.pending_edit_pane];
+        char new_path[FM_MAX_PATH];
+        if (!build_child_path(pane->cwd, state.pending_name, new_path, sizeof(new_path))) {
+            set_status("Invalid target name");
+        } else if (strcmp(new_path, state.pending_edit_path) == 0) {
+            set_status("Name unchanged");
+        } else if (path_exists(new_path)) {
+            set_status("Target already exists");
+        } else if (rename(state.pending_edit_path, new_path) != 0) {
+            set_status("Rename failed");
+        } else {
+            pane_scan_directory(&state.panes[0]);
+            pane_scan_directory(&state.panes[1]);
+            set_status(state.pending_edit_is_dir ? "Directory renamed" : "File renamed");
+        }
+    }
+
+    clear_pending_edit();
+    render();
+}
+
 static int handle_pending_open_choice(char key) {
     if (state.pending_open_count <= 0) return 0;
 
@@ -506,6 +667,12 @@ static void draw_pane(int pane_index, int x, int width, int height) {
 }
 
 static void render(void) {
+    if (state.input_mode != INPUT_MODE_NONE) {
+        ui_text_input_widget_draw(&state.name_input);
+        text_mode_flush();
+        return;
+    }
+
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
     int pane_height = rows - 2;
@@ -523,7 +690,7 @@ static void render(void) {
              active->entry_count);
 
     ui_status_bar(rows - 2, state.status, right);
-    ui_label(1, rows - 1, "W/S move A/D switch Enter open K mkdir C copy O open-with", TEXT_COLOR_BRIGHT_BLACK);
+    ui_label(1, rows - 1, "W/S move A/D switch Enter open M rename N file K dir C copy X del", TEXT_COLOR_BRIGHT_BLACK);
 
     text_mode_flush();
 }
@@ -544,9 +711,7 @@ static void active_open_selected(void) {
         return;
     }
 
-    char message[FM_STATUS_MAX];
-    snprintf(message, sizeof(message), "File: %s (%u bytes)", entry->name, entry->size);
-    set_status(message);
+    active_open_with();
 }
 
 static void active_up_or_exit(void) {
@@ -605,6 +770,15 @@ void app_init(app_context_t *ctx) {
     state.panes[1].display_list_count = 0;
     state.active_pane = 0;
     clear_pending_open();
+    clear_pending_edit();
+
+    state.name_input.title = "File Manager";
+    state.name_input.label = "Name:";
+    state.name_input.buffer = state.pending_name;
+    state.name_input.max_len = sizeof(state.pending_name);
+    state.name_input.mask_input = false;
+    state.name_input.hint_left = "Type name  Enter Confirm";
+    state.name_input.hint_right = "ESC Cancel";
 
     int config_ok = config_bind_app("file_manager");
     
@@ -636,6 +810,19 @@ void app_event(app_context_t *ctx, event_t *event) {
     }
 
     char key = event->keyboard.key;
+
+    if (state.input_mode != INPUT_MODE_NONE) {
+        int result = ui_text_input_widget_handle_event(&state.name_input, event);
+        if (result == 1) {
+            apply_name_input();
+        } else if (result == -1) {
+            clear_pending_edit();
+            set_status("Canceled");
+            render();
+        }
+        return;
+    }
+
     fm_pane_t *active = &state.panes[state.active_pane];
 
     if (handle_pending_open_choice(key)) {
@@ -674,10 +861,14 @@ void app_event(app_context_t *ctx, event_t *event) {
         set_status("Reloaded");
     } else if (key == 'k' || key == 'K') {
         active_mkdir();
+    } else if (key == 'n' || key == 'N') {
+        start_new_file();
+    } else if (key == 'm' || key == 'M') {
+        start_rename_selected();
     } else if (key == 'c' || key == 'C') {
         active_copy_to_other_pane();
-    } else if (key == 'o' || key == 'O') {
-        active_open_with();
+    } else if (key == 'x' || key == 'X') {
+        active_delete_selected();
     }
 
     render();

@@ -84,7 +84,7 @@ These settings are global (not app-local) and are used for cross-app/system conf
 ### Files and system helpers
 
 - Standard C I/O helpers such as `fopen`, `fread`, `fwrite`, `fclose`, `fseek`, and `ftell` are available.
-- Directory helpers such as `opendir`, `readdir`, `closedir`, `stat`, and `mkdir` are available.
+- File and directory helpers such as `rename`, `remove`, `opendir`, `readdir`, `closedir`, `stat`, and `mkdir` are available.
 - `os_log(tag, fmt, ...)` writes to the system log.
 - `os_http_get(url, out, out_size, timeout_ms)` performs an HTTP GET and writes the response body into `out`.
     Returns response length on success, `-status_code` for non-200 HTTP status, `-2` if truncated, and `-1` for transport errors.
