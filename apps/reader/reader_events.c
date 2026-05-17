@@ -234,9 +234,13 @@ static void handle_file_list_touch(reader_state_t *state, int x_col, int *bold_p
 }
 
 static void handle_reading_touch(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending) {
+    // Get current font dimensions for proper coordinate conversion
+    int char_width = text_mode_get_char_width();
+    int char_height = text_mode_get_char_height();
+
     // Convert pixel coordinates to character coordinates for button widgets
-    int x_col = event->touch.x / 5;   // 5 pixels per character column
-    int y_col = event->touch.y / 8;   // 8 pixels per character row
+    int x_col = event->touch.x / char_width;
+    int y_col = event->touch.y / char_height;
 
     // Create a modified touch event with character coordinates
     event_t char_event = *event;
@@ -373,11 +377,13 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
     }
 
     if (state->mode == MODE_TOC || state->mode == MODE_FILE_LIST) {
+        // Get current font dimensions for proper coordinate conversion
+        int char_width = text_mode_get_char_width();
+        int char_height = text_mode_get_char_height();
+
         // Convert pixel coordinates to character coordinates for widgets
-        // Screen is 320x240 pixels, text grid is 64x30 characters
-        // Character size: 320/64 = 5 pixels wide, 240/30 = 8 pixels tall
-        int x_col = event->touch.x / 5;   // 5 pixels per character column
-        int y_col = event->touch.y / 8;   // 8 pixels per character row
+        int x_col = event->touch.x / char_width;
+        int y_col = event->touch.y / char_height;
 
         // Create a modified touch event with character coordinates
         event_t char_event = *event;

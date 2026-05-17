@@ -69,6 +69,9 @@ if [ -z "$IDF_PATH" ]; then
     fi
 fi
 
+# Get the project root directory (where we started)
+PROJECT_ROOT="$(pwd)"
+
 # Build include flags
 IDF_PATH="${IDF_PATH:-/opt/esp-idf}"
 INCLUDE_FLAGS="-I main -I . -I fonts -I build/config"
