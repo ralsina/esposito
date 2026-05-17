@@ -95,6 +95,7 @@ SYMBOLS=(
     free:app_free
     atoi
     atol
+    atof
     abs
     opendir
     readdir

@@ -99,6 +99,7 @@ static const os_symtab_entry_t symtab[] = {
     {"free",                    app_free},
     {"atoi",                    atoi},
     {"atol",                    atol},
+    {"atof",                    atof},
     {"abs",                     abs},
     {"opendir",                 opendir},
     {"readdir",                 readdir},
