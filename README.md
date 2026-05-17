@@ -50,12 +50,24 @@ idf.py flash
 
 ## Project Structure
 
-```
+```text
 esposito/
 ├── main/           # Core OS implementation
 ├── apps/           # Application libraries
 └── README.md
 ```
+
+## App READMEs
+
+- [apps/README.md](apps/README.md)
+- [apps/clock/README.md](apps/clock/README.md)
+- [apps/file_manager/README.md](apps/file_manager/README.md)
+- [apps/file_picker/README.md](apps/file_picker/README.md)
+- [apps/kilo/README.md](apps/kilo/README.md)
+- [apps/paint/README.md](apps/paint/README.md)
+- [apps/reader/README.md](apps/reader/README.md)
+- [apps/settings/README.md](apps/settings/README.md)
+- [apps/snake/README.md](apps/snake/README.md)
 
 ## References
 

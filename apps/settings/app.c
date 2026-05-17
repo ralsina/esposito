@@ -28,7 +28,6 @@ static char input_timezone[48] = {0};
 static char input_location[64] = {0};
 static char status_msg[128] = {0};
 static int msg_timer = 0;
-static int selected = 0;
 static int scan_count = 0;
 static int scan_selected = 0;
 static int font_selected = 0;
@@ -41,6 +40,68 @@ static ui_list_widget_t *font_list;
 // Font list items must persist for ui_list, so keep backing storage static.
 static char font_list_labels[FONT_COUNT][48];
 static const char *font_list_items[FONT_COUNT];
+
+typedef enum {
+    MAIN_FOCUS_LEFT,
+    MAIN_FOCUS_RIGHT,
+} main_focus_t;
+
+typedef enum {
+    SECTION_WIFI,
+    SECTION_TIME,
+    SECTION_FONT,
+    SECTION_DEBUG,
+    SECTION_COUNT,
+} settings_section_t;
+
+typedef enum {
+    ACTION_SCAN,
+    ACTION_ENTER_SSID,
+    ACTION_ENTER_PASSWORD,
+    ACTION_SAVE_CONNECT,
+    ACTION_DISCONNECT,
+    ACTION_SET_TIMEZONE,
+    ACTION_SET_LOCATION,
+    ACTION_SET_FONT,
+    ACTION_TOGGLE_SERIAL,
+} settings_action_t;
+
+typedef struct {
+    const char *label;
+    settings_action_t action;
+} section_option_t;
+
+static const char *section_labels[SECTION_COUNT] = {
+    "WiFi",
+    "Time",
+    "Font",
+    "Debug",
+};
+
+static const section_option_t wifi_options[] = {
+    {"Scan", ACTION_SCAN},
+    {"SSID", ACTION_ENTER_SSID},
+    {"Pass", ACTION_ENTER_PASSWORD},
+    {"Save+Conn", ACTION_SAVE_CONNECT},
+    {"Disconnect", ACTION_DISCONNECT},
+};
+
+static const section_option_t time_options[] = {
+    {"Timezone", ACTION_SET_TIMEZONE},
+    {"Location", ACTION_SET_LOCATION},
+};
+
+static const section_option_t font_options[] = {
+    {"Default", ACTION_SET_FONT},
+};
+
+static const section_option_t debug_options[] = {
+    {"Serial UART", ACTION_TOGGLE_SERIAL},
+};
+
+static main_focus_t main_focus = MAIN_FOCUS_LEFT;
+static settings_section_t selected_section = SECTION_WIFI;
+static int section_option_selected[SECTION_COUNT] = {0};
 
 // Forward declarations for callbacks used by widget rebuild.
 static void on_font_list_selection_changed(ui_list_widget_t *list, int new_selection);
@@ -316,89 +377,248 @@ static void on_font_list_item_selected(ui_list_widget_t *list, int item_index) {
     }
 }
 
-#define MENU_ITEMS 9
-static const char *menu_labels[MENU_ITEMS] = {
-    "Scan for networks",
-    "Enter SSID",
-    "Enter Password",
-    "Save && Connect",
-    "Disconnect",
-    "Set Timezone",
-    "Set Location",
-    "Set Default Font",
-    "Serial logs to UART",
-};
+static void truncate_text(const char *text, char *out, size_t out_size, int max_chars) {
+    if (!text || !out || out_size == 0) {
+        return;
+    }
 
-static void draw_menu_item(int x, int y, int item_index) {
-    uint16_t color = (item_index == selected) ? TEXT_COLOR_GREEN : TEXT_COLOR_WHITE;
-    char marker = (item_index == selected) ? '>' : ' ';
-    text_mode_printf_at_color(x, y, color, "%c %s", marker, menu_labels[item_index]);
+    if (max_chars <= 0) {
+        out[0] = '\0';
+        return;
+    }
+
+    size_t source_len = strlen(text);
+    int usable = max_chars;
+    if (usable > (int)out_size - 1) {
+        usable = (int)out_size - 1;
+    }
+
+    if ((int)source_len <= usable) {
+        snprintf(out, out_size, "%s", text);
+        return;
+    }
+
+    if (usable == 1) {
+        out[0] = '~';
+        out[1] = '\0';
+        return;
+    }
+
+    memcpy(out, text, (size_t)(usable - 1));
+    out[usable - 1] = '~';
+    out[usable] = '\0';
+}
+
+static const section_option_t *section_options(settings_section_t section, int *count_out) {
+    if (count_out) {
+        *count_out = 0;
+    }
+
+    switch (section) {
+        case SECTION_WIFI:
+            if (count_out) *count_out = (int)(sizeof(wifi_options) / sizeof(wifi_options[0]));
+            return wifi_options;
+        case SECTION_TIME:
+            if (count_out) *count_out = (int)(sizeof(time_options) / sizeof(time_options[0]));
+            return time_options;
+        case SECTION_FONT:
+            if (count_out) *count_out = (int)(sizeof(font_options) / sizeof(font_options[0]));
+            return font_options;
+        case SECTION_DEBUG:
+            if (count_out) *count_out = (int)(sizeof(debug_options) / sizeof(debug_options[0]));
+            return debug_options;
+        default:
+            return NULL;
+    }
+}
+
+static void format_action_value(settings_action_t action, char *out, size_t out_size) {
+    if (!out || out_size == 0) {
+        return;
+    }
+
+    out[0] = '\0';
+    switch (action) {
+        case ACTION_SCAN:
+            snprintf(out, out_size, "%s", wifi_is_connected() ? "online" : "offline");
+            break;
+        case ACTION_ENTER_SSID:
+            snprintf(out, out_size, "%s", input_ssid[0] ? input_ssid : "(unset)");
+            break;
+        case ACTION_ENTER_PASSWORD:
+            snprintf(out, out_size, "%s", input_password[0] ? "********" : "(empty)");
+            break;
+        case ACTION_SAVE_CONNECT:
+            snprintf(out, out_size, "%s", "apply");
+            break;
+        case ACTION_DISCONNECT:
+            snprintf(out, out_size, "%s", "now");
+            break;
+        case ACTION_SET_TIMEZONE:
+            snprintf(out, out_size, "%s", input_timezone[0] ? input_timezone : "UTC");
+            break;
+        case ACTION_SET_LOCATION:
+            snprintf(out, out_size, "%s", input_location[0] ? input_location : "40.4168,-3.7038");
+            break;
+        case ACTION_SET_FONT: {
+            char current_font[32];
+            os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "spleen-5x8", current_font, sizeof(current_font));
+            snprintf(out, out_size, "%s", current_font);
+            break;
+        }
+        case ACTION_TOGGLE_SERIAL:
+            snprintf(out, out_size, "%s", serial_log_output_is_enabled() ? "on" : "off");
+            break;
+        default:
+            break;
+    }
+}
+
+static void execute_main_action(settings_action_t action) {
+    switch (action) {
+        case ACTION_SCAN:
+            state = STATE_MESSAGE;
+            set_status("Scanning for networks...");
+            render();
+            scan_count = wifi_scan();
+            state = STATE_SCAN_RESULTS;
+            scan_selected = 0;
+            msg_timer = 0;
+            status_msg[0] = '\0';
+            render();
+            break;
+        case ACTION_ENTER_SSID:
+            state = STATE_ENTER_SSID;
+            input_ssid[0] = '\0';
+            render();
+            break;
+        case ACTION_ENTER_PASSWORD:
+            state = STATE_ENTER_PASSWORD;
+            input_password[0] = '\0';
+            render();
+            break;
+        case ACTION_SAVE_CONNECT:
+            if (input_ssid[0] == '\0') {
+                set_status("Enter SSID first");
+                render();
+                return;
+            }
+            set_status("Connecting...");
+            render();
+            wifi_save_config(input_ssid, input_password);
+            wifi_connect(input_ssid, input_password);
+            msg_timer = 80;
+            break;
+        case ACTION_DISCONNECT:
+            wifi_disconnect();
+            set_status("Disconnected");
+            render();
+            break;
+        case ACTION_SET_TIMEZONE:
+            state = STATE_ENTER_TIMEZONE;
+            render();
+            break;
+        case ACTION_SET_LOCATION:
+            state = STATE_ENTER_LOCATION;
+            render();
+            break;
+        case ACTION_SET_FONT:
+            state = STATE_FONT_SELECTION;
+            render();
+            break;
+        case ACTION_TOGGLE_SERIAL: {
+            bool enabled = !serial_log_output_is_enabled();
+            serial_log_output_set_enabled(enabled);
+            os_settings_set_bool(SETTINGS_KEY_SERIAL_LOG, enabled);
+            set_status(enabled ? "Serial log output enabled" : "Serial log output disabled");
+            render();
+            break;
+        }
+    }
+}
+
+static void draw_main_split_layout(void) {
+    const int cols = text_mode_get_cols();
+    const int rows = text_mode_get_rows();
+    const int left_width = 8;
+    const int divider_col = left_width;
+    const int right_x = left_width + 1;
+    const int right_width = cols - right_x;
+    const int content_top = 2;
+    const int content_bottom = rows - 3;
+    const int content_height = content_bottom - content_top + 1;
+
+    char title[32];
+    snprintf(title, sizeof(title), " Settings ");
+    ui_label_attr((cols - (int)strlen(title)) / 2, 0, title, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_separator(1);
+
+    for (int row = content_top; row <= content_bottom; row++) {
+        text_mode_print_at_attr(divider_col, row, "|", TEXT_COLOR_BLUE, TEXT_ATTR_LINE_DRAWING);
+    }
+
+    for (int row = 0; row < content_height; row++) {
+        int section_index = row;
+        int screen_y = content_top + row;
+        if (section_index >= SECTION_COUNT) {
+            break;
+        }
+
+        uint8_t color = TEXT_COLOR_WHITE;
+        if (section_index == selected_section) {
+            color = main_focus == MAIN_FOCUS_LEFT ? TEXT_COLOR_BRIGHT_GREEN : TEXT_COLOR_BRIGHT_CYAN;
+        }
+
+        char marker = section_index == selected_section ? '>' : ' ';
+        char label_buf[10];
+        truncate_text(section_labels[section_index], label_buf, sizeof(label_buf), left_width - 2);
+        text_mode_printf_at_attr_bg(0, screen_y, color, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL, "%c%-7s", marker, label_buf);
+    }
+
+    int option_count = 0;
+    const section_option_t *options = section_options(selected_section, &option_count);
+    if (option_count <= 0 || !options) {
+        return;
+    }
+
+    int selected_option = section_option_selected[selected_section];
+    if (selected_option < 0) selected_option = 0;
+    if (selected_option >= option_count) selected_option = option_count - 1;
+    section_option_selected[selected_section] = selected_option;
+
+    for (int row = 0; row < content_height; row++) {
+        int option_index = row;
+        int screen_y = content_top + row;
+        if (option_index >= option_count) {
+            break;
+        }
+
+        char value[80];
+        char line[96];
+        char clipped[96];
+        format_action_value(options[option_index].action, value, sizeof(value));
+        if (value[0]) {
+            snprintf(line, sizeof(line), "%s: %s", options[option_index].label, value);
+        } else {
+            snprintf(line, sizeof(line), "%s", options[option_index].label);
+        }
+
+        truncate_text(line, clipped, sizeof(clipped), right_width - 2);
+
+        uint8_t color = TEXT_COLOR_WHITE;
+        if (option_index == selected_option) {
+            color = main_focus == MAIN_FOCUS_RIGHT ? TEXT_COLOR_BRIGHT_GREEN : TEXT_COLOR_BRIGHT_CYAN;
+        }
+        char marker = option_index == selected_option ? '>' : ' ';
+        text_mode_printf_at_attr_bg(right_x, screen_y, color, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL, "%c%s", marker, clipped);
+    }
+
+    ui_status_bar(rows - 2, "W/S move  A/D pane  Enter select  Esc back", status_msg[0] ? status_msg : "Settings");
 }
 
 static void draw_main(void) {
     ui_clear();
-
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
-    int y = 0;
-    ui_label_attr((cols - 13) / 2, y++, "  WiFi Setup  ", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
-    ui_separator(y++);
-
-    if (wifi_is_connected()) {
-        ui_label_attr(3, y++, "Status: Connected", TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL);
-        char ip_str[48];
-        snprintf(ip_str, sizeof(ip_str), "IP: %s", wifi_get_ip());
-        ui_label(3, y++, ip_str, TEXT_COLOR_WHITE);
-    } else {
-        ui_label_attr(3, y++, "Status: Disconnected", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
-    }
-
-    ui_label_attr(3,
-                  y++,
-                  serial_log_output_is_enabled() ? "Serial logs: Enabled" : "Serial logs: Disabled",
-                  serial_log_output_is_enabled() ? TEXT_COLOR_YELLOW : TEXT_COLOR_GREEN,
-                  TEXT_ATTR_NORMAL);
-
-    char timezone_line[72];
-    char location_line[72];
-    char font_line[72];
-    snprintf(timezone_line, sizeof(timezone_line), "Timezone: %s", input_timezone[0] ? input_timezone : "UTC");
-    snprintf(location_line, sizeof(location_line), "Location: %s", input_location[0] ? input_location : "40.4168,-3.7038");
-
-    // Get current font setting
-    char current_font[32];
-    os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "spleen-5x8", current_font, sizeof(current_font));
-    snprintf(font_line, sizeof(font_line), "Font: %s", current_font);
-
-    ui_label_attr(3, y++, timezone_line, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    ui_label_attr(3, y++, location_line, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-    ui_label_attr(3, y++, font_line, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
-
-    ui_separator(y++);
-
-    ui_label_attr(3, y++, "WiFi", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
-    draw_menu_item(5, y++, 0);
-    draw_menu_item(5, y++, 1);
-    draw_menu_item(5, y++, 2);
-    draw_menu_item(5, y++, 3);
-    draw_menu_item(5, y++, 4);
-
-    ui_separator(y++);
-    ui_label_attr(3, y++, "Time & Location", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
-    draw_menu_item(5, y++, 5);
-    draw_menu_item(5, y++, 6);
-    draw_menu_item(5, y++, 7);
-
-    ui_separator(y++);
-    ui_label_attr(3, y++, "Debug", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
-    draw_menu_item(5, y++, 8);
-    y++;
-
-    if (status_msg[0]) {
-        ui_label_attr(3, y, status_msg, TEXT_COLOR_BRIGHT_YELLOW, TEXT_ATTR_BOLD);
-    }
-
-    ui_status_bar(rows - 2, "W/S Navigate  Enter Select", "");
+    draw_main_split_layout();
 }
 
 static void draw_scan_results(void) {
@@ -501,8 +721,12 @@ void app_init(app_context_t *ctx) {
     msg_timer = 0;
     input_ssid[0] = '\0';
     input_password[0] = '\0';
-    selected = 0;
     scan_selected = 0;
+    main_focus = MAIN_FOCUS_LEFT;
+    selected_section = SECTION_WIFI;
+    for (int index = 0; index < SECTION_COUNT; index++) {
+        section_option_selected[index] = 0;
+    }
 
     serial_log_output_set_enabled(os_settings_get_bool(SETTINGS_KEY_SERIAL_LOG, false));
 
@@ -561,81 +785,68 @@ void app_close(app_context_t *ctx) {
 }
 
 static void handle_main_key(char key) {
-    int old = selected;
+    int option_count = 0;
+    const section_option_t *options = section_options(selected_section, &option_count);
 
-    if (key == 'w' || key == 'W') {
-        selected = (selected - 1 + MENU_ITEMS) % MENU_ITEMS;
-    } else if (key == 's' || key == 'S') {
-        selected = (selected + 1) % MENU_ITEMS;
-    } else if (key == '\n' || key == '\r') {
-        switch (selected) {
-            case 0:
-                state = STATE_MESSAGE;
-                set_status("Scanning for networks...");
-                render();
-                scan_count = wifi_scan();
-                state = STATE_SCAN_RESULTS;
-                scan_selected = 0;
-                msg_timer = 0;
-                status_msg[0] = '\0';
-                render();
-                break;
-            case 1:
-                state = STATE_ENTER_SSID;
-                input_ssid[0] = '\0';
-                render();
-                break;
-            case 2:
-                state = STATE_ENTER_PASSWORD;
-                input_password[0] = '\0';
-                render();
-                break;
-            case 3:
-                if (input_ssid[0] == '\0') {
-                    set_status("Enter SSID first");
-                    render();
-                    return;
-                }
-                set_status("Connecting...");
-                render();
-                wifi_save_config(input_ssid, input_password);
-                wifi_connect(input_ssid, input_password);
-                msg_timer = 80;
-                break;
-            case 4:
-                wifi_disconnect();
-                set_status("Disconnected");
-                break;
-            case 5: {
-                state = STATE_ENTER_TIMEZONE;
-                render();
-                break;
-            }
-            case 6: {
-                state = STATE_ENTER_LOCATION;
-                render();
-                break;
-            }
-            case 7: {
-                state = STATE_FONT_SELECTION;
-                render();
-                break;
-            }
-            case 8: {
-                bool enabled = !serial_log_output_is_enabled();
-                serial_log_output_set_enabled(enabled);
-                os_settings_set_bool(SETTINGS_KEY_SERIAL_LOG, enabled);
-                set_status(enabled ? "Serial log output enabled" : "Serial log output disabled");
-                render();
-                break;
-            }
-        }
-    } else if (key == 27) {
+    if (key == 'a' || key == 'A') {
+        main_focus = MAIN_FOCUS_LEFT;
+        render();
         return;
     }
 
-    if (selected != old) {
+    if (key == 'd' || key == 'D') {
+        main_focus = MAIN_FOCUS_RIGHT;
         render();
+        return;
+    }
+
+    if (key == 'w' || key == 'W') {
+        if (main_focus == MAIN_FOCUS_LEFT) {
+            selected_section = (selected_section - 1 + SECTION_COUNT) % SECTION_COUNT;
+        } else if (option_count > 0) {
+            int selection = section_option_selected[selected_section];
+            selection = (selection - 1 + option_count) % option_count;
+            section_option_selected[selected_section] = selection;
+        }
+        render();
+        return;
+    }
+
+    if (key == 's' || key == 'S') {
+        if (main_focus == MAIN_FOCUS_LEFT) {
+            selected_section = (selected_section + 1) % SECTION_COUNT;
+        } else if (option_count > 0) {
+            int selection = section_option_selected[selected_section];
+            selection = (selection + 1) % option_count;
+            section_option_selected[selected_section] = selection;
+        }
+        render();
+        return;
+    }
+
+    if (key == '\n' || key == '\r') {
+        if (main_focus == MAIN_FOCUS_LEFT) {
+            main_focus = MAIN_FOCUS_RIGHT;
+            render();
+            return;
+        }
+
+        if (options && option_count > 0) {
+            int selection = section_option_selected[selected_section];
+            if (selection < 0) selection = 0;
+            if (selection >= option_count) selection = option_count - 1;
+            section_option_selected[selected_section] = selection;
+            execute_main_action(options[selection].action);
+            return;
+        }
+    }
+
+    if (key == 27) {
+        if (main_focus == MAIN_FOCUS_RIGHT) {
+            main_focus = MAIN_FOCUS_LEFT;
+            render();
+        }
+        return;
     }
 }
 

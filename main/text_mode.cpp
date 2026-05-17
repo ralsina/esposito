@@ -787,29 +787,29 @@ bool text_mode_save_screenshot(void) {
                 bool pixel_set = false;
                 if (line_drawing && line_mask != 0) {
                     pixel_set = line_drawing_pixel_is_set(cell, gx, gy, char_row, dx);
-                } else if (gw > 0 && dx < gw && char_row < gh) {
-                    pixel_set = glyph_bits[char_row * gw + dx] != 0;
-                    // Bold
-                    if (!pixel_set && (cell->attributes & TEXT_ATTR_BOLD) && dx > 0
-                        && gw > 0 && (dx - 1) < gw && char_row < gh) {
-                        pixel_set = glyph_bits[char_row * gw + (dx - 1)] != 0;
+                } else {
+                    if (gw > 0 && dx < gw && char_row < gh) {
+                        pixel_set = glyph_bits[char_row * gw + dx] != 0;
+                        // Bold
+                        if (!pixel_set && (cell->attributes & TEXT_ATTR_BOLD) && dx > 0
+                            && (dx - 1) < gw && char_row < gh) {
+                            pixel_set = glyph_bits[char_row * gw + (dx - 1)] != 0;
+                        }
                     }
-                    // Underline (bottom border)
+
+                    // Apply cell border attributes independently from glyph coverage.
                     if (!pixel_set && (cell->attributes & TEXT_ATTR_UNDERLINE)
                         && char_row == font_height - 1) {
                         pixel_set = true;
                     }
-                    // Top border
                     if (!pixel_set && (cell->attributes & TEXT_ATTR_BORDER_TOP)
                         && char_row == 0) {
                         pixel_set = true;
                     }
-                    // Left border
                     if (!pixel_set && (cell->attributes & TEXT_ATTR_BORDER_LEFT)
                         && dx == 0) {
                         pixel_set = true;
                     }
-                    // Right border
                     if (!pixel_set && (cell->attributes & TEXT_ATTR_BORDER_RIGHT)
                         && dx == font_width - 1) {
                         pixel_set = true;
