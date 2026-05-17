@@ -10,6 +10,7 @@
 #include "text_mode.h"
 #include "fonts.h"
 #include "wifi.h"
+#include "os_printf.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -17,6 +18,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <math.h>
 
 static const os_symtab_entry_t symtab[] = {
     {"display_clear",           display_clear},
@@ -164,6 +166,69 @@ static const os_symtab_entry_t symtab[] = {
     {"app_manifest_read",              app_manifest_read},
     {"app_manifest_get_display_name",  app_manifest_get_display_name},
     {"app_manifest_find_apps_for_ext", app_manifest_find_apps_for_ext},
+
+    // Floating point math functions (float versions for ESP32 FPU)
+    {"sinf",                    sinf},
+    {"cosf",                    cosf},
+    {"tanf",                    tanf},
+    {"asinf",                   asinf},
+    {"acosf",                   acosf},
+    {"atanf",                   atanf},
+    {"atan2f",                  atan2f},
+    {"sinhf",                   sinhf},
+    {"coshf",                   coshf},
+    {"tanhf",                   tanhf},
+    {"expf",                    expf},
+    {"logf",                    logf},
+    {"log10f",                  log10f},
+    {"powf",                    powf},
+    {"sqrtf",                   sqrtf},
+    {"ceilf",                   ceilf},
+    {"floorf",                  floorf},
+    {"fabsf",                   fabsf},
+    {"fmodf",                   fmodf},
+    {"modff",                   modff},
+    {"frexpf",                  frexpf},
+    {"ldexpf",                  ldexpf},
+
+    // Double-precision versions (software emulation, use sparingly)
+    {"sin",                     sin},
+    {"cos",                     cos},
+    {"tan",                     tan},
+    {"asin",                    asin},
+    {"acos",                    acos},
+    {"atan",                    atan},
+    {"atan2",                   atan2},
+    {"sinh",                    sinh},
+    {"cosh",                    cosh},
+    {"tanh",                    tanh},
+    {"exp",                     exp},
+    {"log",                     log},
+    {"log10",                   log10},
+    {"pow",                     pow},
+    {"sqrt",                    sqrt},
+    {"ceil",                    ceil},
+    {"floor",                   floor},
+    {"fabs",                    fabs},
+    {"fmod",                    fmod},
+    {"modf",                    modf},
+    {"frexp",                   frexp},
+    {"ldexp",                   ldexp},
+
+    // Floating point conversion
+    {"strtof",                  strtof},
+    {"strtod",                  strtod},
+    {"strto",                   strtod},
+
+    // Floating point utilities
+    {"isnan",                   isnan},
+    {"isinf",                   isinf},
+
+    // Additional printf support for floats
+    {"sscanf",                  sscanf},
+    {"vsscanf",                 vsscanf},
+    {"vsnprintf",               vsnprintf},
+
     {NULL, NULL}
 };
 

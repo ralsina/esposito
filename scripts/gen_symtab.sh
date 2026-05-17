@@ -162,6 +162,17 @@ SYMBOLS=(
     app_manifest_read
     app_manifest_get_display_name
     app_manifest_find_apps_for_ext
+    sinf cosf tanf asinf acosf atanf atan2f
+    sinhf coshf tanhf expf logf log10f powf sqrtf
+    ceilf floorf fabsf fmodf modff frexpf ldexpf
+    sin cos tan asin acos atan atan2
+    sinh cosh tanh exp log log10 pow sqrt
+    ceil floor fabs fmod modf frexp ldexp
+    strtof strtod strto
+    isnan isinf
+    sscanf vsscanf vsnprintf
+    __extendsfdf2 __truncdfsf2 __fixsfdi __fixunssfdi __floatdisf
+    __addsf3 __subsf3 __mulsf3 __divsf3
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"
