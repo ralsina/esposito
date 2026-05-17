@@ -63,6 +63,12 @@ bool text_mode_init(void);
 // Initialize text mode with a specific font
 bool text_mode_init_ex(font_id_t font);
 
+// Change font at runtime (requires text mode already initialized)
+bool text_mode_set_font(font_id_t font);
+
+// Apply user's configured font from settings (call after settings system is ready)
+bool text_mode_apply_configured_font(void);
+
 // Runtime grid queries (use these instead of TEXT_MODE_COLS/ROWS for font-aware code)
 int text_mode_get_cols(void);
 int text_mode_get_rows(void);

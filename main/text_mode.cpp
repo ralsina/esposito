@@ -257,20 +257,30 @@ static void update_cell(int x, int y) {
 }
 
 static bool init_grid(font_id_t font) {
+    // Calculate maximum grid dimensions (for smallest font: Tom Thumb 4x6)
+    const int max_cols = 320 / 4;  // 80 columns for 4px wide font
+    const int max_rows = 240 / 6;  // 40 rows for 6px tall font
+    const int max_cells = max_cols * max_rows;  // 3200 cells
+
+    // Free existing grid if present
     if (grid) {
         free(grid);
         grid = NULL;
     }
 
+    // Set current font properties
     current_font = font;
     font_width = font_table[font].char_width;
     font_height = font_table[font].char_height;
+
+    // Calculate actual grid dimensions for this font
     grid_cols = 320 / font_width;
     grid_rows = 240 / font_height;
 
-    grid = (text_cell_t *)calloc(grid_cols * grid_rows, sizeof(text_cell_t));
+    // Allocate for maximum size to enable dynamic font changes
+    grid = (text_cell_t *)calloc(max_cells, sizeof(text_cell_t));
     if (!grid) {
-        ESP_LOGE(TAG, "Failed to allocate grid: %dx%d", grid_cols, grid_rows);
+        ESP_LOGE(TAG, "Failed to allocate grid: %dx%d", max_cols, max_rows);
         grid_cols = TEXT_MODE_COLS;
         grid_rows = TEXT_MODE_ROWS;
         font_width = TEXT_MODE_CHAR_WIDTH;
@@ -280,6 +290,9 @@ static bool init_grid(font_id_t font) {
     }
 
     display_set_font(font_table[font].font_ptr);
+    ESP_LOGI(TAG, "Grid allocated: %dx%d (max %dx%d), font: %s (%dx%d)",
+             grid_cols, grid_rows, max_cols, max_rows,
+             font_table[font].name, font_width, font_height);
     return true;
 }
 
@@ -310,7 +323,117 @@ bool text_mode_init_ex(font_id_t font) {
 }
 
 bool text_mode_init(void) {
-    return text_mode_init_ex(FONT_SPLEEN_5X8);
+    // Try to read user's configured font from settings
+    char font_setting[32];
+    extern size_t os_settings_get_string(const char *key, const char *default_val, char *out, size_t out_size);
+    extern font_id_t font_lookup_by_name(const char *name);
+
+    // Try to get the configured font, but fall back to spleen-5x8 if settings aren't ready yet
+    size_t len = os_settings_get_string("system/default_font", "spleen-5x8", font_setting, sizeof(font_setting));
+
+    font_id_t default_font = font_lookup_by_name(font_setting);
+    if ((int)default_font < 0 || (int)default_font >= FONT_COUNT) {
+        default_font = FONT_SPLEEN_5X8;  // Fallback to default
+    }
+
+    ESP_LOGI(TAG, "text_mode_init: using font %s (read '%s' from settings, len=%d)",
+             font_table[default_font].name, font_setting, (int)len);
+
+    return text_mode_init_ex(default_font);
+}
+
+bool text_mode_apply_configured_font(void) {
+    if (!initialized) {
+        ESP_LOGE(TAG, "Cannot apply configured font: text mode not initialized");
+        return false;
+    }
+
+    // Read user's configured font from settings
+    char font_setting[32];
+    extern size_t os_settings_get_string(const char *key, const char *default_val, char *out, size_t out_size);
+    extern font_id_t font_lookup_by_name(const char *name);
+
+    size_t len = os_settings_get_string("system/default_font", "spleen-5x8", font_setting, sizeof(font_setting));
+    ESP_LOGI(TAG, "Font setting read: len=%d, value='%s'", (int)len, font_setting);
+
+    font_id_t configured_font = font_lookup_by_name(font_setting);
+    ESP_LOGI(TAG, "Font lookup result: %d (FONT_COUNT=%d)", (int)configured_font, FONT_COUNT);
+
+    if ((int)configured_font < 0 || (int)configured_font >= FONT_COUNT) {
+        ESP_LOGW(TAG, "Invalid font ID %d, falling back to spleen-5x8", (int)configured_font);
+        configured_font = FONT_SPLEEN_5X8;  // Fallback to default
+    }
+
+    ESP_LOGI(TAG, "Applying configured font: %s (%s, ID=%d)",
+             font_setting, font_table[configured_font].name, (int)configured_font);
+
+    // Apply the configured font (will handle re-layout automatically)
+    return text_mode_set_font(configured_font);
+}
+
+bool text_mode_set_font(font_id_t font) {
+    if (!initialized) {
+        ESP_LOGE(TAG, "Cannot set font: text mode not initialized");
+        return false;
+    }
+
+    if ((int)font < 0 || (int)font >= FONT_COUNT) {
+        ESP_LOGE(TAG, "Invalid font ID: %d", (int)font);
+        return false;
+    }
+
+    // No change needed
+    if (font == current_font) {
+        return true;
+    }
+
+    ESP_LOGI(TAG, "Changing font from %s to %s",
+             font_table[current_font].name, font_table[font].name);
+
+    // Update font properties
+    current_font = font;
+    font_width = font_table[font].char_width;
+    font_height = font_table[font].char_height;
+
+    // Update display layer font dimensions too
+    display_set_font(font_table[font].font_ptr);
+
+    // Recalculate grid dimensions for new font
+    int new_cols = 320 / font_width;
+    int new_rows = 240 / font_height;
+
+    ESP_LOGI(TAG, "Grid dimensions: %dx%d -> %dx%d", grid_cols, grid_rows, new_cols, new_rows);
+
+    // Update grid dimensions
+    grid_cols = new_cols;
+    grid_rows = new_rows;
+
+    // Clear the grid since dimensions changed
+    for (int y = 0; y < grid_rows; y++) {
+        for (int x = 0; x < grid_cols; x++) {
+            int idx = y * 80 + x;  // Use max columns for indexing
+            if (idx < 3200) {  // Safety check
+                grid[idx].character = ' ';
+                grid[idx].color = TEXT_COLOR_WHITE;
+                grid[idx].bg_color = TEXT_COLOR_BLACK;
+                grid[idx].attributes = TEXT_ATTR_NORMAL;
+            }
+        }
+    }
+
+    // Reset cursor position
+    cursor_x = 0;
+    cursor_y = 0;
+
+    // Update display font
+    display_set_font(font_table[font].font_ptr);
+
+    // Clear the screen
+    display_clear(color_palette[TEXT_COLOR_BLACK]);
+
+    ESP_LOGI(TAG, "Font changed to %s (%dx%d grid)",
+             font_table[font].name, grid_cols, grid_rows);
+    return true;
 }
 
 void text_mode_clear(uint16_t color_idx) {

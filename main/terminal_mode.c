@@ -24,8 +24,14 @@ static const uint8_t ansi_to_cga[8] = {
     TEXT_COLOR_BRIGHT_WHITE,    /* 7 = white        */
 };
 
-#define TERM_CELL_W 5
-#define TERM_CELL_H 8
+// Use dynamic cell dimensions based on current font
+static inline int get_cell_w(void) {
+    return text_mode_get_char_width();
+}
+
+static inline int get_cell_h(void) {
+    return text_mode_get_char_height();
+}
 #define TERM_STATUS_ROWS 1
 #define TERM_MAX_STATUS 80
 
@@ -75,60 +81,6 @@ static void terminal_title_from_vt(const char *title) {
     }
 }
 
-static void draw_graphics_char(int px, int py, char c, uint16_t fg) {
-    int mid_x = px + TERM_CELL_W / 2;
-    int mid_y = py + TERM_CELL_H / 2;
-    int right = px + TERM_CELL_W - 1;
-    int bottom = py + TERM_CELL_H - 1;
-
-    switch (c) {
-        case 'q':
-            display_fill_rect(px, mid_y, TERM_CELL_W, 1, fg);
-            break;
-        case 'x':
-            display_fill_rect(mid_x, py, 1, TERM_CELL_H, fg);
-            break;
-        case 'l':
-            display_fill_rect(mid_x, mid_y, right - mid_x + 1, 1, fg);
-            display_fill_rect(mid_x, mid_y, 1, bottom - mid_y + 1, fg);
-            break;
-        case 'k':
-            display_fill_rect(px, mid_y, mid_x - px + 1, 1, fg);
-            display_fill_rect(mid_x, mid_y, 1, bottom - mid_y + 1, fg);
-            break;
-        case 'm':
-            display_fill_rect(mid_x, mid_y, right - mid_x + 1, 1, fg);
-            display_fill_rect(mid_x, py, 1, mid_y - py + 1, fg);
-            break;
-        case 'j':
-            display_fill_rect(px, mid_y, mid_x - px + 1, 1, fg);
-            display_fill_rect(mid_x, py, 1, mid_y - py + 1, fg);
-            break;
-        case 'n':
-            display_fill_rect(px, mid_y, TERM_CELL_W, 1, fg);
-            display_fill_rect(mid_x, py, 1, TERM_CELL_H, fg);
-            break;
-        case 't':
-            display_fill_rect(mid_x, mid_y, right - mid_x + 1, 1, fg);
-            display_fill_rect(mid_x, py, 1, TERM_CELL_H, fg);
-            break;
-        case 'u':
-            display_fill_rect(px, mid_y, mid_x - px + 1, 1, fg);
-            display_fill_rect(mid_x, py, 1, TERM_CELL_H, fg);
-            break;
-        case 'v':
-            display_fill_rect(px, mid_y, TERM_CELL_W, 1, fg);
-            display_fill_rect(mid_x, py, 1, mid_y - py + 1, fg);
-            break;
-        case 'w':
-            display_fill_rect(px, mid_y, TERM_CELL_W, 1, fg);
-            display_fill_rect(mid_x, mid_y, 1, bottom - mid_y + 1, fg);
-            break;
-        default:
-            break;
-    }
-}
-
 static void draw_cell(terminal_mode_impl_t *impl, int x, int y, char c, vt100_attr_t attr) {
     uint8_t fg_cga = ansi_to_cga[attr.fg & 7];
     uint8_t bg_cga = ansi_to_cga[attr.bg & 7];
@@ -162,31 +114,30 @@ static void draw_cursor(terminal_mode_impl_t *impl) {
         vt100_attr_t prev_attr = vt100_get_attr(&impl->vt, impl->prev_cursor_x, impl->prev_cursor_y);
         draw_cell(impl, impl->prev_cursor_x, impl->prev_cursor_y, prev_char, prev_attr);
     }
-
-    int px = cx * TERM_CELL_W;
-    int py = cy * TERM_CELL_H;
     char ch = vt100_get_char(&impl->vt, cx, cy);
     vt100_attr_t attr = vt100_get_attr(&impl->vt, cx, cy);
 
-    uint16_t fg = impl->palette[attr.fg & 7];
-    uint16_t bg = impl->palette[attr.bg & 7];
-    int reverse = attr.reverse ^ impl->vt.screen_reverse;
-    if (reverse) {
-        uint16_t tmp = fg;
-        fg = bg;
-        bg = tmp;
-    }
-
     if (impl->cursor_blink_state && impl->vt.cursor_visible) {
-        /* Draw cursor block directly on display — transient, not stored in grid */
-        display_fill_rect(px, py, TERM_CELL_W, TERM_CELL_H, fg);
-        if (ch != ' ') {
-            if (attr.graphics) {
-                draw_graphics_char(px, py, ch, bg);
-            } else {
-                display_draw_char_at(px, py, ch, bg, fg);
-            }
+        /* Draw cursor by reversing the character at cursor position */
+        uint8_t tm_attr = TEXT_ATTR_NORMAL;
+        if (attr.underline) tm_attr |= TEXT_ATTR_UNDERLINE;
+        if (attr.graphics)  tm_attr |= TEXT_ATTR_LINE_DRAWING;
+
+        // Convert colors to text_mode colors and reverse them for cursor
+        uint8_t fg_cga = ansi_to_cga[attr.fg & 7];
+        uint8_t bg_cga = ansi_to_cga[attr.bg & 7];
+
+        // Apply screen reverse if needed
+        int reverse = attr.reverse ^ impl->vt.screen_reverse;
+        if (reverse) {
+            uint8_t tmp = fg_cga;
+            fg_cga = bg_cga;
+            bg_cga = tmp;
         }
+
+        // Draw character with reversed colors for cursor effect
+        char buf[2] = {ch, '\0'};
+        text_mode_print_at_attr_bg(cx, cy, buf, bg_cga, fg_cga, tm_attr);
     } else {
         draw_cell(impl, cx, cy, ch, attr);
     }
@@ -211,7 +162,8 @@ static void draw_status_bar(terminal_mode_impl_t *impl) {
     impl->status_last[sizeof(impl->status_last) - 1] = '\0';
     impl->status_dirty = 0;
 
-    int row = impl->vt.rows;
+    // Draw status bar on the last visible row.
+    int row = impl->vt.rows - 1;
     int cols = impl->vt.cols;
 
     char padded[TERM_MAX_COLS + 1];
@@ -257,6 +209,10 @@ bool terminal_mode_init(terminal_mode_t *term, int cols, int rows, terminal_mode
     impl->palette[6] = 0x07FF;
     impl->palette[7] = 0xFFFF;
 
+    if (!text_mode_init()) {
+        return false;
+    }
+
     impl->write_cb = write_cb;
     impl->cursor_blink_state = 1;
     impl->prev_cursor_x = -1;
@@ -277,6 +233,21 @@ bool terminal_mode_init(terminal_mode_t *term, int cols, int rows, terminal_mode
 
     text_mode_clear(TEXT_COLOR_BLACK);
     impl->initialized = 1;
+    return true;
+}
+
+bool terminal_mode_init_ex(terminal_mode_t *term, int cols, int rows, terminal_mode_write_cb write_cb, int font_id) {
+    if (!term) {
+        return false;
+    }
+
+    // Initialize terminal mode first (this also initializes text mode)
+    if (!terminal_mode_init(term, cols, rows, write_cb)) {
+        return false;
+    }
+
+    // Override font if a specific one was requested
+    text_mode_set_font(font_id);
     return true;
 }
 
@@ -408,12 +379,7 @@ void terminal_mode_render(terminal_mode_t *term) {
     }
 
     terminal_mode_impl_t *impl = &term->impl;
-
-    impl->blink_counter++;
-    if (impl->blink_counter >= 10) {
-        impl->blink_counter = 0;
-        impl->cursor_blink_state = !impl->cursor_blink_state;
-    }
+    impl->cursor_blink_state = 1;
 
     if (impl->vt.screen_reverse != impl->last_screen_reverse) {
         impl->last_screen_reverse = impl->vt.screen_reverse;

@@ -51,6 +51,7 @@ SYMBOLS=(
     app_launcher_start
     text_mode_init
     text_mode_init_ex
+    text_mode_set_font
     text_mode_get_cols
     text_mode_get_rows
     text_mode_get_char_width
@@ -70,6 +71,8 @@ SYMBOLS=(
     text_mode_save
     text_mode_restore
     text_mode_flush
+    text_mode_set_font
+    text_mode_apply_configured_font
     printf
     puts
     sprintf
@@ -101,6 +104,7 @@ SYMBOLS=(
     os_log
     terminal_mode_default
     terminal_mode_init
+    terminal_mode_init_ex
     terminal_mode_reset
     terminal_mode_set_write_callback
     terminal_mode_set_title_callback

@@ -222,6 +222,11 @@ void boot_sequence(void) {
 
     if (sd_card_init()) {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "SD card ready");
+
+        // Now that SD card is mounted, apply user's configured font
+        ESP_LOGI(TAG, "==== Applying configured font settings ====");
+        bool font_applied = text_mode_apply_configured_font();
+        ESP_LOGI(TAG, "Font apply result: %s", font_applied ? "SUCCESS" : "FAILED");
     } else {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "SD card not available");
         // Continue anyway - SD card is optional

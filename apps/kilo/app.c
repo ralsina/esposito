@@ -5,6 +5,7 @@
 
 #include "os_core.h"
 #include "app_config.h"
+#include "text_mode.h"
 #include "terminal_mode.h"
 
 #include <stdlib.h>
@@ -34,9 +35,9 @@ static const char *KILO_FILE_KEY = "editor_file";
 #define HL_HIGHLIGHT_NUMBERS (1<<1)
 #define HL_HIGHLIGHT_MARKDOWN (1<<2)
 
-/* Default terminal dimensions for esposito */
-#define DEFAULT_COLS 64
-#define DEFAULT_ROWS 29
+/* Default terminal dimensions for esposito - use dynamic text mode dimensions */
+extern int text_mode_get_cols(void);
+extern int text_mode_get_rows(void);
 
 /* Row represents a single line of the file being edited */
 typedef struct erow {
@@ -679,13 +680,56 @@ static int editorPromptHandleKey(editor_t *editor, char key) {
 
 /* ======================== Rendering ======================== */
 
+static void editorFlushOutput(terminal_mode_t *term, char *buf, int *len) {
+    if (*len > 0) {
+        terminal_mode_process_bytes(term, buf, (size_t)*len);
+        *len = 0;
+    }
+}
+
+static void editorAppendOutput(terminal_mode_t *term, char *buf, int *len, size_t buf_size, const char *text) {
+    if (!text || !text[0]) return;
+
+    int text_len = (int)strlen(text);
+    int copied = 0;
+    while (copied < text_len) {
+        int avail = (int)buf_size - *len;
+        if (avail <= 0) {
+            editorFlushOutput(term, buf, len);
+            avail = (int)buf_size;
+        }
+
+        int chunk = text_len - copied;
+        if (chunk > avail) chunk = avail;
+        memcpy(buf + *len, text + copied, (size_t)chunk);
+        *len += chunk;
+        copied += chunk;
+
+        if (*len >= (int)buf_size) {
+            editorFlushOutput(term, buf, len);
+        }
+    }
+}
+
+#define EDITOR_APPEND_FMT(term, buf, len, fmt, ...) \
+    do { \
+        char _tmp[256]; \
+        int _w = snprintf(_tmp, sizeof(_tmp), fmt, ##__VA_ARGS__); \
+        if (_w > 0) { \
+            if (_w >= (int)sizeof(_tmp)) _tmp[sizeof(_tmp) - 1] = '\0'; \
+            editorAppendOutput((term), (buf), &(len), sizeof(buf), _tmp); \
+        } \
+    } while (0)
+
 static void editorRefresh(editor_t *editor, terminal_mode_t *term) {
     erow *current_row = editorRowAt(editor, editor->cy);
     int rx = editorRowCxToRx(current_row, editor->cx);
 
+    int contentrows = editor->screenrows;
+
     if (editor->cy < editor->rowoff) editor->rowoff = editor->cy;
-    if (editor->cy >= editor->rowoff + editor->screenrows) {
-        editor->rowoff = editor->cy - editor->screenrows + 1;
+    if (editor->cy >= editor->rowoff + contentrows) {
+        editor->rowoff = editor->cy - contentrows + 1;
     }
     if (rx < editor->coloff) editor->coloff = rx;
     if (rx >= editor->coloff + editor->screencols) {
@@ -693,27 +737,26 @@ static void editorRefresh(editor_t *editor, terminal_mode_t *term) {
     }
     
     /* Build output buffer with VT100 commands */
-    char buf[4096];
+    char buf[1024];
     int len = 0;
+    int max_render_cols = editor->screencols;
+    if (max_render_cols > 0) {
+        max_render_cols -= 1;
+    }
     
     /* Home cursor */
-    len += snprintf(buf + len, sizeof(buf) - len, "\x1b[H");
+    EDITOR_APPEND_FMT(term, buf, len, "\x1b[H");
     
     /* Draw visible rows */
-    for (int row = 0; row < editor->screenrows; row++) {
+    for (int row = 0; row < contentrows; row++) {
         int filerow = row + editor->rowoff;
         
         /* Position cursor at start of line */
-        len += snprintf(buf + len, sizeof(buf) - len, "\x1b[%d;1H", row + 1);
+        EDITOR_APPEND_FMT(term, buf, len, "\x1b[%d;1H\x1b[K", row + 1);
         
         if (filerow >= editor->numrows) {
             /* Empty line in file view */
-            len += snprintf(buf + len, sizeof(buf) - len, "~");
-            int fill = 1;
-            while (fill < editor->screencols) {
-                len += snprintf(buf + len, sizeof(buf) - len, " ");
-                fill++;
-            }
+            EDITOR_APPEND_FMT(term, buf, len, "~");
         } else {
             erow *er = &editor->row[filerow];
             int col = 0;
@@ -721,27 +764,21 @@ static void editorRefresh(editor_t *editor, terminal_mode_t *term) {
             int current_color = -1;
             
             /* Output line content starting from coloff */
-            while (col < er->rsize && display_col < editor->screencols) {
+            while (col < er->rsize && display_col < max_render_cols) {
                 if (col >= editor->coloff) {
                     int color = editorSyntaxToColor(er->hl ? er->hl[col] : HL_NORMAL);
                     if (color != current_color) {
                         current_color = color;
-                        len += snprintf(buf + len, sizeof(buf) - len, "\x1b[%dm", color);
+                        EDITOR_APPEND_FMT(term, buf, len, "\x1b[%dm", color);
                     }
-                    len += snprintf(buf + len, sizeof(buf) - len, "%c", er->render[col]);
+                    EDITOR_APPEND_FMT(term, buf, len, "%c", er->render[col]);
                     display_col++;
                 }
                 col++;
             }
 
             if (current_color != -1) {
-                len += snprintf(buf + len, sizeof(buf) - len, "\x1b[39m");
-            }
-            
-            /* Pad to end of line with spaces */
-            while (display_col < editor->screencols) {
-                len += snprintf(buf + len, sizeof(buf) - len, " ");
-                display_col++;
+                EDITOR_APPEND_FMT(term, buf, len, "\x1b[39m");
             }
         }
     }
@@ -749,26 +786,26 @@ static void editorRefresh(editor_t *editor, terminal_mode_t *term) {
     /* Shortcut help line just above terminal status bar */
     {
         const char *help = "^S save  ^W save-as  ^O open  ^N new  Fn+WASD move  Fn+Q tab";
-        char help_line[DEFAULT_COLS + 1];
+        char help_line[text_mode_get_cols() + 1];
         int help_row = editor->screenrows + 1;
         int help_len = (int)strlen(help);
-        if (help_len > editor->screencols) help_len = editor->screencols;
+        if (help_len > max_render_cols) help_len = max_render_cols;
 
         memset(help_line, ' ', editor->screencols);
         help_line[editor->screencols] = '\0';
         memcpy(help_line, help, help_len);
 
-        len += snprintf(buf + len, sizeof(buf) - len, "\x1b[%d;1H", help_row + 1);
-        len += snprintf(buf + len, sizeof(buf) - len, "\x1b[90m%s\x1b[39m", help_line);
+        EDITOR_APPEND_FMT(term, buf, len, "\x1b[%d;1H\x1b[K", help_row);
+        EDITOR_APPEND_FMT(term, buf, len, "\x1b[90m%s\x1b[39m", help_line);
     }
     
     /* Position cursor at current location */
     int display_row = editor->cy - editor->rowoff;
     int display_col = rx - editor->coloff;
-    len += snprintf(buf + len, sizeof(buf) - len, "\x1b[%d;%dH", display_row + 1, display_col + 1);
+    EDITOR_APPEND_FMT(term, buf, len, "\x1b[%d;%dH", display_row + 1, display_col + 1);
     
     /* Feed output to terminal mode */
-    terminal_mode_process_bytes(term, buf, len);
+    editorFlushOutput(term, buf, &len);
     
     /* Status message */
     char status[256];
@@ -856,11 +893,13 @@ void app_init(app_context_t *ctx) {
         kilo = NULL;
         return;
     }
-    
-    kilo->editor.screenrows = DEFAULT_ROWS - 2;
-    kilo->editor.screencols = DEFAULT_COLS;
-    
-    terminal_mode_init(kilo->term, DEFAULT_COLS, DEFAULT_ROWS, NULL);
+
+    text_mode_init();
+
+    kilo->editor.screenrows = text_mode_get_rows() - 2;
+    kilo->editor.screencols = text_mode_get_cols();
+
+    terminal_mode_init(kilo->term, text_mode_get_cols(), text_mode_get_rows(), NULL);
     
     /* Try to open a file from config, or start empty */
     char filename[256] = {0};

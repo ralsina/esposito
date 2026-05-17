@@ -10,7 +10,7 @@ extern "C" {
 
 // VT100 screen size limits
 #define TERM_MAX_COLS 80
-#define TERM_MAX_ROWS 39
+#define TERM_MAX_ROWS 40  // Support tomthumb font (80x40 grid)
 #define TERM_MAX_BUFFER_SIZE (TERM_MAX_COLS * TERM_MAX_ROWS)
 
 // VT100 colors

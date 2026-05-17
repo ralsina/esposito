@@ -1,0 +1,10 @@
+[wokwi]
+version = 1
+firmware = "build/esposito.elf"
+elf = "build/esposito.elf"
+
+[esposito]
+name = "Esposito OS"
+version = "1.0.0"
+description = "Dynamic app-loading OS for ESP32 CYD"
+author = "Esposito Project"

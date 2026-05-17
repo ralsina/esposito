@@ -19,6 +19,7 @@ typedef void (*terminal_mode_title_cb)(const char *title);
 terminal_mode_t *terminal_mode_default(void);
 
 bool terminal_mode_init(terminal_mode_t *term, int cols, int rows, terminal_mode_write_cb write_cb);
+bool terminal_mode_init_ex(terminal_mode_t *term, int cols, int rows, terminal_mode_write_cb write_cb, int font_id);
 void terminal_mode_reset(terminal_mode_t *term);
 
 void terminal_mode_set_write_callback(terminal_mode_t *term, terminal_mode_write_cb cb);

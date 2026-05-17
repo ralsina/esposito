@@ -36,7 +36,8 @@
       "Bash(python3 -m esptool --chip esp32 --before default_reset --after hard_reset write_flash)",
       "Bash(bash *)",
       "Bash(xargs -I {} basename {})",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(xtensa-esp32-elf-nm build/esposito.elf)"
     ]
   }
 }

@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "author": "Esposito OS",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-2432s028r",
+      "id": "esp32",
+      "props": {
+        "label": "ESP32 CYD (Esposito)"
+      }
+    },
+    {
+      "type": "wokwi-bbq20keyboard",
+      "id": "keyboard",
+      "props": {
+        "label": "BBQ20 Keyboard"
+      },
+      "top": 200,
+      "left": 400,
+      "attrs": {
+        "i2cAddress": "0x20"
+      }
+    }
+  ],
+  "connections": [
+    ["esp32:GP18", "keyboard:SDA"],
+    ["esp32:GP19", "keyboard:SCL"]
+  ],
+  "dependencies": {}
+}

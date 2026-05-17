@@ -160,6 +160,22 @@ static void app_launcher_show_static(void) {
 
         btn_down = ui_button_create(btn_down_x, btn_row, btn_w, btn_h, " DOWN ");
         ui_button_set_callback(btn_down, on_launcher_down_click, NULL);
+    } else {
+        // Update button positions if screen size changed (e.g., font change)
+        int btn_h = 3;
+        int btn_row = rows - btn_h - 1;
+        int btn_w = 13;
+        int gap = 2;
+
+        int total_width = (btn_w * 3) + (gap * 2);
+        int start_x = (cols - total_width) / 2;
+
+        btn_up->x = start_x;
+        btn_up->y = btn_row;
+        btn_open->x = start_x + btn_w + gap;
+        btn_open->y = btn_row;
+        btn_down->x = start_x + (btn_w + gap) * 2;
+        btn_down->y = btn_row;
     }
 
     // Draw buttons

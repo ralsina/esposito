@@ -111,9 +111,13 @@ void display_set_font(const void *font) {
         if (font_table[i].font_ptr == font) {
             disp_font_width = font_table[i].char_width;
             disp_font_height = font_table[i].char_height;
+            ESP_LOGI("display", "Font set to %s: %dx%d pixels", font_table[i].name, disp_font_width, disp_font_height);
+            // Immediately tell LovyanGFX to use this font
+            tft.setFont(current_display_font);
             return;
         }
     }
+    ESP_LOGW("display", "Font not found in table!");
 }
 
 void display_clear(uint16_t color) {
@@ -123,26 +127,35 @@ void display_clear(uint16_t color) {
 
 void display_draw_text(int x, int y, const char *text, uint16_t color) {
     if (!display_initialized) return;
-    tft.setCursor(x, y);
+    tft.setTextDatum(TL_DATUM);
     tft.setTextColor(color, TFT_BLACK);
-    if (current_display_font) tft.setFont(current_display_font);
-    tft.print(text);
+    if (current_display_font) {
+        tft.drawString(text, x, y, current_display_font);
+    } else {
+        tft.drawString(text, x, y);
+    }
 }
 
 void display_draw_text_transparent(int x, int y, const char *text, uint16_t color) {
     if (!display_initialized) return;
-    tft.setCursor(x, y);
+    tft.setTextDatum(TL_DATUM);
     tft.setTextColor(color);
-    if (current_display_font) tft.setFont(current_display_font);
-    tft.print(text);
+    if (current_display_font) {
+        tft.drawString(text, x, y, current_display_font);
+    } else {
+        tft.drawString(text, x, y);
+    }
 }
 
 void display_draw_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg) {
     if (!display_initialized) return;
-    tft.setCursor(x, y);
+    tft.setTextDatum(TL_DATUM);
     tft.setTextColor(fg, bg);
-    if (current_display_font) tft.setFont(current_display_font);
-    tft.print(text);
+    if (current_display_font) {
+        tft.drawString(text, x, y, current_display_font);
+    } else {
+        tft.drawString(text, x, y);
+    }
 }
 
 void display_draw_pixel(int x, int y, uint16_t color) {
@@ -465,7 +478,6 @@ void display_draw_scaled_text_bg(int x, int y, const char *text, uint16_t fg, ui
             uint8_t gw = pgm_read_byte(&g->width);
             uint8_t gh = pgm_read_byte(&g->height);
             int8_t x_offset = (int8_t)pgm_read_byte(&g->xOffset);
-            int8_t y_offset = (int8_t)pgm_read_byte(&g->yOffset);
             uint8_t x_advance = pgm_read_byte(&g->xAdvance);
 
             advance = x_advance * scale;
@@ -474,11 +486,9 @@ void display_draw_scaled_text_bg(int x, int y, const char *text, uint16_t fg, ui
                 memset(glyph_bits, 0, gw * gh);
                 decode_glyph_rle(bitmap_base + offset, gw, gh, glyph_bits);
 
-                /* x_offset shifts the glyph within the advance width.
-                   y_offset is baseline-relative (negative = above baseline).
-                   We treat y as the top of the cell and place the glyph so
-                   that the baseline sits at y + (-y_offset)*scale, giving:
-                   glyph_top = baseline + y_offset*scale = y. */
+                     /* x_offset shifts the glyph within the advance width.
+                         We treat y as the top of the cell and draw the glyph from
+                         that top-left origin. */
                 int glyph_x = cursor_x + x_offset * scale;
                 int glyph_y = y;
 
@@ -503,12 +513,36 @@ void display_draw_scaled_text_bg(int x, int y, const char *text, uint16_t fg, ui
 
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color) {
     if (!display_initialized) return;
+    // Debug: Log character dimensions more frequently
+    static int call_count = 0;
+    if (call_count < 5 || call_count % 100 == 0) {
+        ESP_LOGI("display", "draw_char_at #%d: disp_font_width=%d, disp_font_height=%d, ch='%c'",
+                 call_count, disp_font_width, disp_font_height, ch);
+    }
+    call_count++;
     tft.fillRect(x, y, disp_font_width, disp_font_height, bg_color);
     if (ch != ' ') {
-        tft.setCursor(x, y);
+        char text[2] = {ch, '\0'};
+        int32_t clip_x = 0;
+        int32_t clip_y = 0;
+        int32_t clip_w = 0;
+        int32_t clip_h = 0;
+        tft.getClipRect(&clip_x, &clip_y, &clip_w, &clip_h);
+
+        tft.setClipRect(x, y, disp_font_width, disp_font_height);
+        tft.setTextDatum(TL_DATUM);
         tft.setTextColor(fg_color, bg_color);
-        if (current_display_font) tft.setFont(current_display_font);
-        tft.print(ch);
+        if (current_display_font) {
+            tft.drawString(text, x, y, current_display_font);
+        } else {
+            tft.drawString(text, x, y);
+        }
+
+        if (clip_w > 0 && clip_h > 0) {
+            tft.setClipRect(clip_x, clip_y, clip_w, clip_h);
+        } else {
+            tft.clearClipRect();
+        }
     }
 }
 
