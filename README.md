@@ -72,3 +72,8 @@ esposito/
 ## References
 
 This project references the `terminado` project for keyboard and display implementation.
+
+## Emulator
+
+- [EMULATOR.md](EMULATOR.md)
+- [wokwi/README.md](wokwi/README.md)

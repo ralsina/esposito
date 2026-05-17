@@ -1,67 +1,75 @@
 # Esposito OS Wokwi Emulator
 
-This directory contains the Wokwi emulator configuration for Esposito OS on the ESP32 Cheap Yellow Display (CYD) hardware.
+This directory contains the Wokwi configuration used to run Esposito OS in an emulator.
 
-## Hardware Configuration
+## Current Baseline
 
 - **Base Board**: ESP32-2432S028R (Cheap Yellow Display with 2USB variant)
-- **Display**: 320×240 touchscreen TFT LCD
-- **Keyboard**: BBQ20 Keyboard (I2C address 0x20)
-- **Storage**: SD card for app storage
-- **Connectivity**: WiFi (ESP32 built-in)
+- **Firmware Input**: `../build/esposito.elf` from `.wokwi.build.toml`
+- **Input**: Touchscreen only in this baseline
+- **Keyboard Emulation**: Not enabled yet (custom BBQ20 part not included)
 
-## Wokwi Parts
+## Files
 
-This configuration uses:
-- `wokwi-esp32-2432s028r` - Built-in ESP32 CYD board support
-- `wokwi-bbq20keyboard` - Custom BBQ20 keyboard part
+- `diagram.json`: Wokwi board layout
+- `.wokwi.build.toml`: firmware path and project metadata
+- `wokwi-demo.sh`: helper script to build firmware before emulator use
 
 ## Running in Wokwi
 
 ### Option 1: Using Wokwi CLI
+
 ```bash
 npm install -g wokwi-cli
 cd wokwi
 wokwi-server
 ```
 
+Then open the local URL printed by the server.
+
 ### Option 2: Using Wokwi Web IDE
-1. Open https://wokwi.com/projects/new
-2. Copy `diagram.json` contents to the editor
-3. Upload Esposito firmware ELF
 
-## Firmware Loading
+1. Open [wokwi.com/projects/new](https://wokwi.com/projects/new)
+1. Copy `diagram.json` contents to the editor
+1. Build firmware locally (`idf.py build`)
+1. Upload `build/esposito.elf`
 
-The Wokwi emulator can run the Esposito firmware:
-1. Build the firmware: `idf.py build`
-2. Locate the ELF: `build/esposito.elf`
-3. Load in Wokwi via the firmware upload feature
+## Build Firmware
 
-## Differences from Real Hardware
+From repository root:
 
-The Wokwi emulator closely matches the real Esposito hardware:
+```bash
+idf.py build
+```
+
+Expected output artifact:
+
+```text
+build/esposito.elf
+```
+
+## Validation Checklist
+
+Use this checklist each time emulator support is touched.
+
+1. Boot test: launcher appears within 10 seconds.
+2. Navigation test: touch can open an app from launcher.
+3. Settings test: open Settings and switch default font.
+4. Relayout test: after font switch, Settings remains usable.
+5. Networking smoke test: open Clock and trigger weather refresh.
+6. Stability test: launch and exit 5 apps without crash/restart.
+
+## Known Limitations
+
 - ✅ ESP32 microcontroller
 - ✅ 320×240 touchscreen display
-- ✅ I2C keyboard (BBQ20)
+- ✅ Basic UI and app navigation via touch
 - ⚠️ SD card simulation (limited)
 - ✅ WiFi networking simulation
-- ✅ Touch input simulation
+- ❌ BBQ20 keyboard emulation (custom part not yet implemented in repo)
 
-## Keyboard Layout
+## Next Steps
 
-The BBQ20 keyboard uses I2C communication:
-- **SDA**: GPIO 18
-- **SCL**: GPIO 19
-- **Address**: 0x20
-
-## Demo Mode
-
-For demonstration purposes, the emulator can run without physical hardware:
-1. Load the Esposito firmware
-2. The app launcher will start automatically
-3. Use keyboard or touch to interact with apps
-4. Try different fonts via Settings app to see responsive layouts
-
-## Custom Parts
-
-The BBQ20 keyboard requires a custom Wokwi part definition if not available in the standard library. The connection is simulated via I2C protocol.
+1. Add custom Wokwi part files for BBQ20 keyboard emulation.
+2. Reconnect keyboard I2C lines in `diagram.json`.
+3. Add keyboard-specific emulator tests (text input and app hotkeys).
