@@ -1,6 +1,7 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "ui.h"
+#include "ui_list.h"
 #include "wifi.h"
 #include "app_config.h"
 #include "hardware.h"
@@ -16,6 +17,7 @@ typedef enum {
     STATE_ENTER_PASSWORD,
     STATE_ENTER_TIMEZONE,
     STATE_ENTER_LOCATION,
+    STATE_FONT_SELECTION,
     STATE_MESSAGE,
 } app_state_t;
 
@@ -29,14 +31,25 @@ static int msg_timer = 0;
 static int selected = 0;
 static int scan_count = 0;
 static int scan_selected = 0;
+static int font_selected = 0;
 static ui_text_input_widget_t *ssid_input;
 static ui_text_input_widget_t *password_input;
 static ui_text_input_widget_t *timezone_input;
 static ui_text_input_widget_t *location_input;
+static ui_list_widget_t *font_list;
+
+// Font list items must persist for ui_list, so keep backing storage static.
+static char font_list_labels[FONT_COUNT][48];
+static const char *font_list_items[FONT_COUNT];
+
+// Forward declarations for callbacks used by widget rebuild.
+static void on_font_list_selection_changed(ui_list_widget_t *list, int new_selection);
+static void on_font_list_item_selected(ui_list_widget_t *list, int item_index);
 
 #define SETTINGS_KEY_TIMEZONE "time/timezone"
 #define SETTINGS_KEY_LOCATION "weather/location"
 #define SETTINGS_KEY_SERIAL_LOG "system/serial_log_output"
+#define SETTINGS_KEY_DEFAULT_FONT "system/default_font"
 #define WEATHER_GEOCODE_URL_FMT "http://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json"
 #define WEATHER_HTTP_TIMEOUT_MS 15000
 
@@ -203,7 +216,107 @@ static void set_status(const char *msg) {
     msg_timer = 150;
 }
 
-#define MENU_ITEMS 8
+static void rebuild_layout_widgets(void) {
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+
+    if (ssid_input) {
+        ui_text_input_destroy(ssid_input);
+        ssid_input = NULL;
+    }
+    if (password_input) {
+        ui_text_input_destroy(password_input);
+        password_input = NULL;
+    }
+    if (timezone_input) {
+        ui_text_input_destroy(timezone_input);
+        timezone_input = NULL;
+    }
+    if (location_input) {
+        ui_text_input_destroy(location_input);
+        location_input = NULL;
+    }
+    if (font_list) {
+        ui_list_destroy(font_list);
+        font_list = NULL;
+    }
+
+    ssid_input = ui_text_input_create(0, rows - 4, cols, 4);
+    ui_text_input_set_title(ssid_input, "Enter SSID");
+    ui_text_input_set_label(ssid_input, "SSID:");
+    ui_text_input_set_hints(ssid_input, "Type to enter  Enter Confirm", "ESC Cancel");
+
+    password_input = ui_text_input_create(0, rows - 4, cols, 4);
+    ui_text_input_set_title(password_input, "Enter Password");
+    ui_text_input_set_label(password_input, "Password:");
+    ui_text_input_set_mask(password_input, true);
+    ui_text_input_set_hints(password_input, "Type to enter  Enter Confirm", "ESC Cancel");
+
+    timezone_input = ui_text_input_create(0, rows - 4, cols, 4);
+    ui_text_input_set_title(timezone_input, "Set Timezone");
+    ui_text_input_set_label(timezone_input, "Timezone:");
+    ui_text_input_set_hints(timezone_input, "Ex: UTC or Europe/Madrid", "ESC Cancel");
+
+    location_input = ui_text_input_create(0, rows - 4, cols, 4);
+    ui_text_input_set_title(location_input, "Set Location");
+    ui_text_input_set_label(location_input, "Location:");
+    ui_text_input_set_hints(location_input, "City or lat,lon", "ESC Cancel");
+
+    // Create font selection list
+    int list_height = rows - 4;
+    font_list = ui_list_create(2, 2, cols - 4, list_height);
+    ui_list_set_title(font_list, "Select Default Font");
+    ui_list_set_border(font_list, true);
+    ui_list_set_scrollbar(font_list, true);
+
+    ui_list_set_items(font_list, font_list_items, FONT_COUNT);
+    ui_list_set_selection(font_list, font_selected);
+    ui_list_set_callbacks(font_list, on_font_list_selection_changed, on_font_list_item_selected, font_list);
+}
+
+static void build_font_list_items(void) {
+    for (int index = 0; index < FONT_COUNT; index++) {
+        int cols = 320 / font_table[index].char_width;
+        int rows = 240 / font_table[index].char_height;
+        snprintf(font_list_labels[index], sizeof(font_list_labels[index]),
+                 "%s (%dx%d)", font_table[index].name, cols, rows);
+        font_list_items[index] = font_list_labels[index];
+    }
+}
+
+// Forward declaration
+static void render(void);
+
+// Font list callbacks
+static void on_font_list_selection_changed(ui_list_widget_t *list, int new_selection) {
+    (void)list;
+    font_selected = new_selection;
+}
+
+static void on_font_list_item_selected(ui_list_widget_t *list, int item_index) {
+    (void)list;
+    if (item_index >= 0 && item_index < FONT_COUNT) {
+        // Save the setting
+        os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[item_index].name);
+
+        // Apply the font change immediately
+        extern font_id_t font_lookup_by_name(const char *name);
+        extern bool text_mode_set_font(font_id_t font);
+
+        font_id_t new_font = font_lookup_by_name(font_table[item_index].name);
+        if ((int)new_font >= 0 && (int)new_font < FONT_COUNT) {
+            text_mode_set_font(new_font);
+            font_selected = (int)new_font;
+            rebuild_layout_widgets();
+        }
+
+        set_status("Font changed and saved");
+        state = STATE_MAIN;
+        render();
+    }
+}
+
+#define MENU_ITEMS 9
 static const char *menu_labels[MENU_ITEMS] = {
     "Scan for networks",
     "Enter SSID",
@@ -212,6 +325,7 @@ static const char *menu_labels[MENU_ITEMS] = {
     "Disconnect",
     "Set Timezone",
     "Set Location",
+    "Set Default Font",
     "Serial logs to UART",
 };
 
@@ -224,8 +338,10 @@ static void draw_menu_item(int x, int y, int item_index) {
 static void draw_main(void) {
     ui_clear();
 
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
     int y = 0;
-    ui_label_attr((TEXT_MODE_COLS - 13) / 2, y++, "  WiFi Setup  ", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_label_attr((cols - 13) / 2, y++, "  WiFi Setup  ", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
     ui_separator(y++);
 
     if (wifi_is_connected()) {
@@ -245,10 +361,18 @@ static void draw_main(void) {
 
     char timezone_line[72];
     char location_line[72];
+    char font_line[72];
     snprintf(timezone_line, sizeof(timezone_line), "Timezone: %s", input_timezone[0] ? input_timezone : "UTC");
     snprintf(location_line, sizeof(location_line), "Location: %s", input_location[0] ? input_location : "40.4168,-3.7038");
+
+    // Get current font setting
+    char current_font[32];
+    os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "spleen-5x8", current_font, sizeof(current_font));
+    snprintf(font_line, sizeof(font_line), "Font: %s", current_font);
+
     ui_label_attr(3, y++, timezone_line, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
     ui_label_attr(3, y++, location_line, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    ui_label_attr(3, y++, font_line, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
 
     ui_separator(y++);
 
@@ -263,24 +387,27 @@ static void draw_main(void) {
     ui_label_attr(3, y++, "Time & Location", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
     draw_menu_item(5, y++, 5);
     draw_menu_item(5, y++, 6);
+    draw_menu_item(5, y++, 7);
 
     ui_separator(y++);
     ui_label_attr(3, y++, "Debug", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
-    draw_menu_item(5, y++, 7);
+    draw_menu_item(5, y++, 8);
     y++;
 
     if (status_msg[0]) {
         ui_label_attr(3, y, status_msg, TEXT_COLOR_BRIGHT_YELLOW, TEXT_ATTR_BOLD);
     }
 
-    ui_status_bar(TEXT_MODE_ROWS - 2, "W/S Navigate  Enter Select", "");
+    ui_status_bar(rows - 2, "W/S Navigate  Enter Select", "");
 }
 
 static void draw_scan_results(void) {
     ui_clear();
 
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
     int y = 0;
-    ui_label_attr((TEXT_MODE_COLS - 19) / 2, y++, "Available Networks", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_label_attr((cols - 19) / 2, y++, "Available Networks", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
     ui_separator(y++);
 
     if (scan_count <= 0) {
@@ -289,7 +416,7 @@ static void draw_scan_results(void) {
         y++;
         if (scan_selected >= scan_count) scan_selected = 0;
 
-        for (int i = 0; i < scan_count && i < TEXT_MODE_ROWS - 6; i++) {
+        for (int i = 0; i < scan_count && i < rows - 6; i++) {
             const char *ssid = wifi_scan_get_ssid(i);
             int rssi = wifi_scan_get_rssi(i);
             int quality = (rssi + 100) * 100 / 70;
@@ -307,19 +434,21 @@ static void draw_scan_results(void) {
         }
     }
 
-    ui_status_bar(TEXT_MODE_ROWS - 3, "W/S Navigate  Enter Select", "ESC Back");
+    ui_status_bar(rows - 3, "W/S Navigate  Enter Select", "ESC Back");
 }
 
 static void draw_message(void) {
     ui_clear();
 
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
     int y = 0;
-    ui_label_attr((TEXT_MODE_COLS - 10) / 2, y++, "  Message  ", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    ui_label_attr((cols - 10) / 2, y++, "  Message  ", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
     ui_separator(y++);
     y++;
 
     ui_label_attr(3, y, status_msg, TEXT_COLOR_BRIGHT_YELLOW, TEXT_ATTR_BOLD);
-    ui_status_bar(TEXT_MODE_ROWS - 3, "Press any key", "");
+    ui_status_bar(rows - 3, "Press any key", "");
 }
 
 static void render(void) {
@@ -345,6 +474,9 @@ static void render(void) {
         case STATE_ENTER_LOCATION:
             ui_text_input_set_buffer(location_input, input_location, sizeof(input_location));
             ui_text_input_draw(location_input);
+            break;
+        case STATE_FONT_SELECTION:
+            ui_list_draw(font_list);
             break;
         case STATE_MESSAGE:
             draw_message();
@@ -377,30 +509,20 @@ void app_init(app_context_t *ctx) {
     os_settings_get_string(SETTINGS_KEY_TIMEZONE, "UTC", input_timezone, sizeof(input_timezone));
     os_settings_get_string(SETTINGS_KEY_LOCATION, "40.4168,-3.7038", input_location, sizeof(input_location));
 
-    // Create text input widgets
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
+    build_font_list_items();
 
-    ssid_input = ui_text_input_create(0, rows - 4, cols, 4);
-    ui_text_input_set_title(ssid_input, "Enter SSID");
-    ui_text_input_set_label(ssid_input, "SSID:");
-    ui_text_input_set_hints(ssid_input, "Type to enter  Enter Confirm", "ESC Cancel");
+    // Get current font setting for initial selection
+    char current_font[32];
+    os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "spleen-5x8", current_font, sizeof(current_font));
+    font_selected = 0;
+    for (int i = 0; i < FONT_COUNT; i++) {
+        if (strcmp(current_font, font_table[i].name) == 0) {
+            font_selected = i;
+            break;
+        }
+    }
 
-    password_input = ui_text_input_create(0, rows - 4, cols, 4);
-    ui_text_input_set_title(password_input, "Enter Password");
-    ui_text_input_set_label(password_input, "Password:");
-    ui_text_input_set_mask(password_input, true);
-    ui_text_input_set_hints(password_input, "Type to enter  Enter Confirm", "ESC Cancel");
-
-    timezone_input = ui_text_input_create(0, rows - 4, cols, 4);
-    ui_text_input_set_title(timezone_input, "Set Timezone");
-    ui_text_input_set_label(timezone_input, "Timezone:");
-    ui_text_input_set_hints(timezone_input, "Ex: UTC or Europe/Madrid", "ESC Cancel");
-
-    location_input = ui_text_input_create(0, rows - 4, cols, 4);
-    ui_text_input_set_title(location_input, "Set Location");
-    ui_text_input_set_label(location_input, "Location:");
-    ui_text_input_set_hints(location_input, "City or lat,lon", "ESC Cancel");
+    rebuild_layout_widgets();
 
     render();
     os_log(TAG, "Settings app initialized");
@@ -429,6 +551,10 @@ void app_close(app_context_t *ctx) {
     if (location_input) {
         ui_text_input_destroy(location_input);
         location_input = NULL;
+    }
+    if (font_list) {
+        ui_list_destroy(font_list);
+        font_list = NULL;
     }
 
     text_mode_clear(TEXT_COLOR_BLACK);
@@ -491,6 +617,11 @@ static void handle_main_key(char key) {
                 break;
             }
             case 7: {
+                state = STATE_FONT_SELECTION;
+                render();
+                break;
+            }
+            case 8: {
                 bool enabled = !serial_log_output_is_enabled();
                 serial_log_output_set_enabled(enabled);
                 os_settings_set_bool(SETTINGS_KEY_SERIAL_LOG, enabled);
@@ -614,8 +745,41 @@ void app_event(app_context_t *ctx, event_t *event) {
             case STATE_ENTER_LOCATION:
                 handle_text_entry_event(event);
                 break;
+            case STATE_FONT_SELECTION:
+                if (key == 27) { // ESC
+                    state = STATE_MAIN;
+                    render();
+                } else {
+                    if (ui_list_handle_key(font_list, key)) {
+                        ui_list_draw(font_list);
+                        text_mode_flush();
+                    }
+                }
+                break;
             case STATE_MESSAGE:
                 handle_message_key(key);
+                break;
+        }
+    } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
+        // Convert pixel coordinates to character coordinates
+        int cw = text_mode_get_char_width();
+        int ch = text_mode_get_char_height();
+        int x_col = event->touch.x / cw;
+        int y_col = event->touch.y / ch;
+
+        // Create a modified touch event with character coordinates
+        event_t char_event = *event;
+        char_event.touch.x = x_col;
+        char_event.touch.y = y_col;
+
+        switch (state) {
+            case STATE_FONT_SELECTION:
+                if (ui_list_handle_touch(font_list, &char_event)) {
+                    ui_list_draw(font_list);
+                    text_mode_flush();
+                }
+                break;
+            default:
                 break;
         }
     } else if (event->type == EVENT_TIMER) {

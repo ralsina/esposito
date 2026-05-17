@@ -10,6 +10,10 @@ extern "C" {
 typedef enum {
     FONT_SPLEEN_5X8,
     FONT_TOMTHUMB,
+    FONT_6X10,
+    FONT_6X12,
+    FONT_7X13,
+    FONT_8X13,
     FONT_COUNT
 } font_id_t;
 
