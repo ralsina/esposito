@@ -37,7 +37,12 @@
       "Bash(bash *)",
       "Bash(xargs -I {} basename {})",
       "Bash(git push *)",
-      "Bash(xtensa-esp32-elf-nm build/esposito.elf)"
+      "Bash(xtensa-esp32-elf-nm build/esposito.elf)",
+      "Bash(cp /home/ralsina/code/esposito/apps/basic_temp/src/*.c /home/ralsina/code/esposito/apps/basic/)",
+      "Bash(cp /home/ralsina/code/esposito/apps/basic_temp/inc/*.h /home/ralsina/code/esposito/apps/basic/)",
+      "Bash(xargs basename *)",
+      "Bash(xtensa-esp32-elf-gcc --print-search-dirs)",
+      "Bash(gcc -x c - - -lm)"
     ]
   }
 }

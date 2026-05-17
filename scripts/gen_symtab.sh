@@ -173,7 +173,9 @@ SYMBOLS=(
     isnan isinf
     sscanf vsscanf vsnprintf
     __extendsfdf2 __truncdfsf2 __fixsfdi __fixunssfdi __floatdisf
+    __adddf3 __subdf3 __muldf3 __divdf3
     __addsf3 __subsf3 __mulsf3 __divsf3
+    __eqdf2 __nedf2 __gedf2 __gtdf2 __ledf2 __ltdf2
 )
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"

@@ -1,166 +1,318 @@
 /*
- * Simple Calculator App
- * 4-function calculator with floating point support
+ * Calculator App with UI Library
+ * 4-function calculator with proper button layout
  */
 
 #include "os_core.h"
 #include "text_mode.h"
+#include "ui.h"
+#include "ui_button.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 // Declare external functions
 extern double atof(const char *str);
 
-static int is_digit(char c) {
-    return c >= '0' && c <= '9';
-}
+#define MAX_DISPLAY 20
 
-#define MAX_INPUT 32
-
-static float current_value = 0.0f;
-static float stored_value = 0.0f;
+static char display_buffer[MAX_DISPLAY] = "0";
+static int display_pos = 1;
+static double current_value = 0.0;
+static double stored_value = 0.0;
 static char pending_op = 0;
-static char display_buffer[MAX_INPUT] = "0";
-static int display_pos = 0;
 static bool new_entry = true;
+static bool decimal_entered = false;
 
-void update_display() {
-    text_mode_clear(0x0000);
+static ui_button_t *buttons[20];
+static int button_count = 0;
 
-    // Draw calculator UI
-    text_mode_print_at(0, 0, "╔════════════════════════════╗");
-    text_mode_print_at(0, 1, "║      Calculator           ║");
-    text_mode_print_at(0, 2, "╠════════════════════════════╣");
-    text_mode_print_at(0, 3, "║                          ║");
-    text_mode_print_at(0, 4, "║                          ║");
-    text_mode_print_at(0, 5, "║                          ║");
-    text_mode_print_at(0, 6, "╠════════════════════════════╣");
-    text_mode_print_at(0, 7, "║ 7   8   9   /     C       ║");
-    text_mode_print_at(0, 8, "║ 4   5   6   *     (      ║");
-    text_mode_print_at(0, 9, "║ 1   2   3   -     )      ║");
-    text_mode_print_at(0, 10, "║ 0   .   =   +    Enter   ║");
-    text_mode_print_at(0, 11, "╚════════════════════════════╝");
+// Button layout: 4 columns x 5 rows
+const char* button_labels[] = {
+    "C", "±", "%", "/",
+    "7", "8", "9", "*",
+    "4", "5", "6", "-",
+    "1", "2", "3", "+",
+    "0", ".", "=", "+"
+};
 
-    // Display current value
-    text_mode_print_at(2, 3, display_buffer);
-    text_mode_flush();
-}
+// Button callback functions
+void button_digit(ui_button_t *button, void *user_data) {
+    char digit = *((char*)user_data);
 
-void clear_calc() {
-    current_value = 0.0f;
-    stored_value = 0.0f;
-    pending_op = 0;
-    strcpy(display_buffer, "0");
-    display_pos = 0;
-    new_entry = true;
-    update_display();
-}
-
-void append_digit(char digit) {
     if (new_entry) {
+        strcpy(display_buffer, "0");
         display_pos = 0;
-        if (digit == '-') {
-            display_buffer[display_pos++] = '-';
-        } else {
-            display_buffer[display_pos++] = digit;
-        }
-        display_buffer[display_pos] = '\0';
         new_entry = false;
-    } else if (display_pos < MAX_INPUT - 1) {
-        display_buffer[display_pos++] = digit;
-        display_buffer[display_pos] = '\0';
     }
-    update_display();
+
+    if (display_pos < MAX_DISPLAY - 1) {
+        if (strcmp(display_buffer, "0") == 0 && digit != '0') {
+            display_pos = 0;
+            display_buffer[display_pos++] = digit;
+            display_buffer[display_pos] = '\0';
+        } else if (strcmp(display_buffer, "0") != 0 || digit != '0') {
+            display_buffer[display_pos++] = digit;
+            display_buffer[display_pos] = '\0';
+        }
+    }
+
+    for (int i = 0; i < button_count; i++) {
+        ui_button_draw(buttons[i]);
+    }
 }
 
-void append_decimal() {
-    if (new_entry) {
-        strcpy(display_buffer, "0.");
-        display_pos = 2;
-        new_entry = false;
-    } else if (display_pos < MAX_INPUT - 1 && !strchr(display_buffer, '.')) {
+void button_decimal(ui_button_t *button, void *user_data) {
+    if (!decimal_entered && display_pos < MAX_DISPLAY - 1) {
+        if (new_entry) {
+            strcpy(display_buffer, "0");
+            display_pos = 1;
+            new_entry = false;
+        }
         display_buffer[display_pos++] = '.';
         display_buffer[display_pos] = '\0';
+        decimal_entered = true;
     }
-    update_display();
+
+    for (int i = 0; i < button_count; i++) {
+        ui_button_draw(buttons[i]);
+    }
 }
 
-float get_display_value() {
-    return atof(display_buffer);
-}
-
-void set_display_value(float value) {
-    snprintf(display_buffer, MAX_INPUT, "%.8g", value);
-    display_pos = strlen(display_buffer);
-    current_value = value;
-    new_entry = true;
-    update_display();
-}
-
-void apply_operation() {
-    float display_val = get_display_value();
+void button_operator(ui_button_t *button, void *user_data) {
+    char op = *((char*)user_data);
+    double display_val = atof(display_buffer);
 
     switch (pending_op) {
         case '+': stored_value += display_val; break;
         case '-': stored_value -= display_val; break;
         case '*': stored_value *= display_val; break;
         case '/':
-            if (display_val != 0.0f) {
+            if (display_val != 0.0) {
                 stored_value /= display_val;
             } else {
                 strcpy(display_buffer, "Error");
-                update_display();
+                for (int i = 0; i < button_count; i++) {
+                    ui_button_draw(buttons[i]);
+                }
                 return;
             }
             break;
         case 0: stored_value = display_val; break;
     }
 
-    set_display_value(stored_value);
-}
-
-void handle_operation(char op) {
-    apply_operation();
+    snprintf(display_buffer, MAX_DISPLAY, "%.8g", stored_value);
+    display_pos = strlen(display_buffer);
     pending_op = op;
+    new_entry = true;
+    decimal_entered = false;
+
+    for (int i = 0; i < button_count; i++) {
+        ui_button_draw(buttons[i]);
+    }
 }
 
-void handle_equals() {
-    apply_operation();
+void button_equals(ui_button_t *button, void *user_data) {
+    double display_val = atof(display_buffer);
+
+    switch (pending_op) {
+        case '+': stored_value += display_val; break;
+        case '-': stored_value -= display_val; break;
+        case '*': stored_value *= display_val; break;
+        case '/':
+            if (display_val != 0.0) {
+                stored_value /= display_val;
+            } else {
+                strcpy(display_buffer, "Error");
+                for (int i = 0; i < button_count; i++) {
+                    ui_button_draw(buttons[i]);
+                }
+                return;
+            }
+            break;
+        case 0: stored_value = display_val; break;
+    }
+
+    snprintf(display_buffer, MAX_DISPLAY, "%.8g", stored_value);
+    display_pos = strlen(display_buffer);
     pending_op = 0;
-    stored_value = 0.0f;
+    stored_value = 0.0;
+    new_entry = true;
+    decimal_entered = false;
+
+    for (int i = 0; i < button_count; i++) {
+        ui_button_draw(buttons[i]);
+    }
 }
 
-void handle_clear() {
-    clear_calc();
+void button_clear(ui_button_t *button, void *user_data) {
+    strcpy(display_buffer, "0");
+    display_pos = 1;
+    current_value = 0.0;
+    stored_value = 0.0;
+    pending_op = 0;
+    new_entry = true;
+    decimal_entered = false;
+
+    for (int i = 0; i < button_count; i++) {
+        ui_button_draw(buttons[i]);
+    }
+}
+
+void button_sign(ui_button_t *button, void *user_data) {
+    double val = atof(display_buffer);
+    val = -val;
+    snprintf(display_buffer, MAX_DISPLAY, "%.8g", val);
+    display_pos = strlen(display_buffer);
+
+    for (int i = 0; i < button_count; i++) {
+        ui_button_draw(buttons[i]);
+    }
+}
+
+void button_percent(ui_button_t *button, void *user_data) {
+    double val = atof(display_buffer);
+    val = val / 100.0;
+    snprintf(display_buffer, MAX_DISPLAY, "%.8g", val);
+    display_pos = strlen(display_buffer);
+    new_entry = true;
+
+    for (int i = 0; i < button_count; i++) {
+        ui_button_draw(buttons[i]);
+    }
+}
+
+void create_buttons() {
+    int button_width = 6;
+    int button_height = 3;
+    int start_x = 2;
+    int start_y = 7;
+
+    // Clear existing buttons
+    for (int i = 0; i < button_count; i++) {
+        if (buttons[i]) {
+            ui_button_destroy(buttons[i]);
+        }
+    }
+    button_count = 0;
+
+    // Create buttons in grid layout
+    for (int row = 0; row < 5; row++) {
+        for (int col = 0; col < 4; col++) {
+            int idx = row * 4 + col;
+            int x = start_x + col * (button_width + 1);
+            int y = start_y + row * (button_height + 1);
+
+            ui_button_t *btn = ui_button_create(x, y, button_width, button_height, button_labels[idx]);
+            ui_button_set_colors(btn, 0xFFFF, 0x0000);
+
+            // Set callback based on button
+            char key = button_labels[idx][0];
+            if (key >= '0' && key <= '9') {
+                char *digit_data = (char *)(char *)malloc(1);
+                *digit_data = key;
+                ui_button_set_callback(btn, button_digit, digit_data);
+            } else if (key == '.') {
+                ui_button_set_callback(btn, button_decimal, NULL);
+            } else if (key == '+') {
+                if (row == 1) { // Top row +
+                    char *op_data = (char *)malloc(1);
+                    *op_data = '+';
+                    ui_button_set_callback(btn, button_operator, op_data);
+                } else { // Bottom row (equals)
+                    ui_button_set_callback(btn, button_equals, NULL);
+                }
+            } else if (key == '-') {
+                char *op_data = (char *)malloc(1);
+                *op_data = '-';
+                ui_button_set_callback(btn, button_operator, op_data);
+            } else if (key == '*') {
+                char *op_data = (char *)malloc(1);
+                *op_data = '*';
+                ui_button_set_callback(btn, button_operator, op_data);
+            } else if (key == '/') {
+                char *op_data = (char *)malloc(1);
+                *op_data = '/';
+                ui_button_set_callback(btn, button_operator, op_data);
+            } else if (key == '=') {
+                ui_button_set_callback(btn, button_equals, NULL);
+            } else if (key == 'C' || key == 'c') {
+                ui_button_set_callback(btn, button_clear, NULL);
+            } else if (idx == 1) { // +/- button
+                ui_button_set_callback(btn, button_sign, NULL);
+            } else if (key == '%') {
+                ui_button_set_callback(btn, button_percent, NULL);
+            }
+
+            buttons[button_count++] = btn;
+        }
+    }
+}
+
+void draw_display() {
+    // Clear display area
+    for (int i = 2; i < 38; i++) {
+        text_mode_print_at(i, 3, " ");
+        text_mode_print_at(i, 4, " ");
+    }
+
+    // Draw display value
+    int display_len = strlen(display_buffer);
+    int start_x = 37 - display_len;
+    if (start_x < 2) start_x = 2;
+
+    text_mode_print_at(start_x, 4, display_buffer);
+    text_mode_flush();
 }
 
 void app_init(app_context_t *ctx) {
     text_mode_init();
-    clear_calc();
+    text_mode_clear(0x0000);
+
+    // Draw title
+    text_mode_print_at(2, 0, "Calculator");
+    text_mode_print_at(2, 1, "════════════════════════════");
+
+    draw_display();
+    create_buttons();
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
-    if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
+    if (event->type == EVENT_TOUCH) {
+        for (int i = 0; i < button_count; i++) {
+            if (ui_button_handle_touch(buttons[i], event)) {
+                break; // Button handled the event
+            }
+        }
+        draw_display();
+    } else if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         char key = event->keyboard.key;
 
-        if (is_digit(key)) {
-            append_digit(key);
+        // Keyboard support
+        if (key >= '0' && key <= '9') {
+            char digit_data = key;
+            button_digit(NULL, &digit_data);
         } else if (key == '.') {
-            append_decimal();
+            button_decimal(NULL, NULL);
         } else if (key == '+') {
-            handle_operation('+');
+            char op_data = '+';
+            button_operator(NULL, &op_data);
         } else if (key == '-') {
-            handle_operation('-');
+            char op_data = '-';
+            button_operator(NULL, &op_data);
         } else if (key == '*') {
-            handle_operation('*');
+            char op_data = '*';
+            button_operator(NULL, &op_data);
         } else if (key == '/') {
-            handle_operation('/');
+            char op_data = '/';
+            button_operator(NULL, &op_data);
         } else if (key == '=' || key == '\r' || key == '\n') {
-            handle_equals();
-        } else if (key == 'C' || key == 'c' || key == 27) { // Esc clears too
-            handle_clear();
+            button_equals(NULL, NULL);
+        } else if (key == 'C' || key == 'c' || key == 27) {
+            button_clear(NULL, NULL);
         }
+
+        draw_display();
     }
 }
 
@@ -169,5 +321,12 @@ void app_checkpoint(app_context_t *ctx) {
 }
 
 void app_close(app_context_t *ctx) {
+    // Cleanup buttons
+    for (int i = 0; i < button_count; i++) {
+        if (buttons[i]) {
+            ui_button_destroy(buttons[i]);
+        }
+    }
+    button_count = 0;
     text_mode_clear(0x0000);
 }
