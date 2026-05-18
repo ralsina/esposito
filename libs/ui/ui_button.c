@@ -102,19 +102,13 @@ bool ui_button_handle_touch(ui_button_t *button, const event_t *event) {
         return false; // Only handle press, not release
     }
 
-    // Get current display dimensions and rotation
-    int rotation = display_get_rotation();
+    // Touch coordinates are already transformed for current rotation
+    // Convert pixel coordinates to character coordinates
     int char_width = text_mode_get_char_width();
     int char_height = text_mode_get_char_height();
 
-    // Transform touch coordinates for rotation
-    int touch_x = event->touch.x;
-    int touch_y = event->touch.y;
-    transform_touch_coordinates(&touch_x, &touch_y, rotation);
-
-    // Convert pixel coordinates to character coordinates
-    int touch_col = touch_x / char_width;
-    int touch_row = touch_y / char_height;
+    int touch_col = event->touch.x / char_width;
+    int touch_row = event->touch.y / char_height;
 
     // Check if touch is within button bounds (using character coordinates)
     if (touch_col >= button->x && touch_col < button->x + button->width &&

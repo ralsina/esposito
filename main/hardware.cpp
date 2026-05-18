@@ -96,12 +96,10 @@ bool display_init(void) {
     tft.begin();
     ESP_LOGI(TAG, "LovyanGFX begin() called");
 
-    // Read rotation setting from storage, default to landscape (1)
-    int saved_rotation = os_settings_get_int("display/rotation", DEFAULT_DISPLAY_ROTATION);
-    current_rotation = saved_rotation;
-
+    // Set default rotation (will be overridden by settings later when SD card is available)
+    current_rotation = DEFAULT_DISPLAY_ROTATION;
     tft.setRotation(current_rotation);
-    ESP_LOGI(TAG, "Display rotation set to %d", current_rotation);
+    ESP_LOGI(TAG, "Display rotation set to default %d", current_rotation);
 
     // Don't clear the screen here - let the boot sequence handle it
     // tft.fillScreen(TFT_BLACK);
@@ -574,6 +572,13 @@ void display_set_rotation(int rotation) {
 
 int display_get_rotation(void) {
     return current_rotation;
+}
+
+void display_apply_saved_rotation(void) {
+    // Read rotation setting from storage, default to landscape (1)
+    int saved_rotation = os_settings_get_int("display/rotation", DEFAULT_DISPLAY_ROTATION);
+    ESP_LOGI(TAG, "Applying saved rotation setting: %d", saved_rotation);
+    display_set_rotation(saved_rotation);
 }
 
 void transform_touch_coordinates(int *x, int *y, int rotation) {

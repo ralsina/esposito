@@ -428,19 +428,13 @@ bool ui_list_handle_touch(ui_list_widget_t *widget, const event_t *event) {
         return false;
     }
 
-    // Get current display rotation and character dimensions
-    int rotation = display_get_rotation();
+    // Touch coordinates are already transformed for current rotation
+    // Convert pixel coordinates to character coordinates
     int char_width = text_mode_get_char_width();
     int char_height = text_mode_get_char_height();
 
-    // Transform touch coordinates for rotation
-    int touch_x = event->touch.x;
-    int touch_y = event->touch.y;
-    transform_touch_coordinates(&touch_x, &touch_y, rotation);
-
-    // Convert pixel coordinates to character coordinates
-    int x_col = touch_x / char_width;
-    int y_col = touch_y / char_height;
+    int x_col = event->touch.x / char_width;
+    int y_col = event->touch.y / char_height;
 
     // Check if touch is within list bounds
     if (x_col < widget->x || x_col >= widget->x + widget->width ||

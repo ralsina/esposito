@@ -45,6 +45,7 @@ int display_get_height(void);
 // Display rotation functions
 void display_set_rotation(int rotation);  // 0-3 for 0°, 90°, 180°, 270°
 int display_get_rotation(void);
+void display_apply_saved_rotation(void);  // Apply rotation from settings
 
 // Touch coordinate transformation for rotation
 void transform_touch_coordinates(int *x, int *y, int rotation);

@@ -223,8 +223,13 @@ void boot_sequence(void) {
     if (sd_card_init()) {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "SD card ready");
 
-        // Now that SD card is mounted, apply user's configured font
-        ESP_LOGI(TAG, "==== Applying configured font settings ====");
+        // Now that SD card is mounted, apply user's configured display settings
+        ESP_LOGI(TAG, "==== Applying configured display settings ====");
+
+        // Apply rotation setting
+        display_apply_saved_rotation();
+
+        // Apply font setting
         bool font_applied = text_mode_apply_configured_font();
         ESP_LOGI(TAG, "Font apply result: %s", font_applied ? "SUCCESS" : "FAILED");
     } else {
