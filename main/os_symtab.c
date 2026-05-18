@@ -168,6 +168,10 @@ static const os_symtab_entry_t symtab[] = {
     {"app_manifest_get_display_name",  app_manifest_get_display_name},
     {"app_manifest_find_apps_for_ext", app_manifest_find_apps_for_ext},
 
+    // Standard C library functions
+    {"rand",                    rand},
+    {"srand",                   srand},
+
     // Floating point math functions (float versions for ESP32 FPU)
     {"sinf",                    sinf},
     {"cosf",                    cosf},

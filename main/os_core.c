@@ -492,13 +492,13 @@ void os_event_loop(void) {
                 interval_ticks = 1;
             }
 
-            while ((now - timer_last_tick) >= interval_ticks) {
+            if ((now - timer_last_tick) >= interval_ticks) {
                 event.type = EVENT_TIMER;
                 if (!event_queue_push(&event)) {
-                    break;
+                    timer_last_tick = now;
+                } else {
+                    timer_last_tick = now;
                 }
-                timer_last_tick += interval_ticks;
-                now = xTaskGetTickCount();
             }
         }
 

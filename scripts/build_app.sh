@@ -26,8 +26,8 @@ if [ -z "$APP_SRC" ]; then
     exit 1
 fi
 
-# Determine app directory: if argument is a .c file, use its parent; otherwise use as-if
-if [ -f "$APP_SRC" ] && [[ "$APP_SRC" == *.c ]]; then
+# Determine app directory: if argument is a .c or .cpp file, use its parent; otherwise use as-is
+if [ -f "$APP_SRC" ] && ([[ "$APP_SRC" == *.c ]] || [[ "$APP_SRC" == *.cpp ]]); then
     APP_DIR="$(cd "$(dirname "$APP_SRC")" && pwd)"
 else
     APP_DIR="$(cd "$APP_SRC" && pwd)"
@@ -94,11 +94,16 @@ if [ -d "$IDF_PATH" ]; then
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/soc/esp32/include"
 fi
 
-# Collect all .c source files in the app directory
+# Collect all .c and .cpp source files in the app directory
 APP_SOURCES=()
+HAS_CPP=false
 while IFS= read -r -d '' f; do
     APP_SOURCES+=("$f")
 done < <(find "$APP_DIR" -maxdepth 1 -name '*.c' -print0)
+while IFS= read -r -d '' f; do
+    APP_SOURCES+=("$f")
+    HAS_CPP=true
+done < <(find "$APP_DIR" -maxdepth 1 -name '*.cpp' -print0)
 
 # Collect library sources and include paths
 LIB_SOURCES=()
@@ -109,9 +114,14 @@ for lib in "${LIBS[@]}"; do
         exit 1
     fi
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $LIB_DIR"
+    # Collect both C and C++ files
     while IFS= read -r -d '' f; do
         LIB_SOURCES+=("$f")
     done < <(find "$LIB_DIR" -maxdepth 1 -name '*.c' -print0)
+    while IFS= read -r -d '' f; do
+        LIB_SOURCES+=("$f")
+        HAS_CPP=true
+    done < <(find "$LIB_DIR" -maxdepth 1 -name '*.cpp' -print0)
 done
 
 echo "Building app: $APP_NAME"
@@ -123,7 +133,15 @@ echo "Output: $OUTPUT_DIR/${APP_NAME}.elf"
 
 # Compile and link all source files together
 echo "  Compiling..."
-"${TOOLCHAIN_PREFIX}-gcc" \
+
+# Use g++ if we have any C++ files, otherwise use gcc
+if [ "$HAS_CPP" = true ]; then
+    COMPILER="${TOOLCHAIN_PREFIX}-g++"
+else
+    COMPILER="${TOOLCHAIN_PREFIX}-gcc"
+fi
+
+$COMPILER \
     -nostdlib -nostartfiles \
     -ffreestanding \
     -mlongcalls \

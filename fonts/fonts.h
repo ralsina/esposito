@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 typedef enum {
+    FONT_5X7,
     FONT_SPLEEN_5X8,
     FONT_TOMTHUMB,
     FONT_6X10,

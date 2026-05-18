@@ -27,7 +27,11 @@ echo "=== Building app ELFs ==="
 mkdir -p build/apps
 for app_dir in apps/*/; do
     app_name=$(basename "$app_dir")
+    # Look for either app.c or app.cpp
     app_src="${app_dir}app.c"
+    if [ ! -f "$app_src" ]; then
+        app_src="${app_dir}app.cpp"
+    fi
     if [ -f "$app_src" ]; then
         DEPS=""
         if [ -f "${app_dir}deps" ]; then

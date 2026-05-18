@@ -1,6 +1,7 @@
 #include "fonts.h"
 #include <lgfx/v1/lgfx_fonts.hpp>
 #include <lgfx/utility/pgmspace.h>
+#include "5x7.h"
 #include "spleen-5x8.h"
 #include "6x10.h"
 #include "6x12.h"
@@ -8,6 +9,7 @@
 #include "8x13.h"
 
 const font_info_t font_table[FONT_COUNT] = {
+    { FONT_5X7,        "5x7",        5, 7, &FixedMono5x7Bitmaps },
     { FONT_SPLEEN_5X8, "spleen-5x8", 5, 8, &spleen_5x8 },
     { FONT_TOMTHUMB,   "tomthumb",   4, 6, &fonts::TomThumb },
     { FONT_6X10,       "6x10",       6, 10, &font_6x10 },

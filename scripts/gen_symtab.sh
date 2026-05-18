@@ -171,8 +171,9 @@ SYMBOLS=(
     ceil floor fabs fmod modf frexp ldexp
     strtof strtod strto
     isnan isinf
+    rand srand
     sscanf vsscanf vsnprintf
-    __extendsfdf2 __truncdfsf2 __fixsfdi __fixunssfdi __floatdisf
+    __extendsfdf2 __truncdfsf2 __fixsfdi __fixunssfdi __floatdisf __floatsidf
     __adddf3 __subdf3 __muldf3 __divdf3
     __addsf3 __subsf3 __mulsf3 __divsf3
     __eqdf2 __nedf2 __gedf2 __gtdf2 __ledf2 __ltdf2
