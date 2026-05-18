@@ -49,7 +49,8 @@
       "Bash(xtensa-esp32-elf-gcc -E -)",
       "Bash(curl -s \"https://raw.githubusercontent.com/Arduboy/Arduboy/master/src/core/ArduboyFont.cpp\")",
       "Bash(curl -s \"https://raw.githubusercontent.com/Arduboy/Arduboy2/master/src/core/ArduboyFont.cpp\")",
-      "Bash(grep -E '\\\\.\\(sh|py|c\\)$')"
+      "Bash(grep -E '\\\\.\\(sh|py|c\\)$')",
+      "Bash(grep -E \"\\\\.\\(c|h|hpp|cpp\\)$\")"
     ]
   }
 }

@@ -1,5 +1,6 @@
 #include "ui_button.h"
 #include "os_core.h"
+#include "hardware.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -101,9 +102,23 @@ bool ui_button_handle_touch(ui_button_t *button, const event_t *event) {
         return false; // Only handle press, not release
     }
 
-    // Check if touch is within button bounds
-    if (event->touch.x >= button->x && event->touch.x < button->x + button->width &&
-        event->touch.y >= button->y && event->touch.y < button->y + button->height) {
+    // Get current display dimensions and rotation
+    int rotation = display_get_rotation();
+    int char_width = text_mode_get_char_width();
+    int char_height = text_mode_get_char_height();
+
+    // Transform touch coordinates for rotation
+    int touch_x = event->touch.x;
+    int touch_y = event->touch.y;
+    transform_touch_coordinates(&touch_x, &touch_y, rotation);
+
+    // Convert pixel coordinates to character coordinates
+    int touch_col = touch_x / char_width;
+    int touch_row = touch_y / char_height;
+
+    // Check if touch is within button bounds (using character coordinates)
+    if (touch_col >= button->x && touch_col < button->x + button->width &&
+        touch_row >= button->y && touch_row < button->y + button->height) {
 
         // Trigger callback
         if (button->on_click) {

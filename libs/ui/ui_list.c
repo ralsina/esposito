@@ -1,5 +1,6 @@
 #include "ui_list.h"
 #include "os_core.h"
+#include "hardware.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -427,9 +428,19 @@ bool ui_list_handle_touch(ui_list_widget_t *widget, const event_t *event) {
         return false;
     }
 
-    // Event should already contain character coordinates
-    int x_col = event->touch.x;
-    int y_col = event->touch.y;
+    // Get current display rotation and character dimensions
+    int rotation = display_get_rotation();
+    int char_width = text_mode_get_char_width();
+    int char_height = text_mode_get_char_height();
+
+    // Transform touch coordinates for rotation
+    int touch_x = event->touch.x;
+    int touch_y = event->touch.y;
+    transform_touch_coordinates(&touch_x, &touch_y, rotation);
+
+    // Convert pixel coordinates to character coordinates
+    int x_col = touch_x / char_width;
+    int y_col = touch_y / char_height;
 
     // Check if touch is within list bounds
     if (x_col < widget->x || x_col >= widget->x + widget->width ||
