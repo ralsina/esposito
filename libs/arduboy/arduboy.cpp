@@ -188,6 +188,38 @@ void Arduboy::print(int val) {
     print(buffer);
 }
 
+void Arduboy::drawPixel(int x, int y, uint8_t color) {
+    set_pixel(x, y, color > 0);
+}
+
+void Arduboy::drawRect(int x, int y, int width, int height, uint8_t color) {
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    for (int px = x; px < x + width; px++) {
+        set_pixel(px, y, color > 0);
+        set_pixel(px, y + height - 1, color > 0);
+    }
+
+    for (int py = y; py < y + height; py++) {
+        set_pixel(x, py, color > 0);
+        set_pixel(x + width - 1, py, color > 0);
+    }
+}
+
+void Arduboy::fillRect(int x, int y, int width, int height, uint8_t color) {
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    for (int py = y; py < y + height; py++) {
+        for (int px = x; px < x + width; px++) {
+            set_pixel(px, py, color > 0);
+        }
+    }
+}
+
 void Arduboy::fillCircle(int x, int y, int radius, uint8_t color) {
     // Simple circle drawing algorithm
     for (int dy = -radius; dy <= radius; dy++) {
@@ -201,6 +233,10 @@ void Arduboy::fillCircle(int x, int y, int radius, uint8_t color) {
 
 bool Arduboy::pressed(uint8_t buttons) {
     return (currentButtonState & buttons) != 0;
+}
+
+bool Arduboy::notPressed(uint8_t buttons) {
+    return (currentButtonState & buttons) == 0;
 }
 
 void Arduboy::initInput() {

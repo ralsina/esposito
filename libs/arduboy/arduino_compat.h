@@ -29,6 +29,20 @@ extern "C" void srand(unsigned int);
 #define PIN_SPEAKER_2  1
 
 // Arduino math functions - Numbers game uses rand() directly
+template <typename T>
+static inline T min(T left, T right) {
+	return (left < right) ? left : right;
+}
+
+template <typename T>
+static inline T max(T left, T right) {
+	return (left > right) ? left : right;
+}
+
+template <typename T>
+static inline T constrain(T value, T lower, T upper) {
+	return min(max(value, lower), upper);
+}
 
 // Arduino string conversion
 #define dtostrf(value, width, precision, buffer) sprintf(buffer, "%*.*f", width, precision, value)

@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "arduboy_tunes.h"
+
 // Forward declaration
 typedef struct app_context app_context_t;
 
@@ -39,6 +41,9 @@ public:
     // Initialization state
     bool initialized;
 
+    // Arduboy compatibility members
+    ArduboyTunes tunes;
+
     // Core API methods (that match original Arduboy class)
     void begin();
     void clear();
@@ -49,8 +54,12 @@ public:
     void setCursor(int x, int y);
     void print(const char *text);
     void print(int val);
+    void drawPixel(int x, int y, uint8_t color);
+    void drawRect(int x, int y, int width, int height, uint8_t color);
+    void fillRect(int x, int y, int width, int height, uint8_t color);
     void fillCircle(int x, int y, int radius, uint8_t color);
     bool pressed(uint8_t buttons);
+    bool notPressed(uint8_t buttons);
 
     // Helper functions for Esposito integration
     void initInput();
