@@ -1,6 +1,7 @@
 #include "touchscreen.h"
 #include "hardware_config.h"
 #include "hardware.h"
+#include "os_core.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -15,6 +16,13 @@ static float xfac = 1.0f;
 static float yfac = 1.0f;
 static int xoff = 0;
 static int yoff = 0;
+
+// Physical touchscreen calibration constants (XPT2046)
+// These are hardware properties - adjusted based on actual touch testing
+static const uint16_t raw_x_min = 210;  // Adjusted from 200
+static const uint16_t raw_x_range = 3600;  // Adjusted from 3700
+static const uint16_t raw_y_min = 260;  // Adjusted from 200
+static const uint16_t raw_y_range = 3600;  // Adjusted from 3700
 
 // Touchscreen configuration - uses GPIO bit-banging like witnessmenow
 #define TOUCH_MOSI        32
@@ -160,6 +168,8 @@ bool touchscreen_is_available(void) {
 
 bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
     static int poll_count = 0;
+    static uint16_t last_raw_x = 0;
+    static uint16_t last_raw_y = 0;
 
     if (!touchscreen_initialized) {
         ESP_LOGW(TAG, "Touchscreen not initialized!");
@@ -181,30 +191,68 @@ bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
     uint16_t raw_x = xpt2046_read_avg(XPT2046_CMD_X);
     uint16_t raw_y = xpt2046_read_avg(XPT2046_CMD_Y);
 
+    // Store raw values for debugging
+    last_raw_x = raw_x;
+    last_raw_y = raw_y;
+
     ESP_LOGI(TAG, "Touch: raw_x=%d, raw_y=%d", raw_x, raw_y);
 
     // Filter out invalid readings (but allow 0 for Y near top)
-    if (raw_x < 200 || raw_x > 3900 || raw_y > 3900) {
+    if (raw_x < raw_x_min || raw_x > (raw_x_min + raw_x_range + 200) ||
+        raw_y > (raw_y_min + raw_y_range + 200)) {
         return false;
     }
 
-    // Map raw values to screen coordinates (base orientation: portrait 320x240)
-    // XPT2046 on CYD2USB: X: 200-3900 -> 0-320, Y: 200-3900 -> 0-240
-    int base_x = (raw_x - 200) * 320 / 3700;
-    int base_y = (raw_y - 200) * 240 / 3700;
-
-    // Clamp to base screen bounds
-    if (base_x > 320) base_x = 320;
-    if (base_y > 240) base_y = 240;
-
-    // Apply rotation transformation so touch coordinates match current display orientation
+    // Get current rotation and screen dimensions for empirical calibration
     int rotation = display_get_rotation();
-    transform_touch_coordinates(&base_x, &base_y, rotation);
-    *x = (uint16_t)base_x;
-    *y = (uint16_t)base_y;
+    int screen_width = display_get_width();
+    int screen_height = display_get_height();
+
+    int screen_x, screen_y;
+
+    switch (rotation) {
+        case 0: // Portrait - baseline transformation
+            screen_x = (raw_x - raw_x_min) * screen_width / raw_x_range;
+            screen_y = (raw_y - raw_y_min) * screen_height / raw_y_range;
+            break;
+        case 1: // Landscape 90° - baseline for calibration
+            screen_x = (raw_x - raw_x_min) * screen_width / raw_x_range;
+            screen_y = (raw_y - raw_y_min) * screen_height / raw_y_range;
+            break;
+        case 2: // Portrait 180° - axes swapped, Y inverted
+            screen_x = (raw_y - raw_y_min) * screen_width / raw_y_range;
+            screen_y = (screen_height - 1) - ((raw_x - raw_x_min) * screen_height / raw_x_range);
+            break;
+        case 3: // Landscape 270° - both axes inverted
+            screen_x = (screen_width - 1) - ((raw_x - raw_x_min) * screen_width / raw_x_range);
+            screen_y = (screen_height - 1) - ((raw_y - raw_y_min) * screen_height / raw_y_range);
+            break;
+        default:
+            // Default to simple mapping for unknown rotations
+            screen_x = (raw_x - raw_x_min) * screen_width / raw_x_range;
+            screen_y = (raw_y - raw_y_min) * screen_height / raw_y_range;
+            break;
+    }
+
+    // Clamp to screen bounds
+    if (screen_x < 0) screen_x = 0;
+    if (screen_x >= screen_width) screen_x = screen_width - 1;
+    if (screen_y < 0) screen_y = 0;
+    if (screen_y >= screen_height) screen_y = screen_height - 1;
+
+    *x = (uint16_t)screen_x;
+    *y = (uint16_t)screen_y;
 
     ESP_LOGI(TAG, "Touch: raw_x=%d, raw_y=%d, screen_x=%d, screen_y=%d (rotation=%d)",
              raw_x, raw_y, *x, *y, rotation);
 
     return true;
+}
+
+// Get last raw touch values for calibration/debugging
+void touchscreen_get_raw_values(uint16_t *raw_x, uint16_t *raw_y) {
+    extern uint16_t last_raw_x;
+    extern uint16_t last_raw_y;
+    if (raw_x) *raw_x = last_raw_x;
+    if (raw_y) *raw_y = last_raw_y;
 }

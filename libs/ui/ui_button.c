@@ -3,6 +3,7 @@
 #include "hardware.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 ui_button_t* ui_button_create(int x, int y, int width, int height, const char *text) {
     ui_button_t *button = (ui_button_t*)malloc(sizeof(ui_button_t));
@@ -110,9 +111,24 @@ bool ui_button_handle_touch(ui_button_t *button, const event_t *event) {
     int touch_col = event->touch.x / char_width;
     int touch_row = event->touch.y / char_height;
 
+    // Debug logging - show conversion details
+    printf("Button touch conversion:\n");
+    printf("  Pixel coords: (%d, %d)\n", event->touch.x, event->touch.y);
+    printf("  Char dimensions: %dx%d pixels\n", char_width, char_height);
+    printf("  Char calculation: %d/%d=%d, %d/%d=%d\n",
+           event->touch.x, char_width, touch_col,
+           event->touch.y, char_height, touch_row);
+    printf("  Button bounds: x=%d, y=%d, w=%d, h=%d\n",
+           button->x, button->y, button->width, button->height);
+    printf("  Hit test: %d>=%d && %d<%d && %d>=%d && %d<%d\n",
+           touch_col, button->x, touch_col, button->x + button->width,
+           touch_row, button->y, touch_row, button->y + button->height);
+
     // Check if touch is within button bounds (using character coordinates)
     if (touch_col >= button->x && touch_col < button->x + button->width &&
         touch_row >= button->y && touch_row < button->y + button->height) {
+
+        printf("Button HIT! Triggering callback\n");
 
         // Trigger callback
         if (button->on_click) {
@@ -121,6 +137,7 @@ bool ui_button_handle_touch(ui_button_t *button, const event_t *event) {
         return true;
     }
 
+    printf("Button MISS - touch outside bounds\n");
     return false;
 }
 

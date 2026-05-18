@@ -69,6 +69,9 @@ bool text_mode_set_font(font_id_t font);
 // Apply user's configured font from settings (call after settings system is ready)
 bool text_mode_apply_configured_font(void);
 
+// Recalculate grid for rotation changes (preserves current font)
+void text_mode_reinit_grid(void);
+
 // Runtime grid queries (use these instead of TEXT_MODE_COLS/ROWS for font-aware code)
 int text_mode_get_cols(void);
 int text_mode_get_rows(void);

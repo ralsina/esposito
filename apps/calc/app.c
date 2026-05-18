@@ -329,24 +329,13 @@ void app_init(app_context_t *ctx) {
 
 void app_event(app_context_t *ctx, event_t *event) {
     if (event->type == EVENT_TOUCH) {
-        // Get current font dimensions
-        int char_width = text_mode_get_char_width();
-        int char_height = text_mode_get_char_height();
+        // UI widgets handle pixel-to-character conversion internally
+        // Pass the original pixel coordinates directly
 
-        // Convert pixel coordinates to character coordinates
-        int x_col = event->touch.x / char_width;
-        int y_col = event->touch.y / char_height;
-
-        // Create a modified touch event with character coordinates
-        event_t char_event = *event;
-        char_event.touch.x = x_col;
-        char_event.touch.y = y_col;
-
-        printf("Touch at pixels x=%d, y=%d -> chars x=%d, y=%d (font: %dx%d)\n",
-               event->touch.x, event->touch.y, x_col, y_col, char_width, char_height);
+        printf("Touch at pixels x=%d, y=%d\n", event->touch.x, event->touch.y);
 
         for (int i = 0; i < button_count; i++) {
-            if (ui_button_handle_touch(buttons[i], &char_event)) {
+            if (ui_button_handle_touch(buttons[i], event)) {
                 printf("Button %d clicked\n", i);
                 break; // Button handled the event
             }

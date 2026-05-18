@@ -35,7 +35,6 @@ static const os_symtab_entry_t symtab[] = {
     {"display_set_rotation",         display_set_rotation},
     {"display_get_rotation",         display_get_rotation},
     {"display_apply_saved_rotation", display_apply_saved_rotation},
-    {"transform_touch_coordinates",  transform_touch_coordinates},
     {"keyboard_read_event",          keyboard_read_event},
     {"checkpoint_save_string",  checkpoint_save_string},
     {"checkpoint_load_string",  checkpoint_load_string},

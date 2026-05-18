@@ -1,6 +1,6 @@
 #include "text_mode.h"
 #include "hardware.h"
-#include "lovgfx_config.h"
+#include "hardware_config.h"
 #include "fonts.h"
 #include "sd_card.h"
 #include "esp_log.h"
@@ -402,9 +402,11 @@ bool text_mode_set_font(font_id_t font) {
     // Update display layer font dimensions too
     display_set_font(font_table[font].font_ptr);
 
-    // Recalculate grid dimensions for new font
-    int new_cols = 320 / font_width;
-    int new_rows = 240 / font_height;
+    // Recalculate grid dimensions for new font (uses current display dimensions)
+    const int display_width = display_get_width();
+    const int display_height = display_get_height();
+    int new_cols = display_width / font_width;
+    int new_rows = display_height / font_height;
 
     ESP_LOGI(TAG, "Grid dimensions: %dx%d -> %dx%d", grid_cols, grid_rows, new_cols, new_rows);
 
@@ -438,6 +440,51 @@ bool text_mode_set_font(font_id_t font) {
     ESP_LOGI(TAG, "Font changed to %s (%dx%d grid)",
              font_table[font].name, grid_cols, grid_rows);
     return true;
+}
+
+void text_mode_reinit_grid(void) {
+    if (!initialized) {
+        ESP_LOGW(TAG, "Cannot reinit grid: text mode not initialized");
+        return;
+    }
+
+    // Recalculate grid dimensions based on current display dimensions (respects rotation)
+    const int display_width = display_get_width();
+    const int display_height = display_get_height();
+
+    ESP_LOGI(TAG, "text_mode_reinit_grid: display dims %dx%d, font %dx%d",
+             display_width, display_height, font_width, font_height);
+
+    int new_cols = display_width / font_width;
+    int new_rows = display_height / font_height;
+
+    ESP_LOGI(TAG, "Grid reinit for rotation: %dx%d -> %dx%d", grid_cols, grid_rows, new_cols, new_rows);
+
+    // Update grid dimensions
+    grid_cols = new_cols;
+    grid_rows = new_rows;
+
+    // Clear and reset grid
+    for (int y = 0; y < grid_rows; y++) {
+        for (int x = 0; x < grid_cols; x++) {
+            int idx = y * 80 + x;  // Use max columns for indexing
+            if (idx < 3200) {  // Safety check
+                grid[idx].character = ' ';
+                grid[idx].color = TEXT_COLOR_WHITE;
+                grid[idx].bg_color = TEXT_COLOR_BLACK;
+                grid[idx].attributes = TEXT_ATTR_NORMAL;
+            }
+        }
+    }
+
+    // Reset cursor position
+    cursor_x = 0;
+    cursor_y = 0;
+
+    // Clear the screen
+    display_clear(color_palette[TEXT_COLOR_BLACK]);
+
+    ESP_LOGI(TAG, "Grid reinitialized to %dx%d for rotation", grid_cols, grid_rows);
 }
 
 void text_mode_clear(uint16_t color_idx) {

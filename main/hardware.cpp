@@ -18,6 +18,7 @@
 extern "C" {
 #include "sd_card.h"
 #include "os_core.h"
+#include "text_mode.h"
 }
 
 static const char *TAG = "hardware";
@@ -566,6 +567,9 @@ void display_set_rotation(int rotation) {
         if (display_initialized && display_tft) {
             display_tft->setRotation(rotation);
             ESP_LOGI(TAG, "Display rotation set to %d", rotation);
+
+            // Recalculate text mode grid for new dimensions
+            text_mode_reinit_grid();
         }
     }
 }

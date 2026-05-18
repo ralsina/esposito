@@ -238,19 +238,13 @@ static void handle_reading_touch(reader_state_t *state, const event_t *event, in
     int char_width = text_mode_get_char_width();
     int char_height = text_mode_get_char_height();
 
-    // Convert pixel coordinates to character coordinates for button widgets
-    int x_col = event->touch.x / char_width;
-    int y_col = event->touch.y / char_height;
-
-    // Create a modified touch event with character coordinates
-    event_t char_event = *event;
-    char_event.touch.x = x_col;
-    char_event.touch.y = y_col;
+    // UI widgets handle pixel-to-character conversion internally
+    // Pass the original pixel coordinates directly
 
     // Check header buttons first (in row 0)
-    if (y_col == 0) {
-        if (state->btn_jump && ui_button_handle_touch(state->btn_jump, &char_event)) return;
-        if (state->btn_back && ui_button_handle_touch(state->btn_back, &char_event)) return;
+    if (event->touch.y < char_height) {
+        if (state->btn_jump && ui_button_handle_touch(state->btn_jump, event)) return;
+        if (state->btn_back && ui_button_handle_touch(state->btn_back, event)) return;
     }
 
     // Page navigation touch zones
@@ -381,25 +375,19 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
         int char_width = text_mode_get_char_width();
         int char_height = text_mode_get_char_height();
 
-        // Convert pixel coordinates to character coordinates for widgets
-        int x_col = event->touch.x / char_width;
-        int y_col = event->touch.y / char_height;
-
-        // Create a modified touch event with character coordinates
-        event_t char_event = *event;
-        char_event.touch.x = x_col;
-        char_event.touch.y = y_col;
+        // UI widgets handle pixel-to-character conversion internally
+        // Pass the original pixel coordinates directly
 
         // Try list widget first for TOC mode
         if (state->mode == MODE_TOC && state->toc_list &&
-            ui_list_handle_touch(state->toc_list, &char_event)) {
+            ui_list_handle_touch(state->toc_list, event)) {
             return; // List widget handled the touch
         }
 
         // Check button area first for file list mode (buttons are at bottom)
         if (state->mode == MODE_FILE_LIST) {
             // Check exit button separately (needs launch_app_list)
-            if (state->btn_exit && ui_button_handle_touch(state->btn_exit, &char_event)) {
+            if (state->btn_exit && ui_button_handle_touch(state->btn_exit, event)) {
                 // Exit button was pressed - launch app list
                 reader_close_current_file(state);
                 config_set_string(KEY_LAST_FILE, "");
@@ -410,14 +398,14 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
             }
 
             // Check other buttons
-            if (state->btn_up && ui_button_handle_touch(state->btn_up, &char_event)) return;
-            if (state->btn_open && ui_button_handle_touch(state->btn_open, &char_event)) return;
-            if (state->btn_down && ui_button_handle_touch(state->btn_down, &char_event)) return;
+            if (state->btn_up && ui_button_handle_touch(state->btn_up, event)) return;
+            if (state->btn_open && ui_button_handle_touch(state->btn_open, event)) return;
+            if (state->btn_down && ui_button_handle_touch(state->btn_down, event)) return;
         }
 
         // Try list widget for file list mode (only if buttons didn't handle it)
         if (state->mode == MODE_FILE_LIST && state->file_list &&
-            ui_list_handle_touch(state->file_list, &char_event)) {
+            ui_list_handle_touch(state->file_list, event)) {
             // Check if we switched to reading mode (book was opened)
             if (state->mode == MODE_READING) {
                 return; // Don't redraw file list, we're now in reading mode
@@ -430,7 +418,7 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
 
         // Check exit button separately for file list mode (needs launch_app_list)
         if (state->mode == MODE_FILE_LIST && state->btn_exit &&
-            ui_button_handle_touch(state->btn_exit, &char_event)) {
+            ui_button_handle_touch(state->btn_exit, event)) {
             // Exit button was pressed - launch app list
             reader_close_current_file(state);
             config_set_string(KEY_LAST_FILE, "");
@@ -441,10 +429,10 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
         }
 
         // Try button widgets with character coordinates
-        if (state->btn_up && ui_button_handle_touch(state->btn_up, &char_event)) return;
-        if (state->btn_open && ui_button_handle_touch(state->btn_open, &char_event)) return;
-        if (state->btn_down && ui_button_handle_touch(state->btn_down, &char_event)) return;
-        if (state->mode == MODE_TOC && state->btn_exit && ui_button_handle_touch(state->btn_exit, &char_event)) return;
+        if (state->btn_up && ui_button_handle_touch(state->btn_up, event)) return;
+        if (state->btn_open && ui_button_handle_touch(state->btn_open, event)) return;
+        if (state->btn_down && ui_button_handle_touch(state->btn_down, event)) return;
+        if (state->mode == MODE_TOC && state->btn_exit && ui_button_handle_touch(state->btn_exit, event)) return;
         return;
     }
 }

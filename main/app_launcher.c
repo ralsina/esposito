@@ -141,16 +141,24 @@ static void app_launcher_show_static(void) {
     if (!btn_up || !btn_open || !btn_down) {
         int btn_h = 3;  // 3 rows tall
         int btn_row = rows - btn_h - 1;  // Position at bottom
-        int btn_w = 13;
-        int gap = 2;
 
-        // Calculate total width and center the buttons
-        int total_width = (btn_w * 3) + (gap * 2);
-        int start_x = (cols - total_width) / 2;
+        // Calculate button layout based on actual screen width
+        int button_count = 3;
+        int total_gap = 2 * (button_count - 1);  // 2 columns gap between each button
+        int available_width = cols - 4;  // 2 columns margin on each side
+        int btn_w = (available_width - total_gap) / button_count;
+
+        // Ensure minimum button width
+        if (btn_w < 8) btn_w = 8;
+
+        // Center the button group on screen
+        int total_button_width = (btn_w * button_count) + total_gap;
+        int start_x = (cols - total_button_width) / 2;
+        if (start_x < 1) start_x = 1;
 
         int btn_up_x = start_x;
-        int btn_open_x = btn_up_x + btn_w + gap;
-        int btn_down_x = btn_open_x + btn_w + gap;
+        int btn_open_x = btn_up_x + btn_w + 2;  // 2 columns gap
+        int btn_down_x = btn_open_x + btn_w + 2;
 
         btn_up = ui_button_create(btn_up_x, btn_row, btn_w, btn_h, "  UP  ");
         ui_button_set_callback(btn_up, on_launcher_up_click, NULL);
@@ -161,21 +169,32 @@ static void app_launcher_show_static(void) {
         btn_down = ui_button_create(btn_down_x, btn_row, btn_w, btn_h, " DOWN ");
         ui_button_set_callback(btn_down, on_launcher_down_click, NULL);
     } else {
-        // Update button positions if screen size changed (e.g., font change)
+        // Update button positions if screen size changed (e.g., font change or rotation)
         int btn_h = 3;
         int btn_row = rows - btn_h - 1;
-        int btn_w = 13;
-        int gap = 2;
 
-        int total_width = (btn_w * 3) + (gap * 2);
-        int start_x = (cols - total_width) / 2;
+        // Calculate button layout based on actual screen width
+        int button_count = 3;
+        int total_gap = 2 * (button_count - 1);
+        int available_width = cols - 4;
+        int btn_w = (available_width - total_gap) / button_count;
+        if (btn_w < 8) btn_w = 8;
+
+        int total_button_width = (btn_w * button_count) + total_gap;
+        int start_x = (cols - total_button_width) / 2;
+        if (start_x < 1) start_x = 1;
 
         btn_up->x = start_x;
         btn_up->y = btn_row;
-        btn_open->x = start_x + btn_w + gap;
+        btn_up->width = btn_w;
+
+        btn_open->x = start_x + btn_w + 2;
         btn_open->y = btn_row;
-        btn_down->x = start_x + (btn_w + gap) * 2;
+        btn_open->width = btn_w;
+
+        btn_down->x = start_x + (btn_w + 2) * 2;
         btn_down->y = btn_row;
+        btn_down->width = btn_w;
     }
 
     // Draw buttons
@@ -307,25 +326,17 @@ void app_launcher_handle_event(event_t *event) {
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         app_launcher_handle_key(event->keyboard.key);
     } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
-        // Convert pixel coordinates to character coordinates
-        int cw = text_mode_get_char_width();
-        int ch = text_mode_get_char_height();
-        int x_col = event->touch.x / cw;
-        int y_col = event->touch.y / ch;
-
-        // Create a modified touch event with character coordinates
-        event_t char_event = *event;
-        char_event.touch.x = x_col;
-        char_event.touch.y = y_col;
+        // UI widgets handle pixel-to-character conversion internally
+        // Pass the original pixel coordinates directly
 
         // Try list widget first
-        if (app_list && ui_list_handle_touch(app_list, &char_event)) {
+        if (app_list && ui_list_handle_touch(app_list, event)) {
             return; // List widget handled the touch
         }
 
         // Try button widgets
-        if (btn_up && ui_button_handle_touch(btn_up, &char_event)) return;
-        if (btn_open && ui_button_handle_touch(btn_open, &char_event)) return;
-        if (btn_down && ui_button_handle_touch(btn_down, &char_event)) return;
+        if (btn_up && ui_button_handle_touch(btn_up, event)) return;
+        if (btn_open && ui_button_handle_touch(btn_open, event)) return;
+        if (btn_down && ui_button_handle_touch(btn_down, event)) return;
     }
 }

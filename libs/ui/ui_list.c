@@ -448,6 +448,11 @@ bool ui_list_handle_touch(ui_list_widget_t *widget, const event_t *event) {
         content_y = widget->y;
     }
 
+    // Adjust for title (takes an extra row)
+    if (widget->title && widget->draw_border) {
+        content_y = widget->y + 2; // Skip title row
+    }
+
     // Calculate which item was touched
     int item_offset = y_col - content_y;
     int touched_index = widget->scroll_offset + item_offset;
