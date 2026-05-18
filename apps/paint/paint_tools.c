@@ -28,7 +28,7 @@ static void preview_add_point(paint_state_t *state, int x, int y) {
     if (!state || !state->preview_points_x || !state->preview_points_y) {
         return;
     }
-    if (x < 0 || x >= PAINT_WIDTH || y < 0 || y >= PAINT_HEIGHT) {
+    if (x < 0 || x >= display_get_width() || y < 0 || y >= display_get_height()) {
         return;
     }
     if (state->preview_point_count >= PAINT_PREVIEW_MAX_POINTS) {
@@ -96,11 +96,11 @@ static void preview_draw_shape(paint_state_t *state) {
 }
 
 uint8_t paint_canvas_get(const paint_state_t *state, int x, int y) {
-    if (!state || !state->canvas || x < 0 || x >= PAINT_WIDTH || y < 0 || y >= PAINT_HEIGHT) {
+    if (!state || !state->canvas || x < 0 || x >= display_get_width() || y < 0 || y >= display_get_height()) {
         return 0;
     }
 
-    int index = y * PAINT_WIDTH + x;
+    int index = y * display_get_width() + x;
     int byte_index = index >> 1;
     uint8_t value = state->canvas[byte_index];
     if ((index & 1) == 0) {
@@ -110,11 +110,11 @@ uint8_t paint_canvas_get(const paint_state_t *state, int x, int y) {
 }
 
 void paint_canvas_set(paint_state_t *state, int x, int y, uint8_t color) {
-    if (!state || !state->canvas || x < 0 || x >= PAINT_WIDTH || y < 0 || y >= PAINT_HEIGHT) {
+    if (!state || !state->canvas || x < 0 || x >= display_get_width() || y < 0 || y >= display_get_height()) {
         return;
     }
 
-    int index = y * PAINT_WIDTH + x;
+    int index = y * display_get_width() + x;
     int byte_index = index >> 1;
     uint8_t value = state->canvas[byte_index];
     color &= 0x0F;
@@ -134,14 +134,14 @@ void paint_canvas_clear(paint_state_t *state, uint8_t color) {
     }
 
     color &= 0x0F;
-    memset(state->canvas, (uint8_t)((color << 4) | color), PAINT_CANVAS_BYTES);
+    memset(state->canvas, (uint8_t)((color << 4) | color), paint_get_canvas_bytes());
 }
 
 void paint_canvas_snapshot_undo(paint_state_t *state) {
     if (!state || !state->canvas || !state->undo) {
         return;
     }
-    memcpy(state->undo, state->canvas, PAINT_CANVAS_BYTES);
+    memcpy(state->undo, state->canvas, paint_get_canvas_bytes());
     state->has_undo = true;
 }
 
@@ -149,7 +149,7 @@ void paint_canvas_restore_undo(paint_state_t *state) {
     if (!state || !state->canvas || !state->undo || !state->has_undo) {
         return;
     }
-    memcpy(state->canvas, state->undo, PAINT_CANVAS_BYTES);
+    memcpy(state->canvas, state->undo, paint_get_canvas_bytes());
     state->has_undo = false;
 }
 
@@ -305,7 +305,7 @@ static void handle_toolbar_touch(paint_state_t *state, int x, void (*launch_app_
 }
 
 static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed) {
-    if (x < 0 || x >= PAINT_WIDTH || y < 0 || y >= PAINT_HEIGHT) {
+    if (x < 0 || x >= display_get_width() || y < 0 || y >= display_get_height()) {
         if (!pressed) {
             preview_restore_previous(state);
             state->preview_active = false;
@@ -383,7 +383,7 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
     }
 
     if (state->shape_pending) {
-        if (x >= 0 && x < PAINT_WIDTH && y >= 0 && y < PAINT_HEIGHT) {
+        if (x >= 0 && x < display_get_width() && y >= 0 && y < display_get_height()) {
             preview_restore_previous(state);
             state->preview_x = x;
             state->preview_y = y;
@@ -422,8 +422,8 @@ void paint_tools_handle_touch(paint_state_t *state, int x, int y, bool pressed, 
         return;
     }
 
-    if (y >= PAINT_HEIGHT - PAINT_PALETTE_H) {
-        int swatch_w = PAINT_WIDTH / PAINT_COLORS;
+    if (y >= display_get_height() - PAINT_PALETTE_H) {
+        int swatch_w = display_get_width() / PAINT_COLORS;
         int selected = x / swatch_w;
         if (selected < 0) {
             selected = 0;

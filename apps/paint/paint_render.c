@@ -18,8 +18,8 @@ uint16_t paint_palette_rgb565(uint8_t index) {
 static void paint_draw_button(int index, const char *label, bool active, uint16_t color) {
     int x = index * PAINT_BUTTON_W;
     int w = PAINT_BUTTON_W;
-    if (x + w > PAINT_WIDTH) {
-        w = PAINT_WIDTH - x;
+    if (x + w > display_get_width()) {
+        w = display_get_width() - x;
     }
 
     uint16_t bg = active ? 0xFFFF : color;
@@ -43,11 +43,11 @@ void paint_render_ui(const paint_state_t *state) {
 
     paint_render_preview_line(state);
 
-    int swatch_w = PAINT_WIDTH / PAINT_COLORS;
-    int y = PAINT_HEIGHT - PAINT_PALETTE_H;
+    int swatch_w = display_get_width() / PAINT_COLORS;
+    int y = display_get_height() - PAINT_PALETTE_H;
     for (int color = 0; color < PAINT_COLORS; color++) {
         int x = color * swatch_w;
-        int width = (color == PAINT_COLORS - 1) ? (PAINT_WIDTH - x) : swatch_w;
+        int width = (color == PAINT_COLORS - 1) ? (display_get_width() - x) : swatch_w;
         uint16_t rgb = paint_palette[color];
         display_fill_rect(x, y, width, PAINT_PALETTE_H, rgb);
 
@@ -61,13 +61,13 @@ void paint_render_ui(const paint_state_t *state) {
     }
 
     if (state->status[0]) {
-        display_fill_rect(0, PAINT_TOP_BAR_H, PAINT_WIDTH, 10, 0x0000);
+        display_fill_rect(0, PAINT_TOP_BAR_H, display_get_width(), 10, 0x0000);
         display_draw_text(2, PAINT_TOP_BAR_H + 1, state->status, 0xFFFF);
     }
 }
 
 void paint_render_pixel(const paint_state_t *state, int x, int y) {
-    if (x < 0 || x >= PAINT_WIDTH || y < 0 || y >= PAINT_HEIGHT) {
+    if (x < 0 || x >= display_get_width() || y < 0 || y >= display_get_height()) {
         return;
     }
 
@@ -83,7 +83,7 @@ static void draw_preview_line_on_display(int x0, int y0, int x1, int y1, uint16_
     int err = dx + dy;
 
     for (;;) {
-        if (x0 >= 0 && x0 < PAINT_WIDTH && y0 >= 0 && y0 < PAINT_HEIGHT) {
+        if (x0 >= 0 && x0 < display_get_width() && y0 >= 0 && y0 < display_get_height()) {
             display_draw_pixel(x0, y0, color);
         }
         if (x0 == x1 && y0 == y1) {
@@ -113,21 +113,21 @@ void paint_render_preview_line(const paint_state_t *state) {
             int bottom = (state->shape_start_y > state->preview_y) ? state->shape_start_y : state->preview_y;
 
             for (int x = left; x <= right; x++) {
-                if (x >= 0 && x < PAINT_WIDTH) {
-                    if (top >= 0 && top < PAINT_HEIGHT) {
+                if (x >= 0 && x < display_get_width()) {
+                    if (top >= 0 && top < display_get_height()) {
                         display_draw_pixel(x, top, 0xFFFF);
                     }
-                    if (bottom >= 0 && bottom < PAINT_HEIGHT) {
+                    if (bottom >= 0 && bottom < display_get_height()) {
                         display_draw_pixel(x, bottom, 0xFFFF);
                     }
                 }
             }
             for (int y = top; y <= bottom; y++) {
-                if (y >= 0 && y < PAINT_HEIGHT) {
-                    if (left >= 0 && left < PAINT_WIDTH) {
+                if (y >= 0 && y < display_get_height()) {
+                    if (left >= 0 && left < display_get_width()) {
                         display_draw_pixel(left, y, 0xFFFF);
                     }
-                    if (right >= 0 && right < PAINT_WIDTH) {
+                    if (right >= 0 && right < display_get_width()) {
                         display_draw_pixel(right, y, 0xFFFF);
                     }
                 }
@@ -138,10 +138,10 @@ void paint_render_preview_line(const paint_state_t *state) {
 
 void paint_render_canvas(const paint_state_t *state) {
     int canvas_start_y = PAINT_TOP_BAR_H;
-    int canvas_end_y = PAINT_HEIGHT - PAINT_PALETTE_H;
+    int canvas_end_y = display_get_height() - PAINT_PALETTE_H;
     
     for (int y = canvas_start_y; y < canvas_end_y; y++) {
-        for (int x = 0; x < PAINT_WIDTH; x++) {
+        for (int x = 0; x < display_get_width(); x++) {
             uint8_t color = paint_canvas_get(state, x, y);
             display_draw_pixel(x, y, paint_palette_rgb565(color));
         }
@@ -149,8 +149,8 @@ void paint_render_canvas(const paint_state_t *state) {
 }
 
 void paint_render_all(const paint_state_t *state) {
-    for (int y = 0; y < PAINT_HEIGHT; y++) {
-        for (int x = 0; x < PAINT_WIDTH; x++) {
+    for (int y = 0; y < display_get_height(); y++) {
+        for (int x = 0; x < display_get_width(); x++) {
             uint8_t color = paint_canvas_get(state, x, y);
             display_draw_pixel(x, y, paint_palette_rgb565(color));
         }

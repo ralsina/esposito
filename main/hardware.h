@@ -38,6 +38,10 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color);
 bool display_save_screenshot_ppm(const char *path);
 
+// Screen dimension functions
+int display_get_width(void);
+int display_get_height(void);
+
 // Keyboard functions
 bool keyboard_init(void);
 void keyboard_deinit(void);

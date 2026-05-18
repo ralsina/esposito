@@ -267,7 +267,7 @@ void app_close(app_context_t *ctx) {
     os_log(TAG, "Terminado closing");
     save_terminal_config();
     serial_deinit();
-    display_fill_rect(0, 0, 320, 240, 0x0000);
+    display_fill_rect(0, 0, display_get_width(), display_get_height(), 0x0000);
 }
 
 void app_event(app_context_t *ctx, event_t *event) {

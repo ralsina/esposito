@@ -19,8 +19,9 @@ void app_init(app_context_t *ctx) {
 
     memset(&state, 0, sizeof(state));
 
-    state.canvas = (uint8_t *)malloc(PAINT_CANVAS_BYTES);
-    state.undo = (uint8_t *)malloc(PAINT_CANVAS_BYTES);
+    int canvas_bytes = paint_get_canvas_bytes();
+    state.canvas = (uint8_t *)malloc(canvas_bytes);
+    state.undo = (uint8_t *)malloc(canvas_bytes);
     state.preview_points_x = (int16_t *)malloc(sizeof(int16_t) * PAINT_PREVIEW_MAX_POINTS);
     state.preview_points_y = (int16_t *)malloc(sizeof(int16_t) * PAINT_PREVIEW_MAX_POINTS);
     state.current_color = 15;

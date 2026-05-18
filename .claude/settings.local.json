@@ -42,7 +42,14 @@
       "Bash(cp /home/ralsina/code/esposito/apps/basic_temp/inc/*.h /home/ralsina/code/esposito/apps/basic/)",
       "Bash(xargs basename *)",
       "Bash(xtensa-esp32-elf-gcc --print-search-dirs)",
-      "Bash(gcc -x c - - -lm)"
+      "Bash(gcc -x c - - -lm)",
+      "Bash(make test *)",
+      "Bash(curl -sO https://raw.githubusercontent.com/olssonm/numbers/master/numbers.ino)",
+      "Bash(xtensa-esp32-elf-gcc -I libs/arduboy -E -)",
+      "Bash(xtensa-esp32-elf-gcc -E -)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Arduboy/Arduboy/master/src/core/ArduboyFont.cpp\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/Arduboy/Arduboy2/master/src/core/ArduboyFont.cpp\")",
+      "Bash(grep -E '\\\\.\\(sh|py|c\\)$')"
     ]
   }
 }

@@ -4,184 +4,81 @@
 
 FIRMWARE_ELF="${1:-build/esposito.elf}"
 OUTPUT_LD="${2:-build/os_symbols.ld}"
+SYMTAB_C="${3:-main/os_symtab.c}"
 
 if [ ! -f "$FIRMWARE_ELF" ]; then
     echo "Error: firmware ELF not found: $FIRMWARE_ELF"
-    echo "Usage: $0 [firmware_elf] [output_ld]"
+    echo "Usage: $0 [firmware_elf] [output_ld] [symtab_c]"
     exit 1
 fi
 
 TOOLCHAIN_PREFIX="${TOOLCHAIN_PREFIX:-xtensa-esp32-elf}"
 
-# Symbols that apps can import from the OS
-# These match the entries in main/os_symtab.c
-SYMBOLS=(
-    display_clear
-    display_draw_text
-    display_draw_text_bg
-    display_draw_pixel
-    display_fill_rect
-    display_draw_char_at
-    display_measure_scaled_text
-    display_draw_scaled_text_bg
-    display_get_jpg_size
-    display_draw_jpg_fit
-    keyboard_read_event
-    checkpoint_save_string
-    checkpoint_load_string
-    checkpoint_save_int
-    checkpoint_load_int
-    checkpoint_save
-    checkpoint_open
-    checkpoint_close
-    os_load_app
-    os_open_app_with_file
-    os_consume_startup_file
-    os_get_time_status
-    os_time_is_synchronized
-    os_time_last_sync
-    os_http_get
-    os_settings_get_string
-    os_settings_set_string
-    os_settings_get_int
-    os_settings_set_int
-    os_settings_get_bool
-    os_settings_set_bool
-    os_get_current_app
-    app_launcher_start
-    text_mode_init
-    text_mode_init_ex
-    text_mode_set_font
-    text_mode_get_cols
-    text_mode_get_rows
-    text_mode_get_char_width
-    text_mode_get_char_height
-    text_mode_get_font
-    text_mode_clear
-    text_mode_print_at
-    text_mode_print_at_color
-    text_mode_printf_at
-    text_mode_printf_at_color
-    text_mode_print_at_attr
-    text_mode_printf_at_attr
-    text_mode_print_at_attr_bg
-    text_mode_printf_at_attr_bg
-    text_mode_get_cursor
-    text_mode_set_cursor
-    text_mode_save
-    text_mode_restore
-    text_mode_flush
-    text_mode_set_font
-    text_mode_apply_configured_font
-    printf
-    puts
-    sprintf
-    snprintf
-    memset
-    memcpy
-    memmove
-    strlen
-    strcmp
-    strncmp
-    strcpy
-    strncpy
-    strcat
-    strchr
-    strrchr
-    strstr
-    malloc:app_malloc
-    calloc:app_calloc
-    realloc:app_realloc
-    free:app_free
-    atoi
-    atol
-    atof
-    abs
-    opendir
-    readdir
-    closedir
-    stat
-    mkdir
-    os_log
-    terminal_mode_default
-    terminal_mode_init
-    terminal_mode_init_ex
-    terminal_mode_reset
-    terminal_mode_set_write_callback
-    terminal_mode_set_title_callback
-    terminal_mode_process_bytes
-    terminal_mode_handle_key
-    terminal_mode_set_status
-    terminal_mode_render
-    terminal_mode_cols
-    terminal_mode_rows
-    terminal_mode_normalize_key
-    serial_init
-    serial_deinit
-    serial_write
-    serial_log_output_set_enabled
-    serial_log_output_is_enabled
-    wifi_init
-    wifi_is_connected
-    wifi_get_ip
-    wifi_scan
-    wifi_scan_get_ssid
-    wifi_scan_get_rssi
-    wifi_connect
-    wifi_disconnect
-    wifi_save_config
-    font_table
-    font_lookup_by_name
-    fopen
-    fread
-    fwrite
-    fclose
-    fseek
-    ftell
-    fgets
-    rename
-    remove
-    config_open_read
-    config_open_write
-    config_exists
-    config_delete
-    config_read_all_alloc
-    config_free
-    config_get_int
-    config_get_float
-    config_get_bool
-    config_get_string
-    config_set_int
-    config_set_float
-    config_set_bool
-    config_set_string
-    config_bind_app
-    config_unbind_app
-    os_unload_app
-    fputc
-    time
-    app_manifest_read
-    app_manifest_get_display_name
-    app_manifest_find_apps_for_ext
-    sinf cosf tanf asinf acosf atanf atan2f
-    sinhf coshf tanhf expf logf log10f powf sqrtf
-    ceilf floorf fabsf fmodf modff frexpf ldexpf
-    sin cos tan asin acos atan atan2
-    sinh cosh tanh exp log log10 pow sqrt
-    ceil floor fabs fmod modf frexp ldexp
-    strtof strtod strto
-    isnan isinf
-    rand srand
-    sscanf vsscanf vsnprintf
-    __extendsfdf2 __truncdfsf2 __fixsfdi __fixunssfdi __floatdisf __floatsidf
-    __adddf3 __subdf3 __muldf3 __divdf3
-    __addsf3 __subsf3 __mulsf3 __divsf3
-    __eqdf2 __nedf2 __gedf2 __gtdf2 __ledf2 __ltdf2
+# Extract symbols from os_symtab.c automatically
+# This parses lines like: {"symbol_name", symbol_function},
+SYMBOLS=()
+
+if [ -f "$SYMTAB_C" ]; then
+    echo "Extracting symbols from $SYMTAB_C..."
+    while IFS= read -r line; do
+        # Match lines with pattern: {"name", function},
+        if [[ "$line" =~ \{\"([^\"]+)\",\s*([^\}]+)\} ]]; then
+            symbol_name="${BASH_REMATCH[1]}"
+            symbol_function="${BASH_REMATCH[2]}"
+            # Clean up whitespace and trailing commas
+            symbol_function=$(echo "$symbol_function" | tr -d '[:space:],')
+            SYMBOLS+=("$symbol_name:$symbol_function")
+        fi
+    done < "$SYMTAB_C"
+
+    if [ ${#SYMBOLS[@]} -eq 0 ]; then
+        echo "Warning: No symbols found in $SYMTAB_C"
+    fi
+else
+    echo "Warning: $SYMTAB_C not found, no symbols extracted"
+fi
+
+# Additional compiler runtime functions for floating point operations
+# These are provided by the toolchain but not declared in headers
+COMPILER_RUNTIME_SYMS=(
+    __extendsfdf2
+    __truncdfsf2
+    __fixsfdi
+    __fixunssfdi
+    __floatdisf
+    __floatsidf
+    __adddf3
+    __subdf3
+    __muldf3
+    __divdf3
+    __addsf3
+    __subsf3
+    __mulsf3
+    __divsf3
+    __eqdf2
+    __nedf2
+    __gedf2
+    __gtdf2
+    __ledf2
+    __ltdf2
 )
+
+# Add compiler runtime symbols
+for sym in "${COMPILER_RUNTIME_SYMS[@]}"; do
+    SYMBOLS+=("$sym")
+done
 
 echo "/* Auto-generated OS symbol table for app linking */" > "$OUTPUT_LD"
 echo "/* Generated from: $FIRMWARE_ELF */" >> "$OUTPUT_LD"
+echo "/* Symbols extracted from: $SYMTAB_C */" >> "$OUTPUT_LD"
 echo "" >> "$OUTPUT_LD"
+
+if [ ${#SYMBOLS[@]} -eq 0 ]; then
+    echo "Error: No symbols to process. Check $SYMTAB_C"
+    exit 1
+fi
+
+echo "Processing ${#SYMBOLS[@]} symbols..."
 
 for sym_spec in "${SYMBOLS[@]}"; do
     export_name="$sym_spec"

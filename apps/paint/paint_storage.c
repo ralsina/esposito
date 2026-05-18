@@ -21,8 +21,8 @@ bool paint_storage_save(const paint_state_t *state, const char *path) {
     paint_file_header_t header;
     memcpy(header.magic, "PT16", 4);
     header.version = 1;
-    header.width = PAINT_WIDTH;
-    header.height = PAINT_HEIGHT;
+    header.width = display_get_width();
+    header.height = display_get_height();
     header.reserved = 0;
 
     size_t written = fwrite(&header, 1, sizeof(header), file);
@@ -31,9 +31,9 @@ bool paint_storage_save(const paint_state_t *state, const char *path) {
         return false;
     }
 
-    written = fwrite(state->canvas, 1, PAINT_CANVAS_BYTES, file);
+    written = fwrite(state->canvas, 1, paint_get_canvas_bytes(), file);
     fclose(file);
-    return written == PAINT_CANVAS_BYTES;
+    return written == paint_get_canvas_bytes();
 }
 
 bool paint_storage_load(paint_state_t *state, const char *path) {
@@ -51,13 +51,13 @@ bool paint_storage_load(paint_state_t *state, const char *path) {
 
     if (strncmp(header.magic, "PT16", 4) != 0 ||
         header.version != 1 ||
-        header.width != PAINT_WIDTH ||
-        header.height != PAINT_HEIGHT) {
+        header.width != display_get_width() ||
+        header.height != display_get_height()) {
         fclose(file);
         return false;
     }
 
-    read = fread(state->canvas, 1, PAINT_CANVAS_BYTES, file);
+    read = fread(state->canvas, 1, paint_get_canvas_bytes(), file);
     fclose(file);
-    return read == PAINT_CANVAS_BYTES;
+    return read == paint_get_canvas_bytes();
 }

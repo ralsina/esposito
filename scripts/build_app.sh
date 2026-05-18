@@ -145,6 +145,8 @@ $COMPILER \
     -nostdlib -nostartfiles \
     -ffreestanding \
     -mlongcalls \
+    -fsingle-precision-constant \
+    -Wdouble-promotion \
     -Wl,-q \
     -Wl,--emit-relocs \
     -T "$APP_LD" \

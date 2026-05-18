@@ -337,8 +337,8 @@ static void rebuild_layout_widgets(void) {
 
 static void build_font_list_items(void) {
     for (int index = 0; index < FONT_COUNT; index++) {
-        int cols = 320 / font_table[index].char_width;
-        int rows = 240 / font_table[index].char_height;
+        int cols = display_get_width() / font_table[index].char_width;
+        int rows = display_get_height() / font_table[index].char_height;
         snprintf(font_list_labels[index], sizeof(font_list_labels[index]),
                  "%s (%dx%d)", font_table[index].name, cols, rows);
         font_list_items[index] = font_list_labels[index];

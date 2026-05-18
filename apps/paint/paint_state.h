@@ -4,10 +4,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define PAINT_WIDTH 320
-#define PAINT_HEIGHT 240
+// Get screen dimensions from display API
+extern int display_get_width(void);
+extern int display_get_height(void);
+
+// Helper function to get canvas size dynamically
+static inline int paint_get_canvas_bytes(void) {
+    return (display_get_width() * display_get_height()) / 2;
+}
+
 #define PAINT_COLORS 16
-#define PAINT_CANVAS_BYTES ((PAINT_WIDTH * PAINT_HEIGHT) / 2)
 #define PAINT_TOP_BAR_H 18
 #define PAINT_PALETTE_H 20
 #define PAINT_BUTTON_W 35

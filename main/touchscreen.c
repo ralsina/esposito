@@ -10,8 +10,8 @@ static const char *TAG = "touchscreen";
 
 // Calibration factors (these need to be adjusted for your specific screen)
 // These are starting values - you may need to tweak them
-static float xfac = 1.0;
-static float yfac = 1.0;
+static float xfac = 1.0f;
+static float yfac = 1.0f;
 static int xoff = 0;
 static int yoff = 0;
 

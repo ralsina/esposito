@@ -30,6 +30,8 @@ static const os_symtab_entry_t symtab[] = {
     {"display_draw_scaled_text_bg", display_draw_scaled_text_bg},
     {"display_get_jpg_size",    display_get_jpg_size},
     {"display_draw_jpg_fit",    display_draw_jpg_fit},
+    {"display_get_width",       display_get_width},
+    {"display_get_height",      display_get_height},
     {"keyboard_read_event",     keyboard_read_event},
     {"checkpoint_save_string",  checkpoint_save_string},
     {"checkpoint_load_string",  checkpoint_load_string},

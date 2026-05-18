@@ -546,6 +546,14 @@ void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_
     }
 }
 
+int display_get_width(void) {
+    return SCREEN_WIDTH;
+}
+
+int display_get_height(void) {
+    return SCREEN_HEIGHT;
+}
+
 bool display_save_screenshot_ppm(const char *path) {
     if (!path || !display_initialized || !display_tft) return false;
     if (!sd_card_is_mounted()) return false;
