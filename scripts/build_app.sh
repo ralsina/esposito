@@ -146,7 +146,7 @@ $COMPILER \
     -ffreestanding \
     -mlongcalls \
     -fsingle-precision-constant \
-    -Wdouble-promotion \
+    -Wno-double-promotion \
     -Wl,-q \
     -Wl,--emit-relocs \
     -T "$APP_LD" \

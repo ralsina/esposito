@@ -257,10 +257,14 @@ static void update_cell(int x, int y) {
 }
 
 static bool init_grid(font_id_t font) {
+    // Get current display dimensions (respects rotation)
+    const int display_width = display_get_width();
+    const int display_height = display_get_height();
+
     // Calculate maximum grid dimensions (for smallest font: Tom Thumb 4x6)
-    const int max_cols = 320 / 4;  // 80 columns for 4px wide font
-    const int max_rows = 240 / 6;  // 40 rows for 6px tall font
-    const int max_cells = max_cols * max_rows;  // 3200 cells
+    const int max_cols = display_width / 4;  // e.g., 80 columns for 4px wide font
+    const int max_rows = display_height / 6;  // e.g., 40 rows for 6px tall font
+    const int max_cells = max_cols * max_rows;  // Up to 3200 cells
 
     // Free existing grid if present
     if (grid) {
@@ -273,9 +277,9 @@ static bool init_grid(font_id_t font) {
     font_width = font_table[font].char_width;
     font_height = font_table[font].char_height;
 
-    // Calculate actual grid dimensions for this font
-    grid_cols = 320 / font_width;
-    grid_rows = 240 / font_height;
+    // Calculate actual grid dimensions for this font using current display dimensions
+    grid_cols = display_width / font_width;
+    grid_rows = display_height / font_height;
 
     // Allocate for maximum size to enable dynamic font changes
     grid = (text_cell_t *)calloc(max_cells, sizeof(text_cell_t));

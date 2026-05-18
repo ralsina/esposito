@@ -42,6 +42,13 @@ bool display_save_screenshot_ppm(const char *path);
 int display_get_width(void);
 int display_get_height(void);
 
+// Display rotation functions
+void display_set_rotation(int rotation);  // 0-3 for 0°, 90°, 180°, 270°
+int display_get_rotation(void);
+
+// Touch coordinate transformation for rotation
+void transform_touch_coordinates(int *x, int *y, int rotation);
+
 // Keyboard functions
 bool keyboard_init(void);
 void keyboard_deinit(void);

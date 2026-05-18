@@ -17,6 +17,7 @@
 
 extern "C" {
 #include "sd_card.h"
+#include "os_core.h"
 }
 
 static const char *TAG = "hardware";
@@ -44,6 +45,7 @@ static bool display_initialized = false;
 static const lgfx::IFont *current_display_font = NULL;
 static int disp_font_width = 5;
 static int disp_font_height = 8;
+static int current_rotation = 1;  // Default to landscape mode
 
 // I2C state
 static bool i2c_initialized = false;
@@ -94,8 +96,12 @@ bool display_init(void) {
     tft.begin();
     ESP_LOGI(TAG, "LovyanGFX begin() called");
 
-    tft.setRotation(1);  // Landscape mode
-    ESP_LOGI(TAG, "Display rotation set to 1 (landscape)");
+    // Read rotation setting from storage, default to landscape (1)
+    int saved_rotation = os_settings_get_int("display/rotation", DEFAULT_DISPLAY_ROTATION);
+    current_rotation = saved_rotation;
+
+    tft.setRotation(current_rotation);
+    ESP_LOGI(TAG, "Display rotation set to %d", current_rotation);
 
     // Don't clear the screen here - let the boot sequence handle it
     // tft.fillScreen(TFT_BLACK);
@@ -362,7 +368,7 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
     int draw_y = (screen_height - target_height) / 2;
 
     ESP_LOGI(TAG, "Drawing JPEG at (%d, %d) size %dx%d with scale %.3f",
-             draw_x, draw_y, target_width, target_height, best_scale);
+             draw_x, draw_y, target_width, target_height, (double)best_scale);
 
     // Open the file ourselves via POSIX to bypass LovyanGFX's DataWrapper
     // file-factory which sets need_transaction=true and may disrupt the
@@ -547,11 +553,60 @@ void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_
 }
 
 int display_get_width(void) {
-    return SCREEN_WIDTH;
+    if (!display_initialized || !display_tft) return SCREEN_WIDTH;
+    return display_tft->width();
 }
 
 int display_get_height(void) {
-    return SCREEN_HEIGHT;
+    if (!display_initialized || !display_tft) return SCREEN_HEIGHT;
+    return display_tft->height();
+}
+
+void display_set_rotation(int rotation) {
+    if (rotation >= 0 && rotation <= 3) {
+        current_rotation = rotation;
+        if (display_initialized && display_tft) {
+            display_tft->setRotation(rotation);
+            ESP_LOGI(TAG, "Display rotation set to %d", rotation);
+        }
+    }
+}
+
+int display_get_rotation(void) {
+    return current_rotation;
+}
+
+void transform_touch_coordinates(int *x, int *y, int rotation) {
+    if (!x || !y) return;
+
+    int original_x = *x;
+    int original_y = *y;
+    const int width = SCREEN_WIDTH;
+    const int height = SCREEN_HEIGHT;
+
+    switch (rotation) {
+        case 0: // 0° - no transformation
+            *x = original_x;
+            *y = original_y;
+            break;
+        case 1: // 90° clockwise
+            *x = height - original_y;
+            *y = original_x;
+            break;
+        case 2: // 180°
+            *x = width - original_x;
+            *y = height - original_y;
+            break;
+        case 3: // 270° clockwise (or 90° counter-clockwise)
+            *x = original_y;
+            *y = width - original_x;
+            break;
+        default:
+            // Default to no transformation for invalid rotation values
+            *x = original_x;
+            *y = original_y;
+            break;
+    }
 }
 
 bool display_save_screenshot_ppm(const char *path) {
@@ -561,11 +616,16 @@ bool display_save_screenshot_ppm(const char *path) {
     FILE *fppm = fopen(path, "wb");
     if (!fppm) return false;
 
-    const int width = 320;
-    const int height = 240;
+    const int width = display_get_width();
+    const int height = display_get_height();
     fprintf(fppm, "P6\n%d %d\n255\n", width, height);
 
-    uint8_t row_buf[960];
+    uint8_t *row_buf = (uint8_t *)malloc(width * 3);
+    if (!row_buf) {
+        fclose(fppm);
+        return false;
+    }
+
     for (int y = 0; y < height; y++) {
         uint8_t *p = row_buf;
         for (int x = 0; x < width; x++) {
@@ -577,9 +637,10 @@ bool display_save_screenshot_ppm(const char *path) {
             *p++ = g;
             *p++ = b;
         }
-        fwrite(row_buf, 1, sizeof(row_buf), fppm);
+        fwrite(row_buf, 1, width * 3, fppm);
     }
 
+    free(row_buf);
     fclose(fppm);
     return true;
 }

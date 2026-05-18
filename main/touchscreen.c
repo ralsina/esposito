@@ -1,5 +1,6 @@
 #include "touchscreen.h"
 #include "hardware_config.h"
+#include "hardware.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -187,17 +188,23 @@ bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
         return false;
     }
 
-    // Map raw values to screen coordinates
+    // Map raw values to screen coordinates (base orientation: portrait 320x240)
     // XPT2046 on CYD2USB: X: 200-3900 -> 0-320, Y: 200-3900 -> 0-240
-    *x = (raw_x - 200) * 320 / 3700;
-    *y = (raw_y - 200) * 240 / 3700;
+    int base_x = (raw_x - 200) * 320 / 3700;
+    int base_y = (raw_y - 200) * 240 / 3700;
 
-    // Clamp to screen bounds
-    if (*x > 320) *x = 320;
-    if (*y > 240) *y = 240;
+    // Clamp to base screen bounds
+    if (base_x > 320) base_x = 320;
+    if (base_y > 240) base_y = 240;
 
-    ESP_LOGI(TAG, "Touch: raw_x=%d, raw_y=%d, screen_x=%d, screen_y=%d",
-             raw_x, raw_y, *x, *y);
+    // Apply rotation transformation
+    int rotation = display_get_rotation();
+    transform_touch_coordinates(&base_x, &base_y, rotation);
+    *x = (uint16_t)base_x;
+    *y = (uint16_t)base_y;
+
+    ESP_LOGI(TAG, "Touch: raw_x=%d, raw_y=%d, screen_x=%d, screen_y=%d (rotation=%d)",
+             raw_x, raw_y, *x, *y, rotation);
 
     return true;
 }

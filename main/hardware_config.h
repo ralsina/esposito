@@ -8,6 +8,7 @@
 #define SCREEN_WIDTH 320
 #define SCREEN_HEIGHT 240
 #define DISPLAY_TYPE_ST7789  // ST7789 for 2-port CYD version
+#define DEFAULT_DISPLAY_ROTATION 1  // Landscape mode (0=0°, 1=90°, 2=180°, 3=270°)
 
 // SPI Display Pins
 #define PIN_LCD_SCLK 14

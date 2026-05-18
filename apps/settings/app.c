@@ -49,7 +49,7 @@ typedef enum {
 typedef enum {
     SECTION_WIFI,
     SECTION_TIME,
-    SECTION_FONT,
+    SECTION_DISPLAY,
     SECTION_DEBUG,
     SECTION_COUNT,
 } settings_section_t;
@@ -63,6 +63,7 @@ typedef enum {
     ACTION_SET_TIMEZONE,
     ACTION_SET_LOCATION,
     ACTION_SET_FONT,
+    ACTION_SET_ROTATION,
     ACTION_TOGGLE_SERIAL,
 } settings_action_t;
 
@@ -74,7 +75,7 @@ typedef struct {
 static const char *section_labels[SECTION_COUNT] = {
     "WiFi",
     "Time",
-    "Font",
+    "Display",
     "Debug",
 };
 
@@ -95,6 +96,11 @@ static const section_option_t font_options[] = {
     {"Default", ACTION_SET_FONT},
 };
 
+static const section_option_t display_options[] = {
+    {"Default Font", ACTION_SET_FONT},
+    {"Rotation", ACTION_SET_ROTATION},
+};
+
 static const section_option_t debug_options[] = {
     {"Serial UART", ACTION_TOGGLE_SERIAL},
 };
@@ -111,6 +117,7 @@ static void on_font_list_item_selected(ui_list_widget_t *list, int item_index);
 #define SETTINGS_KEY_LOCATION "weather/location"
 #define SETTINGS_KEY_SERIAL_LOG "system/serial_log_output"
 #define SETTINGS_KEY_DEFAULT_FONT "system/default_font"
+#define SETTINGS_KEY_SCREEN_ROTATION "display/rotation"
 #define WEATHER_GEOCODE_URL_FMT "http://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json"
 #define WEATHER_HTTP_TIMEOUT_MS 15000
 
@@ -421,9 +428,9 @@ static const section_option_t *section_options(settings_section_t section, int *
         case SECTION_TIME:
             if (count_out) *count_out = (int)(sizeof(time_options) / sizeof(time_options[0]));
             return time_options;
-        case SECTION_FONT:
-            if (count_out) *count_out = (int)(sizeof(font_options) / sizeof(font_options[0]));
-            return font_options;
+        case SECTION_DISPLAY:
+            if (count_out) *count_out = (int)(sizeof(display_options) / sizeof(display_options[0]));
+            return display_options;
         case SECTION_DEBUG:
             if (count_out) *count_out = (int)(sizeof(debug_options) / sizeof(debug_options[0]));
             return debug_options;
@@ -464,6 +471,12 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
             char current_font[32];
             os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "spleen-5x8", current_font, sizeof(current_font));
             snprintf(out, out_size, "%s", current_font);
+            break;
+        }
+        case ACTION_SET_ROTATION: {
+            int current = os_settings_get_int(SETTINGS_KEY_SCREEN_ROTATION, 1);
+            const char *rot_names[] = {"0°", "90°", "180°", "270°"};
+            snprintf(out, out_size, "%s", rot_names[current]);
             break;
         }
         case ACTION_TOGGLE_SERIAL:
@@ -526,6 +539,17 @@ static void execute_main_action(settings_action_t action) {
             state = STATE_FONT_SELECTION;
             render();
             break;
+        case ACTION_SET_ROTATION: {
+            int current = os_settings_get_int(SETTINGS_KEY_SCREEN_ROTATION, 1);
+            int new_rotation = (current + 1) % 4;
+            os_settings_set_int(SETTINGS_KEY_SCREEN_ROTATION, new_rotation);
+            display_set_rotation(new_rotation);
+            const char *rot_names[] = {"0° (Portrait)", "90° (Landscape)", "180° (Inverted Portrait)", "270° (Inverted Landscape)"};
+            snprintf(status_msg, sizeof(status_msg), "Rotation: %s", rot_names[new_rotation]);
+            set_status(status_msg);
+            render();
+            break;
+        }
         case ACTION_TOGGLE_SERIAL: {
             bool enabled = !serial_log_output_is_enabled();
             serial_log_output_set_enabled(enabled);
