@@ -272,6 +272,11 @@ static bool init_grid(font_id_t font) {
         grid = NULL;
     }
 
+    // Ensure VLW metrics are populated from the binary data
+    if (font == FONT_HACK_VLW) {
+        vlw_init_embedded_metrics();
+    }
+
     // Set current font properties
     current_font = font;
     font_width = font_table[font].char_width;
@@ -294,6 +299,12 @@ static bool init_grid(font_id_t font) {
     }
 
     display_set_font(font_table[font].font_ptr);
+
+    // Load VLW font data at init time if needed
+    if (font == FONT_HACK_VLW) {
+        font_load_embedded_vlw();
+    }
+
     ESP_LOGI(TAG, "Grid allocated: %dx%d (max %dx%d), font: %s (%dx%d)",
              grid_cols, grid_rows, max_cols, max_rows,
              font_table[font].name, font_width, font_height);
@@ -327,6 +338,10 @@ bool text_mode_init_ex(font_id_t font) {
 }
 
 bool text_mode_init(void) {
+    // Initialize VLW font metrics early to prevent division by zero
+    extern void vlw_init_embedded_metrics(void);
+    vlw_init_embedded_metrics();
+
     // Try to read user's configured font from settings
     char font_setting[32];
     extern size_t os_settings_get_string(const char *key, const char *default_val, char *out, size_t out_size);
@@ -394,13 +409,26 @@ bool text_mode_set_font(font_id_t font) {
     ESP_LOGI(TAG, "Changing font from %s to %s",
              font_table[current_font].name, font_table[font].name);
 
+    // Handle VLW font loading
+    if (font == FONT_HACK_VLW) {
+        ESP_LOGI(TAG, "Loading embedded VLW font");
+        bool loaded = font_load_embedded_vlw();
+        ESP_LOGI(TAG, "Embedded VLW font load result: %s", loaded ? "SUCCESS" : "FAILED");
+        if (!loaded) {
+            ESP_LOGE(TAG, "Failed to load embedded VLW font, falling back to default");
+            font = FONT_SPLEEN_5X8;
+        }
+    }
+
     // Update font properties
     current_font = font;
     font_width = font_table[font].char_width;
     font_height = font_table[font].char_height;
 
-    // Update display layer font dimensions too
-    display_set_font(font_table[font].font_ptr);
+    // Update display layer font dimensions too (only for non-VLW fonts)
+    if (font != FONT_HACK_VLW) {
+        display_set_font(font_table[font].font_ptr);
+    }
 
     // Recalculate grid dimensions for new font (uses current display dimensions)
     const int display_width = display_get_width();

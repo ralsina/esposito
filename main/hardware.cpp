@@ -118,7 +118,12 @@ void display_set_font(const void *font) {
             disp_font_height = font_table[i].char_height;
             ESP_LOGI("display", "Font set to %s: %dx%d pixels", font_table[i].name, disp_font_width, disp_font_height);
             // Immediately tell LovyanGFX to use this font
-            tft.setFont(current_display_font);
+            // (but not for VLW fonts - font_ptr is nullptr - since those use
+            //  runtime font loading and setFont(nullptr) would destroy the VLW
+            //  font via _runtime_font.reset())
+            if (font != nullptr) {
+                tft.setFont(current_display_font);
+            }
             return;
         }
     }
@@ -572,6 +577,65 @@ void display_set_rotation(int rotation) {
             text_mode_reinit_grid();
         }
     }
+}
+
+void display_set_cursor(int x, int y) {
+    if (display_tft) {
+        display_tft->setCursor(x, y);
+    }
+}
+
+void display_set_text_size(int size) {
+    if (display_tft) {
+        display_tft->setTextSize(size);
+    }
+}
+
+void display_set_text_color(uint16_t color) {
+    if (display_tft) {
+        display_tft->setTextColor(color);
+    }
+}
+
+bool display_load_vlw_font(const char *path) {
+    if (!display_tft) {
+        ESP_LOGE(TAG, "display_tft is null, cannot load font");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Attempting to load VLW font: %s", path);
+
+    // Try to load the VLW font from SD card
+    bool success = display_tft->loadFont(path);
+
+    if (success) {
+        ESP_LOGI(TAG, "Successfully loaded VLW font: %s", path);
+    } else {
+        ESP_LOGE(TAG, "Failed to load VLW font: %s", path);
+        ESP_LOGE(TAG, "This might be because LovyanGFX needs a file system object");
+        ESP_LOGE(TAG, "or the file doesn't exist on the SD card");
+    }
+    return success;
+}
+
+bool display_load_embedded_vlw_font(const uint8_t* data, size_t size) {
+    if (!display_tft) {
+        ESP_LOGE(TAG, "display_tft is null, cannot load embedded font");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Loading embedded VLW font (%zu bytes)", size);
+
+    // Load the embedded font data using LovyanGFX
+    bool success = display_tft->loadFont(data);
+
+    if (success) {
+        ESP_LOGI(TAG, "Successfully loaded embedded VLW font");
+    } else {
+        ESP_LOGE(TAG, "Failed to load embedded VLW font");
+    }
+
+    return success;
 }
 
 int display_get_rotation(void) {
