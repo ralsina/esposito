@@ -1,0 +1,115 @@
+<html lang="en"><head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>VLW font converter</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js" integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+
+  <body>
+    <div class="page-container">
+	<div class="header">
+		<img class="logo" src="./image/image.png" alt="">
+		<h1>VLW Font Converter</h1>
+	</div>
+	<div class="container box">
+		<div class="row w-full">
+			<div class="col-md-12">
+				<form id="converterForm" enctype="multipart/form-data" name="font_conv" class="form-container">
+		
+					<!-- GENERAL PARAMETERS -->
+		
+					<div class="form-group row">
+						<label for="name" class="form-label col-md-2">Names <span class="input-require">*</span></label>
+						<div class="col-md-5">
+							<input type="text" name="name" id="name" class="form-control" placeholder="E.g. arial_40">
+						</div>
+					</div>
+		
+					<div class="form-group row">
+						<label for="height" class="col-md-2 col-form-label">Size <span class="input-require">*</span></label>
+						<div class="col-md-5">
+							<input type="number" name="height" id="height" class="form-control" placeholder="Height in px" value="20">
+						</div>
+					</div>
+					
+					<hr>
+					
+					<div class="form-check">
+						<input class="form-check-input" type="checkbox" id="use_color_info" value="" style="vertical-align:top;">
+						<label class="form-check-label" for="use_color_info">
+							Try to use glyph color info from font to create grayscale icons.<br>
+							<small>Since gray tones are emulated via transparency, result will be good on contrast background only.</small>
+						</label>
+					</div>
+					<hr>
+		
+					<!-- FONTS -->
+					<div class="font-controls" id="font-controls-clone-source">
+						<div class="form-group row">
+							<label class="form-label col-md-2">TTF/WOFF/OTF File <span class="input-require">*</span></label>
+							<div class="col-md-10">
+								<input type="file" class="form-control-file font_file file-select" style="display: none;">
+								<label class="custom-file-label">Choose file</label>
+								<span class="fileName" style="margin-left: 10px;">No file chosen</span>
+								<!-- <input type="file" class="form-control-file font_file file-select" > -->
+							</div>
+						</div>
+						
+						<div class="form-group row">
+							<label class="form-label col-md-2">Preview Text</label>
+							<div class="col-md-10">
+								<input type="text" id="unicodeInput" class="form-control preview_input" placeholder="input text or unicode(\uXXXX) to preview">
+							</div>
+						</div>
+						
+						<div class="form-group row">
+							<label class="form-label col-md-2">Preview</label>
+							<div class="col-md-10">
+								<div class="preview_output" style="border: 1px solid #ccc; padding: 5px 10px;">quick fox jumps over the lazy dog</div>
+							</div>
+						</div>
+		
+						<div class="form-group row">
+							<label class="form-label col-md-2">Range <span class="input-require">*</span></label>
+							<div class="col-md-10">
+								<textarea id="rangeInput" rows="2" cols="40" class="form-control font_range" placeholder="Ranges and/or characters to include. E.g. 0x20-0x7F, 0x200, 450"></textarea>
+							</div>
+						</div>
+						<div class="form-group row">
+							<label class="form-label col-md-2">Symbols <span class="input-require">*</span></label>
+							<div class="col-md-10">
+								<textarea id="symbolInput" rows="2" cols="50" class="form-control font_symbols" placeholder="List of character to include. E.g. ABC0123ÁÉŐ"></textarea>
+							</div>
+						</div>
+						<hr>
+					</div>
+		
+					<button type="button" id="insert-button" class="btn btn-primary btn-md" style="margin-top:10px">Include another font</button>
+					<br>
+					<p class="include-text">You can use both "Range" and "Symbols" or only one of them</p>
+					<hr>
+		
+					<div class="form-group">
+						<input type="submit" value="Convert" name="submit" class="btn btn-primary btn-lg btn-con">
+					</div>
+		
+					<div class="form-group">
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+	<div class="footer">
+		<p>Copyright © 2024 M5Stack. This tool is modified based on the <a href="https://lvgl.io/tools/fontconverter" target="_blank">LVGL Font Converter.</a></p>
+	</div>
+
+	<div id="tip" class="alert alert-danger" role="alert"></div>
+</div>
+<script src="./index.js" type="module"></script>
+  
+
+</body></html>

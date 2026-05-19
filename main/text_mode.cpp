@@ -1,6 +1,5 @@
 #include "text_mode.h"
 #include "hardware.h"
-#include "hardware_config.h"
 #include "fonts.h"
 #include "sd_card.h"
 #include "esp_log.h"
@@ -9,9 +8,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <sys/stat.h>
-#include <lgfx/v1/lgfx_fonts.hpp>
-#include <lgfx/utility/pgmspace.h>
-
 
 extern "C" {
     #include "checkpoint.h"
@@ -29,7 +25,8 @@ static int grid_cols = TEXT_MODE_COLS;
 static int grid_rows = TEXT_MODE_ROWS;
 static int font_width = TEXT_MODE_CHAR_WIDTH;
 static int font_height = TEXT_MODE_CHAR_HEIGHT;
-static font_id_t current_font = FONT_SPLEEN_5X8;
+static font_id_t current_font = FONT_HACK_8;
+static font_variant_t current_variant = FONT_VARIANT_REGULAR;
 
 static int cursor_x = 0;
 static int cursor_y = 0;
@@ -140,41 +137,6 @@ static void draw_line_drawing_cell(int px, int py, uint8_t fg, uint8_t mask) {
     }
 }
 
-static bool line_drawing_pixel_is_set(const text_cell_t *cell, int gx, int gy, int char_row, int dx) {
-    if (!cell || !(cell->attributes & TEXT_ATTR_LINE_DRAWING)) {
-        return false;
-    }
-
-    uint8_t mask = line_drawing_mask_for_cell(gx, gy);
-    if (mask == 0) {
-        return false;
-    }
-
-    int mid_x = font_width / 2;
-    int mid_y = font_height / 2;
-
-    if ((mask & LINE_DRAW_LEFT) && (mask & LINE_DRAW_RIGHT) && char_row == mid_y) {
-        return true;
-    }
-    if ((mask & LINE_DRAW_LEFT) && !(mask & LINE_DRAW_RIGHT) && char_row == mid_y && dx <= mid_x) {
-        return true;
-    }
-    if ((mask & LINE_DRAW_RIGHT) && !(mask & LINE_DRAW_LEFT) && char_row == mid_y && dx >= mid_x) {
-        return true;
-    }
-    if ((mask & LINE_DRAW_UP) && (mask & LINE_DRAW_DOWN) && dx == mid_x) {
-        return true;
-    }
-    if ((mask & LINE_DRAW_UP) && !(mask & LINE_DRAW_DOWN) && dx == mid_x && char_row <= mid_y) {
-        return true;
-    }
-    if ((mask & LINE_DRAW_DOWN) && !(mask & LINE_DRAW_UP) && dx == mid_x && char_row >= mid_y) {
-        return true;
-    }
-
-    return false;
-}
-
 static void refresh_line_drawing_cells_around(int x, int y) {
     static const int offsets[][2] = {
         {0, 0},
@@ -203,6 +165,7 @@ int text_mode_get_rows(void) { return grid_rows; }
 int text_mode_get_char_width(void) { return font_width; }
 int text_mode_get_char_height(void) { return font_height; }
 font_id_t text_mode_get_font(void) { return current_font; }
+font_variant_t text_mode_get_variant(void) { return current_variant; }
 
 static void grid_to_pixel(int gx, int gy, int *px, int *py) {
     *px = gx * font_width;
@@ -234,11 +197,20 @@ static void update_cell(int x, int y) {
     }
 
     if (cell->character != ' ') {
-        display_draw_char_at(px, py, cell->character, fg, bg);
-        if (cell->attributes & TEXT_ATTR_BOLD) {
-            // Draw shifted copy for bold effect.
-            display_draw_char_at(px + 1, py, cell->character, fg, bg);
+        font_variant_t needed = FONT_VARIANT_REGULAR;
+        if (cell->attributes & TEXT_ATTR_BOLD && cell->attributes & TEXT_ATTR_ITALIC) {
+            needed = FONT_VARIANT_BOLDITALIC;
+        } else if (cell->attributes & TEXT_ATTR_BOLD) {
+            needed = FONT_VARIANT_BOLD;
+        } else if (cell->attributes & TEXT_ATTR_ITALIC) {
+            needed = FONT_VARIANT_ITALIC;
         }
+        if (needed != current_variant) {
+            if (display_load_font(current_font, needed)) {
+                current_variant = needed;
+            }
+        }
+        display_draw_char_at(px, py, cell->character, fg, bg);
     }
 
     // Draw borders
@@ -257,36 +229,27 @@ static void update_cell(int x, int y) {
 }
 
 static bool init_grid(font_id_t font) {
-    // Get current display dimensions (respects rotation)
     const int display_width = display_get_width();
     const int display_height = display_get_height();
 
-    // Calculate maximum grid dimensions (for smallest font: Tom Thumb 4x6)
-    const int max_cols = display_width / 4;  // e.g., 80 columns for 4px wide font
-    const int max_rows = display_height / 6;  // e.g., 40 rows for 6px tall font
-    const int max_cells = max_cols * max_rows;  // Up to 3200 cells
+    const int max_cols = display_width / 4;
+    const int max_rows = display_height / 6;
+    const int max_cells = max_cols * max_rows;
 
-    // Free existing grid if present
     if (grid) {
         free(grid);
         grid = NULL;
     }
 
-    // Ensure VLW metrics are populated from the binary data
-    if (font == FONT_HACK_VLW) {
-        vlw_init_embedded_metrics();
-    }
-
-    // Set current font properties
+    if (font < 0 || font >= FONT_COUNT) font = FONT_HACK_8;
     current_font = font;
+    current_variant = FONT_VARIANT_REGULAR;
     font_width = font_table[font].char_width;
     font_height = font_table[font].char_height;
 
-    // Calculate actual grid dimensions for this font using current display dimensions
     grid_cols = display_width / font_width;
     grid_rows = display_height / font_height;
 
-    // Allocate for maximum size to enable dynamic font changes
     grid = (text_cell_t *)calloc(max_cells, sizeof(text_cell_t));
     if (!grid) {
         ESP_LOGE(TAG, "Failed to allocate grid: %dx%d", max_cols, max_rows);
@@ -294,16 +257,12 @@ static bool init_grid(font_id_t font) {
         grid_rows = TEXT_MODE_ROWS;
         font_width = TEXT_MODE_CHAR_WIDTH;
         font_height = TEXT_MODE_CHAR_HEIGHT;
-        current_font = FONT_SPLEEN_5X8;
+        current_font = FONT_HACK_8;
+        current_variant = FONT_VARIANT_REGULAR;
         return false;
     }
 
-    display_set_font(font_table[font].font_ptr);
-
-    // Load VLW font data at init time if needed
-    if (font == FONT_HACK_VLW) {
-        font_load_embedded_vlw();
-    }
+    display_load_font(font, FONT_VARIANT_REGULAR);
 
     ESP_LOGI(TAG, "Grid allocated: %dx%d (max %dx%d), font: %s (%dx%d)",
              grid_cols, grid_rows, max_cols, max_rows,
@@ -312,7 +271,7 @@ static bool init_grid(font_id_t font) {
 }
 
 bool text_mode_init_ex(font_id_t font) {
-    if ((int)font < 0 || (int)font >= FONT_COUNT) font = FONT_SPLEEN_5X8;
+    if (font < 0 || font >= FONT_COUNT) font = FONT_HACK_8;
 
     if (!init_grid(font)) return false;
 
@@ -338,21 +297,15 @@ bool text_mode_init_ex(font_id_t font) {
 }
 
 bool text_mode_init(void) {
-    // Initialize VLW font metrics early to prevent division by zero
-    extern void vlw_init_embedded_metrics(void);
-    vlw_init_embedded_metrics();
-
-    // Try to read user's configured font from settings
     char font_setting[32];
     extern size_t os_settings_get_string(const char *key, const char *default_val, char *out, size_t out_size);
     extern font_id_t font_lookup_by_name(const char *name);
 
-    // Try to get the configured font, but fall back to spleen-5x8 if settings aren't ready yet
-    size_t len = os_settings_get_string("system/default_font", "spleen-5x8", font_setting, sizeof(font_setting));
+    size_t len = os_settings_get_string("system/default_font", "hack 8", font_setting, sizeof(font_setting));
 
     font_id_t default_font = font_lookup_by_name(font_setting);
-    if ((int)default_font < 0 || (int)default_font >= FONT_COUNT) {
-        default_font = FONT_SPLEEN_5X8;  // Fallback to default
+    if (default_font < 0 || default_font >= FONT_COUNT) {
+        default_font = FONT_HACK_8;
     }
 
     ESP_LOGI(TAG, "text_mode_init: using font %s (read '%s' from settings, len=%d)",
@@ -367,26 +320,24 @@ bool text_mode_apply_configured_font(void) {
         return false;
     }
 
-    // Read user's configured font from settings
     char font_setting[32];
     extern size_t os_settings_get_string(const char *key, const char *default_val, char *out, size_t out_size);
     extern font_id_t font_lookup_by_name(const char *name);
 
-    size_t len = os_settings_get_string("system/default_font", "spleen-5x8", font_setting, sizeof(font_setting));
+    size_t len = os_settings_get_string("system/default_font", "hack 8", font_setting, sizeof(font_setting));
     ESP_LOGI(TAG, "Font setting read: len=%d, value='%s'", (int)len, font_setting);
 
     font_id_t configured_font = font_lookup_by_name(font_setting);
     ESP_LOGI(TAG, "Font lookup result: %d (FONT_COUNT=%d)", (int)configured_font, FONT_COUNT);
 
-    if ((int)configured_font < 0 || (int)configured_font >= FONT_COUNT) {
-        ESP_LOGW(TAG, "Invalid font ID %d, falling back to spleen-5x8", (int)configured_font);
-        configured_font = FONT_SPLEEN_5X8;  // Fallback to default
+    if (configured_font < 0 || configured_font >= FONT_COUNT) {
+        ESP_LOGW(TAG, "Invalid font ID %d, falling back to hack 8", (int)configured_font);
+        configured_font = FONT_HACK_8;
     }
 
     ESP_LOGI(TAG, "Applying configured font: %s (%s, ID=%d)",
              font_setting, font_table[configured_font].name, (int)configured_font);
 
-    // Apply the configured font (will handle re-layout automatically)
     return text_mode_set_font(configured_font);
 }
 
@@ -396,12 +347,11 @@ bool text_mode_set_font(font_id_t font) {
         return false;
     }
 
-    if ((int)font < 0 || (int)font >= FONT_COUNT) {
+    if (font < 0 || font >= FONT_COUNT) {
         ESP_LOGE(TAG, "Invalid font ID: %d", (int)font);
         return false;
     }
 
-    // No change needed
     if (font == current_font) {
         return true;
     }
@@ -409,28 +359,11 @@ bool text_mode_set_font(font_id_t font) {
     ESP_LOGI(TAG, "Changing font from %s to %s",
              font_table[current_font].name, font_table[font].name);
 
-    // Handle VLW font loading
-    if (font == FONT_HACK_VLW) {
-        ESP_LOGI(TAG, "Loading embedded VLW font");
-        bool loaded = font_load_embedded_vlw();
-        ESP_LOGI(TAG, "Embedded VLW font load result: %s", loaded ? "SUCCESS" : "FAILED");
-        if (!loaded) {
-            ESP_LOGE(TAG, "Failed to load embedded VLW font, falling back to default");
-            font = FONT_SPLEEN_5X8;
-        }
-    }
-
-    // Update font properties
     current_font = font;
+    current_variant = FONT_VARIANT_REGULAR;
     font_width = font_table[font].char_width;
     font_height = font_table[font].char_height;
 
-    // Update display layer font dimensions too (only for non-VLW fonts)
-    if (font != FONT_HACK_VLW) {
-        display_set_font(font_table[font].font_ptr);
-    }
-
-    // Recalculate grid dimensions for new font (uses current display dimensions)
     const int display_width = display_get_width();
     const int display_height = display_get_height();
     int new_cols = display_width / font_width;
@@ -438,15 +371,13 @@ bool text_mode_set_font(font_id_t font) {
 
     ESP_LOGI(TAG, "Grid dimensions: %dx%d -> %dx%d", grid_cols, grid_rows, new_cols, new_rows);
 
-    // Update grid dimensions
     grid_cols = new_cols;
     grid_rows = new_rows;
 
-    // Clear the grid since dimensions changed
     for (int y = 0; y < grid_rows; y++) {
         for (int x = 0; x < grid_cols; x++) {
-            int idx = y * 80 + x;  // Use max columns for indexing
-            if (idx < 3200) {  // Safety check
+            int idx = y * 80 + x;
+            if (idx < 3200) {
                 grid[idx].character = ' ';
                 grid[idx].color = TEXT_COLOR_WHITE;
                 grid[idx].bg_color = TEXT_COLOR_BLACK;
@@ -455,14 +386,10 @@ bool text_mode_set_font(font_id_t font) {
         }
     }
 
-    // Reset cursor position
     cursor_x = 0;
     cursor_y = 0;
 
-    // Update display font
-    display_set_font(font_table[font].font_ptr);
-
-    // Clear the screen
+    display_load_font(font, FONT_VARIANT_REGULAR);
     display_clear(color_palette[TEXT_COLOR_BLACK]);
 
     ESP_LOGI(TAG, "Font changed to %s (%dx%d grid)",
@@ -665,7 +592,7 @@ void text_mode_restore(void) {
     cursor_y = checkpoint_load_int("tm_cursor_y");
     bg_color = checkpoint_load_int("tm_bg_color");
     font_id_t saved_font = (font_id_t)checkpoint_load_int("tm_font");
-    if ((int)saved_font < 0 || (int)saved_font >= FONT_COUNT) saved_font = FONT_SPLEEN_5X8;
+    if (saved_font < 0 || saved_font >= FONT_COUNT) saved_font = FONT_HACK_8;
 
     init_grid(saved_font);
 
@@ -710,48 +637,38 @@ void text_mode_restore(void) {
     }
 }
 
-// Decode LovyanGFX RLE-encoded glyph bitmap into 1-bit-per-pixel flat array
-static void decode_glyph_rle(const uint8_t *data, int w, int h, uint8_t *pixels) {
-    int total = w * h;
-    int px = 0;
+static uint32_t vlw_read_be32(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8) | p[3];
+}
 
-    uint8_t mask = 0x80;
-    int32_t btmp = pgm_read_byte(data);
-    if (btmp & mask) { btmp = ~btmp; }
-    uint32_t bitlen = 0;
+static const uint8_t *vlw_find_glyph(const uint8_t *data, size_t size, uint16_t unicode,
+                                      int *out_width, int *out_height,
+                                      int *out_top_offset, int *out_left_offset) {
+    if (!data || size < 24) return NULL;
+    uint32_t glyph_count = vlw_read_be32(data);
+    if (glyph_count == 0) return NULL;
 
-    for (int row = 0; row < h && px < total; row++) {
-        int remain = w;
-        while (remain > 0 && px < total) {
-            if (bitlen == 0) {
-                btmp = ~btmp;
-                do {
-                    do {
-                        ++bitlen;
-                        if (0 == (mask >>= 1)) {
-                            goto read_next_byte_rle;
-                        }
-                    } while (btmp & mask);
-                    break;
-
-                read_next_byte_rle:
-                    mask = 0x80;
-                    data++;
-                    btmp = pgm_read_byte(data) ^ (btmp < 0 ? ~0 : 0);
-                } while (btmp & mask);
+    uint32_t bitmap_offset = 24 + glyph_count * 28;
+    for (uint32_t i = 0; i < glyph_count; i++) {
+        const uint8_t *m = data + 24 + i * 28;
+        if (m + 28 > data + size) return NULL;
+        uint32_t gunicode = vlw_read_be32(m);
+        uint32_t height = vlw_read_be32(m + 4);
+        uint32_t width = vlw_read_be32(m + 8);
+        if (gunicode == unicode) {
+            if (out_width) *out_width = (int)width;
+            if (out_height) *out_height = (int)height;
+            if (out_top_offset) *out_top_offset = (int)(int32_t)vlw_read_be32(m + 16);
+            if (out_left_offset) *out_left_offset = (int)(int32_t)vlw_read_be32(m + 20);
+            if (width > 0 && height > 0 && bitmap_offset + width * height <= size) {
+                return data + bitmap_offset;
             }
-
-            int l = bitlen;
-            if (l > remain) l = remain;
-            bitlen -= l;
-            remain -= l;
-
-            uint8_t val = (btmp >= 0) ? 1 : 0;
-            for (int i = 0; i < l && px < total; i++) {
-                pixels[px++] = val;
-            }
+            return NULL;
         }
+        bitmap_offset += width * height;
     }
+    return NULL;
 }
 
 bool text_mode_save_screenshot(void) {
@@ -775,55 +692,53 @@ bool text_mode_save_screenshot(void) {
     } while (existing && num < 1000);
     if (num >= 1000) return false;
 
-    // Write PPM (.ppm) — decode RLE glyph bitmaps directly, no sprite
     char ppm_path[72];
     snprintf(ppm_path, sizeof(ppm_path), "%s.ppm", path);
     FILE *fppm = fopen(ppm_path, "wb");
     if (!fppm) return false;
 
-    fprintf(fppm, "P6\n%d %d\n255\n", 320, 240);
+    int disp_w = display_get_width();
+    int disp_h = display_get_height();
+    fprintf(fppm, "P6\n%d %d\n255\n", disp_w, disp_h);
 
-    // Get GFXfont data pointers
-    const void *fptr = font_table[current_font].font_ptr;
-    const uint8_t *bitmap_base = NULL;
-    uint16_t first_char = 0;
-    uint16_t last_char = 0;
-    if (fptr) {
-        const GFXfont *fnt = (const GFXfont *)fptr;
-        bitmap_base = (const uint8_t *)pgm_read_ptr(&fnt->bitmap);
-        first_char = pgm_read_word(&fnt->first);
-        last_char = pgm_read_word(&fnt->last);
+    uint8_t *row_buf = (uint8_t *)malloc((size_t)disp_w * 3);
+    if (!row_buf) {
+        fclose(fppm);
+        return false;
     }
 
-    uint8_t row_buf[960];
+    int fw = font_width;
+    int fh = font_height;
+    int mid_x = fw / 2;
+    int mid_y = fh / 2;
+    int max_gx = grid_cols;
+    int max_gy = grid_rows;
 
-    // Decode one glyph into a flat 1-bit-per-pixel buffer (max 5×8 = 40 bytes)
-    uint8_t glyph_bits[80];
-
-    for (int py = 0; py < 240; py++) {
-        int gy = py / font_height;
-        int char_row = py % font_height;
+    for (int py = 0; py < disp_h; py++) {
+        int gy = py / fh;
+        int char_row = py % fh;
         uint8_t *p = row_buf;
 
-        if (!bitmap_base || gy >= grid_rows) {
-            memset(row_buf, 0, 960);
-            fwrite(row_buf, 1, 960, fppm);
+        if (gy >= max_gy) {
+            memset(row_buf, 0, (size_t)disp_w * 3);
+            fwrite(row_buf, 1, (size_t)disp_w * 3, fppm);
             continue;
         }
 
-        for (int gx = 0; gx < grid_cols; gx++) {
-            text_cell_t *cell = &grid[gy * grid_cols + gx];
-
+        for (int gx = 0; gx < max_gx; gx++) {
+            text_cell_t *cell = &grid[gy * max_gx + gx];
             uint8_t fg_idx = cell->color & 0x0F;
             uint8_t bg_idx = cell->bg_color & 0x0F;
+            uint8_t attrs = cell->attributes;
 
-            if (cell->attributes & TEXT_ATTR_INVERSE) {
-                uint8_t tmp = fg_idx; fg_idx = bg_idx; bg_idx = tmp;
+            if (attrs & TEXT_ATTR_INVERSE) {
+                uint8_t tmp = fg_idx;
+                fg_idx = bg_idx;
+                bg_idx = tmp;
             }
 
             uint16_t rgb565_fg = color_palette[fg_idx];
             uint16_t rgb565_bg = color_palette[bg_idx];
-
             uint8_t r_fg = (rgb565_fg >> 8) & 0xF8; r_fg |= r_fg >> 5;
             uint8_t g_fg = (rgb565_fg >> 3) & 0xFC; g_fg |= g_fg >> 6;
             uint8_t b_fg = (rgb565_fg << 3) & 0xF8; b_fg |= b_fg >> 5;
@@ -831,84 +746,83 @@ bool text_mode_save_screenshot(void) {
             uint8_t g_bg = (rgb565_bg >> 3) & 0xFC; g_bg |= g_bg >> 6;
             uint8_t b_bg = (rgb565_bg << 3) & 0xF8; b_bg |= b_bg >> 5;
 
-            bool line_drawing = (cell->attributes & TEXT_ATTR_LINE_DRAWING) != 0;
+            bool line_drawing = (attrs & TEXT_ATTR_LINE_DRAWING) != 0;
             uint8_t line_mask = 0;
             if (line_drawing) {
                 line_mask = line_drawing_mask_for_cell(gx, gy);
             }
 
-            // Decode character glyph via RLE
-            int char_idx = (unsigned char)cell->character - first_char;
-            uint8_t gw = 0;
-            uint8_t gh = 0;
+            // Determine font variant from attributes
+            font_variant_t variant = FONT_VARIANT_REGULAR;
+            if ((attrs & TEXT_ATTR_BOLD) && (attrs & TEXT_ATTR_ITALIC))
+                variant = FONT_VARIANT_BOLDITALIC;
+            else if (attrs & TEXT_ATTR_BOLD)
+                variant = FONT_VARIANT_BOLD;
+            else if (attrs & TEXT_ATTR_ITALIC)
+                variant = FONT_VARIANT_ITALIC;
 
-            if (cell->character != ' ' && bitmap_base
-                && char_idx >= 0 && char_idx <= (int)(last_char - first_char)) {
-
-                const GFXglyph *g = (const GFXglyph *)pgm_read_ptr(
-                    &((const GFXfont *)fptr)->glyph);
-                g = &g[char_idx];
-
-                uint32_t offset = pgm_read_dword(&g->bitmapOffset);
-                gw = pgm_read_byte(&g->width);
-                gh = pgm_read_byte(&g->height);
-
-                if (gw > 0 && gh > 0 && gw <= font_width && gh <= font_height) {
-                    memset(glyph_bits, 0, gw * gh);
-                    decode_glyph_rle(bitmap_base + offset, gw, gh, glyph_bits);
-                } else {
-                    gw = 0;
+            // Load VLW data for this variant and find glyph
+            size_t var_size = 0;
+            const uint8_t *var_data = font_get_variant_data(current_font, variant, &var_size);
+            int gw = 0, gh = 0, top_offset = 0, left_offset = 0;
+            const uint8_t *bitmap = NULL;
+            int ascent = 0;
+            if (var_data) {
+                ascent = (int)vlw_read_be32(var_data + 16);
+                if (cell->character != ' ') {
+                    bitmap = vlw_find_glyph(var_data, var_size, (unsigned char)cell->character,
+                                            &gw, &gh, &top_offset, &left_offset);
                 }
             }
 
-            // Render this cell row to the PPM row buffer
-            for (int dx = 0; dx < font_width; dx++) {
-                bool pixel_set = false;
+            for (int dx = 0; dx < fw; dx++) {
+                uint8_t alpha = 0;
                 if (line_drawing && line_mask != 0) {
-                    pixel_set = line_drawing_pixel_is_set(cell, gx, gy, char_row, dx);
-                } else {
-                    if (gw > 0 && dx < gw && char_row < gh) {
-                        pixel_set = glyph_bits[char_row * gw + dx] != 0;
-                        // Bold
-                        if (!pixel_set && (cell->attributes & TEXT_ATTR_BOLD) && dx > 0
-                            && (dx - 1) < gw && char_row < gh) {
-                            pixel_set = glyph_bits[char_row * gw + (dx - 1)] != 0;
-                        }
-                    }
-
-                    // Apply cell border attributes independently from glyph coverage.
-                    if (!pixel_set && (cell->attributes & TEXT_ATTR_UNDERLINE)
-                        && char_row == font_height - 1) {
-                        pixel_set = true;
-                    }
-                    if (!pixel_set && (cell->attributes & TEXT_ATTR_BORDER_TOP)
-                        && char_row == 0) {
-                        pixel_set = true;
-                    }
-                    if (!pixel_set && (cell->attributes & TEXT_ATTR_BORDER_LEFT)
-                        && dx == 0) {
-                        pixel_set = true;
-                    }
-                    if (!pixel_set && (cell->attributes & TEXT_ATTR_BORDER_RIGHT)
-                        && dx == font_width - 1) {
-                        pixel_set = true;
+                    bool set = false;
+                    if ((line_mask & LINE_DRAW_LEFT) && (line_mask & LINE_DRAW_RIGHT) && char_row == mid_y)
+                        set = true;
+                    else if ((line_mask & LINE_DRAW_LEFT) && !(line_mask & LINE_DRAW_RIGHT) && char_row == mid_y && dx <= mid_x)
+                        set = true;
+                    else if ((line_mask & LINE_DRAW_RIGHT) && !(line_mask & LINE_DRAW_LEFT) && char_row == mid_y && dx >= mid_x)
+                        set = true;
+                    else if ((line_mask & LINE_DRAW_UP) && (line_mask & LINE_DRAW_DOWN) && dx == mid_x)
+                        set = true;
+                    else if ((line_mask & LINE_DRAW_UP) && !(line_mask & LINE_DRAW_DOWN) && dx == mid_x && char_row <= mid_y)
+                        set = true;
+                    else if ((line_mask & LINE_DRAW_DOWN) && !(line_mask & LINE_DRAW_UP) && dx == mid_x && char_row >= mid_y)
+                        set = true;
+                    if (set) alpha = 255;
+                } else if (bitmap && gw > 0 && gh > 0) {
+                    int glyph_row = char_row - (ascent - top_offset);
+                    int glyph_col = dx - left_offset;
+                    if (glyph_row >= 0 && glyph_row < gh && glyph_col >= 0 && glyph_col < gw) {
+                        alpha = bitmap[glyph_row * gw + glyph_col];
                     }
                 }
 
-                if (pixel_set) {
-                    *p++ = r_fg; *p++ = g_fg; *p++ = b_fg;
-                } else {
-                    *p++ = r_bg; *p++ = g_bg; *p++ = b_bg;
-                }
+                if (alpha < 255 && (attrs & TEXT_ATTR_UNDERLINE) && char_row == fh - 1)
+                    alpha = 255;
+                if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_TOP) && char_row == 0)
+                    alpha = 255;
+                if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_LEFT) && dx == 0)
+                    alpha = 255;
+                if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_RIGHT) && dx == fw - 1)
+                    alpha = 255;
+
+                int ia = alpha;
+                int ina = 255 - ia;
+                *p++ = (r_fg * ia + r_bg * ina) / 255;
+                *p++ = (g_fg * ia + g_bg * ina) / 255;
+                *p++ = (b_fg * ia + b_bg * ina) / 255;
             }
         }
 
-        fwrite(row_buf, 1, 960, fppm);
+        fwrite(row_buf, 1, (size_t)disp_w * 3, fppm);
     }
 
+    free(row_buf);
     fclose(fppm);
-
-    ESP_LOGI(TAG, "Screenshots saved: %s.ppm", path);
+    ESP_LOGI(TAG, "Screenshot saved: %s.ppm", path);
     return true;
 }
 

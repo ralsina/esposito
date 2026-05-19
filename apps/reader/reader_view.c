@@ -79,7 +79,7 @@ static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t b
         *bold_pending = 0;
     }
     if (*underline_pending) {
-        attr |= TEXT_ATTR_UNDERLINE;
+        attr |= TEXT_ATTR_ITALIC;
         underline_active = 1;
         *underline_pending = 0;
     }
@@ -92,11 +92,11 @@ static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t b
             continue;
         }
         if (*text == MD_FORMAT_TOGGLE) {
-            if (attr & TEXT_ATTR_UNDERLINE) {
-                attr &= ~TEXT_ATTR_UNDERLINE;
+            if (attr & TEXT_ATTR_ITALIC) {
+                attr &= ~TEXT_ATTR_ITALIC;
                 underline_active = 0;
             } else {
-                attr |= TEXT_ATTR_UNDERLINE;
+                attr |= TEXT_ATTR_ITALIC;
                 underline_active = 1;
             }
             text++;

@@ -43,7 +43,6 @@ private:
 LGFX tft;
 LGFX* display_tft = &tft;
 static bool display_initialized = false;
-static const lgfx::IFont *current_display_font = NULL;
 static int disp_font_width = 5;
 static int disp_font_height = 8;
 static int current_rotation = 1;  // Default to landscape mode
@@ -110,24 +109,32 @@ bool display_init(void) {
     return true;
 }
 
-void display_set_font(const void *font) {
-    current_display_font = (const lgfx::IFont *)font;
-    for (int i = 0; i < FONT_COUNT; i++) {
-        if (font_table[i].font_ptr == font) {
-            disp_font_width = font_table[i].char_width;
-            disp_font_height = font_table[i].char_height;
-            ESP_LOGI("display", "Font set to %s: %dx%d pixels", font_table[i].name, disp_font_width, disp_font_height);
-            // Immediately tell LovyanGFX to use this font
-            // (but not for VLW fonts - font_ptr is nullptr - since those use
-            //  runtime font loading and setFont(nullptr) would destroy the VLW
-            //  font via _runtime_font.reset())
-            if (font != nullptr) {
-                tft.setFont(current_display_font);
-            }
-            return;
-        }
+bool display_load_font(font_id_t id, font_variant_t variant) {
+    if (id < 0 || id >= FONT_COUNT) {
+        ESP_LOGE(TAG, "Invalid font ID: %d", id);
+        return false;
     }
-    ESP_LOGW("display", "Font not found in table!");
+
+    size_t data_size;
+    const uint8_t *data = font_get_variant_data(id, variant, &data_size);
+    if (!data) {
+        ESP_LOGE(TAG, "No variant data for font %d variant %d", id, variant);
+        return false;
+    }
+
+    disp_font_width = font_table[id].char_width;
+    disp_font_height = font_table[id].char_height;
+
+    bool ok = tft.loadFont(data);
+    if (ok) {
+        ESP_LOGI(TAG, "Loaded font %s variant %d (%dx%d)",
+                 font_table[id].name, variant, disp_font_width, disp_font_height);
+    } else {
+        disp_font_width = 5;
+        disp_font_height = 8;
+        ESP_LOGE(TAG, "Failed to load font %s variant %d", font_table[id].name, variant);
+    }
+    return ok;
 }
 
 void display_clear(uint16_t color) {
@@ -139,33 +146,21 @@ void display_draw_text(int x, int y, const char *text, uint16_t color) {
     if (!display_initialized) return;
     tft.setTextDatum(TL_DATUM);
     tft.setTextColor(color, TFT_BLACK);
-    if (current_display_font) {
-        tft.drawString(text, x, y, current_display_font);
-    } else {
-        tft.drawString(text, x, y);
-    }
+    tft.drawString(text, x, y);
 }
 
 void display_draw_text_transparent(int x, int y, const char *text, uint16_t color) {
     if (!display_initialized) return;
     tft.setTextDatum(TL_DATUM);
     tft.setTextColor(color);
-    if (current_display_font) {
-        tft.drawString(text, x, y, current_display_font);
-    } else {
-        tft.drawString(text, x, y);
-    }
+    tft.drawString(text, x, y);
 }
 
 void display_draw_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg) {
     if (!display_initialized) return;
     tft.setTextDatum(TL_DATUM);
     tft.setTextColor(fg, bg);
-    if (current_display_font) {
-        tft.drawString(text, x, y, current_display_font);
-    } else {
-        tft.drawString(text, x, y);
-    }
+    tft.drawString(text, x, y);
 }
 
 void display_draw_pixel(int x, int y, uint16_t color) {
@@ -403,49 +398,6 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
     return true;
 }
 
-static void decode_glyph_rle(const uint8_t *data, int w, int h, uint8_t *pixels) {
-    int total = w * h;
-    int px = 0;
-
-    uint8_t mask = 0x80;
-    int32_t btmp = pgm_read_byte(data);
-    if (btmp & mask) { btmp = ~btmp; }
-    uint32_t bitlen = 0;
-
-    for (int row = 0; row < h && px < total; row++) {
-        int remain = w;
-        while (remain > 0 && px < total) {
-            if (bitlen == 0) {
-                btmp = ~btmp;
-                do {
-                    do {
-                        ++bitlen;
-                        if (0 == (mask >>= 1)) {
-                            goto read_next_byte_rle;
-                        }
-                    } while (btmp & mask);
-                    break;
-
-                read_next_byte_rle:
-                    mask = 0x80;
-                    data++;
-                    btmp = pgm_read_byte(data) ^ (btmp < 0 ? ~0 : 0);
-                } while (btmp & mask);
-            }
-
-            int l = bitlen;
-            if (l > remain) l = remain;
-            bitlen -= l;
-            remain -= l;
-
-            uint8_t val = (btmp >= 0) ? 1 : 0;
-            for (int i = 0; i < l && px < total; i++) {
-                pixels[px++] = val;
-            }
-        }
-    }
-}
-
 void display_measure_scaled_text(const char *text, int scale, int *width, int *height) {
     if (width) *width = 0;
     if (height) *height = 0;
@@ -460,76 +412,16 @@ void display_measure_scaled_text(const char *text, int scale, int *width, int *h
 
 void display_draw_scaled_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg, int scale) {
     if (!display_initialized || !text || scale <= 0) return;
-    if (!current_display_font) return;
 
-    const GFXfont *fnt = (const GFXfont *)current_display_font;
-    const uint8_t *bitmap_base = (const uint8_t *)pgm_read_ptr(&fnt->bitmap);
-    const GFXglyph *glyphs = (const GFXglyph *)pgm_read_ptr(&fnt->glyph);
-    uint16_t first_char = pgm_read_word(&fnt->first);
-    uint16_t last_char = pgm_read_word(&fnt->last);
-
-    int text_width = 0;
-    int text_height = 0;
-    display_measure_scaled_text(text, scale, &text_width, &text_height);
-    if (text_width <= 0 || text_height <= 0) return;
-
-    tft.fillRect(x, y, text_width, text_height, bg);
-
-    uint8_t glyph_bits[80];
-    int cursor_x = x;
-
-    for (size_t index = 0; text[index]; index++) {
-        char ch = text[index];
-        int advance = disp_font_width * scale;
-
-        if (ch >= first_char && ch <= last_char && bitmap_base) {
-            const GFXglyph *g = &glyphs[ch - first_char];
-            uint32_t offset = pgm_read_dword(&g->bitmapOffset);
-            uint8_t gw = pgm_read_byte(&g->width);
-            uint8_t gh = pgm_read_byte(&g->height);
-            int8_t x_offset = (int8_t)pgm_read_byte(&g->xOffset);
-            uint8_t x_advance = pgm_read_byte(&g->xAdvance);
-
-            advance = x_advance * scale;
-
-            if (gw > 0 && gh > 0 && gw <= disp_font_width && gh <= disp_font_height) {
-                memset(glyph_bits, 0, gw * gh);
-                decode_glyph_rle(bitmap_base + offset, gw, gh, glyph_bits);
-
-                     /* x_offset shifts the glyph within the advance width.
-                         We treat y as the top of the cell and draw the glyph from
-                         that top-left origin. */
-                int glyph_x = cursor_x + x_offset * scale;
-                int glyph_y = y;
-
-                for (int gy = 0; gy < gh; gy++) {
-                    for (int gx = 0; gx < gw; gx++) {
-                        if (!glyph_bits[gy * gw + gx]) {
-                            continue;
-                        }
-                        tft.fillRect(glyph_x + gx * scale, glyph_y + gy * scale, scale, scale, fg);
-                    }
-                }
-            }
-        }
-
-        cursor_x += advance;
-    }
+    tft.setTextSize(scale);
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(fg, bg);
+    tft.drawString(text, x, y);
+    tft.setTextSize(1);
 }
-
-// Font cell size used by text mode (spleen-5x8)
-#define DISPLAY_FONT_WIDTH  5
-#define DISPLAY_FONT_HEIGHT 8
 
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color) {
     if (!display_initialized) return;
-    // Debug: Log character dimensions more frequently
-    static int call_count = 0;
-    if (call_count < 5 || call_count % 100 == 0) {
-        ESP_LOGI("display", "draw_char_at #%d: disp_font_width=%d, disp_font_height=%d, ch='%c'",
-                 call_count, disp_font_width, disp_font_height, ch);
-    }
-    call_count++;
     tft.fillRect(x, y, disp_font_width, disp_font_height, bg_color);
     if (ch != ' ') {
         char text[2] = {ch, '\0'};
@@ -539,14 +431,11 @@ void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_
         int32_t clip_h = 0;
         tft.getClipRect(&clip_x, &clip_y, &clip_w, &clip_h);
 
-        tft.setClipRect(x, y, disp_font_width, disp_font_height);
+        // Add 1 pixel padding to handle sub-pixel positioning and rounding issues
+        tft.setClipRect(x - 1, y, disp_font_width + 2, disp_font_height);
         tft.setTextDatum(TL_DATUM);
         tft.setTextColor(fg_color, bg_color);
-        if (current_display_font) {
-            tft.drawString(text, x, y, current_display_font);
-        } else {
-            tft.drawString(text, x, y);
-        }
+        tft.drawString(text, x, y);
 
         if (clip_w > 0 && clip_h > 0) {
             tft.setClipRect(clip_x, clip_y, clip_w, clip_h);
@@ -615,26 +504,6 @@ bool display_load_vlw_font(const char *path) {
         ESP_LOGE(TAG, "This might be because LovyanGFX needs a file system object");
         ESP_LOGE(TAG, "or the file doesn't exist on the SD card");
     }
-    return success;
-}
-
-bool display_load_embedded_vlw_font(const uint8_t* data, size_t size) {
-    if (!display_tft) {
-        ESP_LOGE(TAG, "display_tft is null, cannot load embedded font");
-        return false;
-    }
-
-    ESP_LOGI(TAG, "Loading embedded VLW font (%zu bytes)", size);
-
-    // Load the embedded font data using LovyanGFX
-    bool success = display_tft->loadFont(data);
-
-    if (success) {
-        ESP_LOGI(TAG, "Successfully loaded embedded VLW font");
-    } else {
-        ESP_LOGE(TAG, "Failed to load embedded VLW font");
-    }
-
     return success;
 }
 

@@ -50,7 +50,9 @@
       "Bash(curl -s \"https://raw.githubusercontent.com/Arduboy/Arduboy/master/src/core/ArduboyFont.cpp\")",
       "Bash(curl -s \"https://raw.githubusercontent.com/Arduboy/Arduboy2/master/src/core/ArduboyFont.cpp\")",
       "Bash(grep -E '\\\\.\\(sh|py|c\\)$')",
-      "Bash(grep -E \"\\\\.\\(c|h|hpp|cpp\\)$\")"
+      "Bash(grep -E \"\\\\.\\(c|h|hpp|cpp\\)$\")",
+      "Bash(git clean *)",
+      "Bash(python3 *)"
     ]
   }
 }

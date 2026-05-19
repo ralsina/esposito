@@ -2,47 +2,53 @@
 #define FONTS_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#define FONT_HACK_6   0
+#define FONT_HACK_7   1
+#define FONT_HACK_8   2
+#define FONT_HACK_9   3
+#define FONT_HACK_10  4
+#define FONT_HACK_11  5
+#define FONT_IBMPLEX_6  6
+#define FONT_IBMPLEX_7  7
+#define FONT_IBMPLEX_8  8
+#define FONT_IBMPLEX_9  9
+#define FONT_IBMPLEX_10 10
+#define FONT_IBMPLEX_11 11
+#define FONT_COUNT      12
+#define FONT_INVALID    (-1)
+
 typedef enum {
-    FONT_5X7,
-    FONT_SPLEEN_5X8,
-    FONT_TOMTHUMB,
-    FONT_6X10,
-    FONT_6X12,
-    FONT_7X13,
-    FONT_8X13,
-    FONT_HACK_VLW,  // 8px monospaced from SD card
-    FONT_COUNT
-} font_id_t;
+    FONT_VARIANT_REGULAR,
+    FONT_VARIANT_BOLD,
+    FONT_VARIANT_ITALIC,
+    FONT_VARIANT_BOLDITALIC,
+    FONT_VARIANT_COUNT
+} font_variant_t;
+
+typedef int font_id_t;
 
 typedef struct {
     font_id_t id;
     const char *name;
+    const char *family;
+    int size;
     int char_width;
     int char_height;
-    const void *font_ptr;
 } font_info_t;
 
-extern font_info_t font_table[FONT_COUNT];
+extern font_info_t font_table[];
 
 font_id_t font_lookup_by_name(const char *name);
 
-// Load VLW font from SD card
-bool font_load_vlw(const char *path);
+bool font_get_vlw_metrics(const uint8_t *data, size_t size, int *out_width, int *out_height);
 
-// Load embedded VLW font from header data
-bool font_load_embedded_vlw(void);
-
-// Extract metrics (width, height) from VLW binary data
-// Assumes monospaced-ish font — scans all glyphs for max xAdvance
-void vlw_get_metrics(const uint8_t *data, size_t size, int *width, int *height);
-
-// Update font_table VLW entry from the embedded hack_font data
-void vlw_init_embedded_metrics(void);
+const uint8_t *font_get_variant_data(font_id_t id, font_variant_t variant, size_t *out_size);
 
 #ifdef __cplusplus
 }

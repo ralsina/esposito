@@ -6,6 +6,7 @@
 #include "app_config.h"
 #include "hardware.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "settings";
@@ -18,6 +19,7 @@ typedef enum {
     STATE_ENTER_TIMEZONE,
     STATE_ENTER_LOCATION,
     STATE_FONT_SELECTION,
+    STATE_FONT_SIZE_SELECTION,
     STATE_MESSAGE,
 } app_state_t;
 
@@ -30,16 +32,26 @@ static char status_msg[128] = {0};
 static int msg_timer = 0;
 static int scan_count = 0;
 static int scan_selected = 0;
-static int font_selected = 0;
 static ui_text_input_widget_t *ssid_input;
 static ui_text_input_widget_t *password_input;
 static ui_text_input_widget_t *timezone_input;
 static ui_text_input_widget_t *location_input;
-static ui_list_widget_t *font_list;
 
-// Font list items must persist for ui_list, so keep backing storage static.
-static char font_list_labels[FONT_COUNT][48];
-static const char *font_list_items[FONT_COUNT];
+// Font family selection
+static char font_family_labels[FONT_COUNT][24];
+static const char *font_family_items[FONT_COUNT];
+static int font_family_count = 0;
+static int font_family_selected = 0;
+static char selected_family[24];
+static ui_list_widget_t *font_family_list;
+
+// Font size selection
+static char font_size_labels[FONT_COUNT][48];
+static const char *font_size_items[FONT_COUNT];
+static int font_size_count = 0;
+static int font_size_selected = 0;
+static ui_list_widget_t *font_size_list;
+static bool layout_needs_rebuild = false;
 
 typedef enum {
     MAIN_FOCUS_LEFT,
@@ -62,7 +74,8 @@ typedef enum {
     ACTION_DISCONNECT,
     ACTION_SET_TIMEZONE,
     ACTION_SET_LOCATION,
-    ACTION_SET_FONT,
+    ACTION_SET_FONT_FAMILY,
+    ACTION_SET_FONT_SIZE,
     ACTION_SET_ROTATION,
     ACTION_TOGGLE_SERIAL,
 } settings_action_t;
@@ -92,12 +105,9 @@ static const section_option_t time_options[] = {
     {"Location", ACTION_SET_LOCATION},
 };
 
-static const section_option_t font_options[] = {
-    {"Default", ACTION_SET_FONT},
-};
-
 static const section_option_t display_options[] = {
-    {"Default Font", ACTION_SET_FONT},
+    {"Font Family", ACTION_SET_FONT_FAMILY},
+    {"Font Size", ACTION_SET_FONT_SIZE},
     {"Rotation", ACTION_SET_ROTATION},
 };
 
@@ -110,8 +120,11 @@ static settings_section_t selected_section = SECTION_WIFI;
 static int section_option_selected[SECTION_COUNT] = {0};
 
 // Forward declarations for callbacks used by widget rebuild.
-static void on_font_list_selection_changed(ui_list_widget_t *list, int new_selection);
-static void on_font_list_item_selected(ui_list_widget_t *list, int item_index);
+static void on_font_family_selection_changed(ui_list_widget_t *list, int new_selection);
+static void on_font_family_item_selected(ui_list_widget_t *list, int item_index);
+static void on_font_size_selection_changed(ui_list_widget_t *list, int new_selection);
+static void on_font_size_item_selected(ui_list_widget_t *list, int item_index);
+static void render(void);
 
 #define SETTINGS_KEY_TIMEZONE "time/timezone"
 #define SETTINGS_KEY_LOCATION "weather/location"
@@ -304,9 +317,13 @@ static void rebuild_layout_widgets(void) {
         ui_text_input_destroy(location_input);
         location_input = NULL;
     }
-    if (font_list) {
-        ui_list_destroy(font_list);
-        font_list = NULL;
+    if (font_family_list) {
+        ui_list_destroy(font_family_list);
+        font_family_list = NULL;
+    }
+    if (font_size_list) {
+        ui_list_destroy(font_size_list);
+        font_size_list = NULL;
     }
 
     ssid_input = ui_text_input_create(0, rows - 4, cols, 4);
@@ -330,57 +347,142 @@ static void rebuild_layout_widgets(void) {
     ui_text_input_set_label(location_input, "Location:");
     ui_text_input_set_hints(location_input, "City or lat,lon", "ESC Cancel");
 
-    // Create font selection list
+    // Create font family selection list
     int list_height = rows - 4;
-    font_list = ui_list_create(2, 2, cols - 4, list_height);
-    ui_list_set_title(font_list, "Select Default Font");
-    ui_list_set_border(font_list, true);
-    ui_list_set_scrollbar(font_list, true);
+    font_family_list = ui_list_create(2, 2, cols - 4, list_height);
+    ui_list_set_title(font_family_list, "Select Font Family");
+    ui_list_set_border(font_family_list, true);
+    ui_list_set_scrollbar(font_family_list, true);
 
-    ui_list_set_items(font_list, font_list_items, FONT_COUNT);
-    ui_list_set_selection(font_list, font_selected);
-    ui_list_set_callbacks(font_list, on_font_list_selection_changed, on_font_list_item_selected, font_list);
+    ui_list_set_items(font_family_list, font_family_items, font_family_count);
+    ui_list_set_selection(font_family_list, font_family_selected);
+    ui_list_set_callbacks(font_family_list, on_font_family_selection_changed, on_font_family_item_selected, font_family_list);
+
+    // Create font size selection list
+    font_size_list = ui_list_create(2, 2, cols - 4, list_height);
+    ui_list_set_title(font_size_list, "Select Font Size");
+    ui_list_set_border(font_size_list, true);
+    ui_list_set_scrollbar(font_size_list, true);
+
+    ui_list_set_items(font_size_list, font_size_items, font_size_count);
+    ui_list_set_selection(font_size_list, font_size_selected);
+    ui_list_set_callbacks(font_size_list, on_font_size_selection_changed, on_font_size_item_selected, font_size_list);
 }
 
-static void build_font_list_items(void) {
+static void build_font_family_items(void) {
+    font_family_count = 0;
     for (int index = 0; index < FONT_COUNT; index++) {
-        int cols = display_get_width() / font_table[index].char_width;
-        int rows = display_get_height() / font_table[index].char_height;
-        snprintf(font_list_labels[index], sizeof(font_list_labels[index]),
-                 "%s (%dx%d)", font_table[index].name, cols, rows);
-        font_list_items[index] = font_list_labels[index];
+        const char *family = font_table[index].family;
+        int found = 0;
+        for (int j = 0; j < font_family_count; j++) {
+            if (strcmp(font_family_labels[j], family) == 0) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            strncpy(font_family_labels[font_family_count], family, sizeof(font_family_labels[0]) - 1);
+            font_family_labels[font_family_count][sizeof(font_family_labels[0]) - 1] = '\0';
+            font_family_items[font_family_count] = font_family_labels[font_family_count];
+            font_family_count++;
+        }
     }
 }
 
-// Forward declaration
-static void render(void);
-
-// Font list callbacks
-static void on_font_list_selection_changed(ui_list_widget_t *list, int new_selection) {
-    (void)list;
-    font_selected = new_selection;
+static void build_font_size_items(const char *family) {
+    font_size_count = 0;
+    for (int index = 0; index < FONT_COUNT; index++) {
+        if (strcmp(font_table[index].family, family) == 0) {
+            int cols = display_get_width() / font_table[index].char_width;
+            int rows = display_get_height() / font_table[index].char_height;
+            snprintf(font_size_labels[font_size_count], sizeof(font_size_labels[0]),
+                     "%d (%dx%d)", font_table[index].size, cols, rows);
+            font_size_items[font_size_count] = font_size_labels[font_size_count];
+            font_size_count++;
+        }
+    }
 }
 
-static void on_font_list_item_selected(ui_list_widget_t *list, int item_index) {
-    (void)list;
-    if (item_index >= 0 && item_index < FONT_COUNT) {
-        // Save the setting
-        os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[item_index].name);
-
-        // Apply the font change immediately
-        extern font_id_t font_lookup_by_name(const char *name);
-        extern bool text_mode_set_font(font_id_t font);
-
-        font_id_t new_font = font_lookup_by_name(font_table[item_index].name);
-        if ((int)new_font >= 0 && (int)new_font < FONT_COUNT) {
-            text_mode_set_font(new_font);
-            font_selected = (int)new_font;
-            rebuild_layout_widgets();
+static font_id_t find_font_by_family_size(const char *family, int size) {
+    for (int index = 0; index < FONT_COUNT; index++) {
+        if (strcmp(font_table[index].family, family) == 0 && font_table[index].size == size) {
+            return font_table[index].id;
         }
+    }
+    return FONT_HACK_8;
+}
 
-        set_status("Font changed and saved");
+// Font family list callbacks
+static void on_font_family_selection_changed(ui_list_widget_t *list, int new_selection) {
+    (void)list;
+    font_family_selected = new_selection;
+}
+
+static void on_font_family_item_selected(ui_list_widget_t *list, int item_index) {
+    (void)list;
+    if (item_index < 0 || item_index >= font_family_count) return;
+
+    const char *new_family = font_family_items[item_index];
+    strncpy(selected_family, new_family, sizeof(selected_family) - 1);
+    selected_family[sizeof(selected_family) - 1] = '\0';
+
+    char current_font[32];
+    os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
+    font_id_t current_id = font_lookup_by_name(current_font);
+    int current_size = current_id >= 0 ? font_table[current_id].size : 8;
+
+    build_font_size_items(selected_family);
+
+    int best_size = 0;
+    font_size_selected = 0;
+    for (int i = 0; i < font_size_count; i++) {
+        int size = 0;
+        sscanf(font_size_items[i], "%d", &size);
+        if (best_size == 0 || abs(size - current_size) < abs(best_size - current_size)) {
+            best_size = size;
+            font_size_selected = i;
+        }
+    }
+
+    if (font_size_count > 0) {
+        int size = 0;
+        sscanf(font_size_items[font_size_selected], "%d", &size);
+        font_id_t font_id = find_font_by_family_size(selected_family, size);
+        if (font_id >= 0 && font_id < FONT_COUNT) {
+            os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
+            extern bool text_mode_set_font(font_id_t font);
+            text_mode_set_font(font_id);
+            layout_needs_rebuild = true;
+            set_status("Font changed and saved");
+        }
+    }
+
+    state = STATE_MAIN;
+}
+
+// Font size list callbacks
+static void on_font_size_selection_changed(ui_list_widget_t *list, int new_selection) {
+    (void)list;
+    font_size_selected = new_selection;
+}
+
+static void on_font_size_item_selected(ui_list_widget_t *list, int item_index) {
+    (void)list;
+    if (item_index >= 0 && item_index < font_size_count) {
+        // Determine the size value from the label (first token before space)
+        int size = 0;
+        sscanf(font_size_items[item_index], "%d", &size);
+
+        font_id_t font_id = find_font_by_family_size(selected_family, size);
+        if (font_id >= 0 && font_id < FONT_COUNT) {
+            os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
+            extern font_id_t font_lookup_by_name(const char *name);
+            extern bool text_mode_set_font(font_id_t font);
+            text_mode_set_font(font_id);
+            rebuild_layout_widgets();
+            set_status("Font changed and saved");
+        }
         state = STATE_MAIN;
-        render();
     }
 }
 
@@ -467,10 +569,26 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
         case ACTION_SET_LOCATION:
             snprintf(out, out_size, "%s", input_location[0] ? input_location : "40.4168,-3.7038");
             break;
-        case ACTION_SET_FONT: {
+        case ACTION_SET_FONT_FAMILY: {
             char current_font[32];
-            os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "spleen-5x8", current_font, sizeof(current_font));
-            snprintf(out, out_size, "%s", current_font);
+            os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
+            font_id_t current_id = font_lookup_by_name(current_font);
+            if (current_id >= 0) {
+                snprintf(out, out_size, "%s", font_table[current_id].family);
+            } else {
+                snprintf(out, out_size, "hack");
+            }
+            break;
+        }
+        case ACTION_SET_FONT_SIZE: {
+            char current_font[32];
+            os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
+            font_id_t current_id = font_lookup_by_name(current_font);
+            if (current_id >= 0) {
+                snprintf(out, out_size, "%d", font_table[current_id].size);
+            } else {
+                snprintf(out, out_size, "8");
+            }
             break;
         }
         case ACTION_SET_ROTATION: {
@@ -535,8 +653,33 @@ static void execute_main_action(settings_action_t action) {
             state = STATE_ENTER_LOCATION;
             render();
             break;
-        case ACTION_SET_FONT:
+        case ACTION_SET_FONT_FAMILY:
             state = STATE_FONT_SELECTION;
+            render();
+            break;
+        case ACTION_SET_FONT_SIZE:
+            build_font_size_items(selected_family);
+            font_size_selected = 0;
+            {
+                char current_font[32];
+                os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
+                font_id_t current_id = font_lookup_by_name(current_font);
+                if (current_id >= 0) {
+                    for (int i = 0; i < font_size_count; i++) {
+                        int size = 0;
+                        sscanf(font_size_items[i], "%d", &size);
+                        if (size == font_table[current_id].size) {
+                            font_size_selected = i;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (font_size_list) {
+                ui_list_set_items(font_size_list, font_size_items, font_size_count);
+                ui_list_set_selection(font_size_list, font_size_selected);
+            }
+            state = STATE_FONT_SIZE_SELECTION;
             render();
             break;
         case ACTION_SET_ROTATION: {
@@ -564,7 +707,7 @@ static void execute_main_action(settings_action_t action) {
 static void draw_main_split_layout(void) {
     const int cols = text_mode_get_cols();
     const int rows = text_mode_get_rows();
-    const int left_width = 8;
+    const int left_width = 11;
     const int divider_col = left_width;
     const int right_x = left_width + 1;
     const int right_width = cols - right_x;
@@ -696,6 +839,10 @@ static void draw_message(void) {
 }
 
 static void render(void) {
+    if (layout_needs_rebuild) {
+        rebuild_layout_widgets();
+        layout_needs_rebuild = false;
+    }
     switch (state) {
         case STATE_MAIN:
             draw_main();
@@ -720,7 +867,12 @@ static void render(void) {
             ui_text_input_draw(location_input);
             break;
         case STATE_FONT_SELECTION:
-            ui_list_draw(font_list);
+            ui_clear();
+            ui_list_draw(font_family_list);
+            break;
+        case STATE_FONT_SIZE_SELECTION:
+            ui_clear();
+            ui_list_draw(font_size_list);
             break;
         case STATE_MESSAGE:
             draw_message();
@@ -757,15 +909,30 @@ void app_init(app_context_t *ctx) {
     os_settings_get_string(SETTINGS_KEY_TIMEZONE, "UTC", input_timezone, sizeof(input_timezone));
     os_settings_get_string(SETTINGS_KEY_LOCATION, "40.4168,-3.7038", input_location, sizeof(input_location));
 
-    build_font_list_items();
+    build_font_family_items();
 
-    // Get current font setting for initial selection
     char current_font[32];
-    os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "spleen-5x8", current_font, sizeof(current_font));
-    font_selected = 0;
-    for (int i = 0; i < FONT_COUNT; i++) {
-        if (strcmp(current_font, font_table[i].name) == 0) {
-            font_selected = i;
+    os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
+    font_id_t current_id = font_lookup_by_name(current_font);
+    if (current_id < 0) current_id = FONT_HACK_8;
+
+    font_family_selected = 0;
+    strncpy(selected_family, font_table[current_id].family, sizeof(selected_family) - 1);
+    selected_family[sizeof(selected_family) - 1] = '\0';
+    for (int i = 0; i < font_family_count; i++) {
+        if (strcmp(font_family_items[i], selected_family) == 0) {
+            font_family_selected = i;
+            break;
+        }
+    }
+
+    build_font_size_items(selected_family);
+    font_size_selected = 0;
+    for (int i = 0; i < font_size_count; i++) {
+        int size = 0;
+        sscanf(font_size_items[i], "%d", &size);
+        if (size == font_table[current_id].size) {
+            font_size_selected = i;
             break;
         }
     }
@@ -800,9 +967,13 @@ void app_close(app_context_t *ctx) {
         ui_text_input_destroy(location_input);
         location_input = NULL;
     }
-    if (font_list) {
-        ui_list_destroy(font_list);
-        font_list = NULL;
+    if (font_family_list) {
+        ui_list_destroy(font_family_list);
+        font_family_list = NULL;
+    }
+    if (font_size_list) {
+        ui_list_destroy(font_size_list);
+        font_size_list = NULL;
     }
 
     text_mode_clear(TEXT_COLOR_BLACK);
@@ -981,15 +1152,20 @@ void app_event(app_context_t *ctx, event_t *event) {
                 handle_text_entry_event(event);
                 break;
             case STATE_FONT_SELECTION:
-                if (key == 27) { // ESC
+                if (key == 27) {
                     state = STATE_MAIN;
-                    render();
                 } else {
-                    if (ui_list_handle_key(font_list, key)) {
-                        ui_list_draw(font_list);
-                        text_mode_flush();
-                    }
+                    ui_list_handle_key(font_family_list, key);
                 }
+                render();
+                break;
+            case STATE_FONT_SIZE_SELECTION:
+                if (key == 27) {
+                    state = STATE_MAIN;
+                } else {
+                    ui_list_handle_key(font_size_list, key);
+                }
+                render();
                 break;
             case STATE_MESSAGE:
                 handle_message_key(key);
@@ -1009,10 +1185,12 @@ void app_event(app_context_t *ctx, event_t *event) {
 
         switch (state) {
             case STATE_FONT_SELECTION:
-                if (ui_list_handle_touch(font_list, &char_event)) {
-                    ui_list_draw(font_list);
-                    text_mode_flush();
-                }
+                ui_list_handle_touch(font_family_list, &char_event);
+                render();
+                break;
+            case STATE_FONT_SIZE_SELECTION:
+                ui_list_handle_touch(font_size_list, &char_event);
+                render();
                 break;
             default:
                 break;

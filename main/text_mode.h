@@ -78,6 +78,7 @@ int text_mode_get_rows(void);
 int text_mode_get_char_width(void);
 int text_mode_get_char_height(void);
 font_id_t text_mode_get_font(void);
+font_variant_t text_mode_get_variant(void);
 
 // Clear text mode screen (fills with background color)
 void text_mode_clear(uint16_t bg_color);
