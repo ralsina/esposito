@@ -14,13 +14,19 @@ extern "C" {
 #define FONT_HACK_9   3
 #define FONT_HACK_10  4
 #define FONT_HACK_11  5
-#define FONT_IBMPLEX_6  6
-#define FONT_IBMPLEX_7  7
-#define FONT_IBMPLEX_8  8
-#define FONT_IBMPLEX_9  9
-#define FONT_IBMPLEX_10 10
-#define FONT_IBMPLEX_11 11
-#define FONT_COUNT      12
+#define FONT_HACK_12  6
+#define FONT_HACK_13  7
+#define FONT_HACK_14  8
+#define FONT_IBMPLEX_6  9
+#define FONT_IBMPLEX_7  10
+#define FONT_IBMPLEX_8  11
+#define FONT_IBMPLEX_9  12
+#define FONT_IBMPLEX_10 13
+#define FONT_IBMPLEX_11 14
+#define FONT_IBMPLEX_12 15
+#define FONT_IBMPLEX_13 16
+#define FONT_IBMPLEX_14 17
+#define FONT_COUNT      18
 #define FONT_INVALID    (-1)
 
 typedef enum {

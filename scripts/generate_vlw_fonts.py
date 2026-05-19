@@ -234,7 +234,7 @@ def main():
 
     for family in font_families:
         for variant in variants:
-            for size in range(6, 12):
+            for size in range(6, 15):
                 ttf_filename = f"{family}-{variant}.ttf"
                 name = f"{font_families[family]}{variants[variant]}"
                 ttf_path = FONTS_DIR / ttf_filename

@@ -2,7 +2,7 @@
 #include <lgfx/utility/pgmspace.h>
 #include <cstdlib>
 
-// All 28 Hack VLW font variants
+// All 36 Hack VLW font variants
 #include "hack-6.h"
 #include "hack_bold-6.h"
 #include "hack_italic-6.h"
@@ -27,8 +27,20 @@
 #include "hack_bold-11.h"
 #include "hack_italic-11.h"
 #include "hack_bolditalic-11.h"
+#include "hack-12.h"
+#include "hack_bold-12.h"
+#include "hack_italic-12.h"
+#include "hack_bolditalic-12.h"
+#include "hack-13.h"
+#include "hack_bold-13.h"
+#include "hack_italic-13.h"
+#include "hack_bolditalic-13.h"
+#include "hack-14.h"
+#include "hack_bold-14.h"
+#include "hack_italic-14.h"
+#include "hack_bolditalic-14.h"
 
-// All 24 IBM Plex Mono VLW font variants
+// All 36 IBM Plex Mono VLW font variants
 #include "ibmplex-6.h"
 #include "ibmplex_bold-6.h"
 #include "ibmplex_italic-6.h"
@@ -53,6 +65,18 @@
 #include "ibmplex_bold-11.h"
 #include "ibmplex_italic-11.h"
 #include "ibmplex_bolditalic-11.h"
+#include "ibmplex-12.h"
+#include "ibmplex_bold-12.h"
+#include "ibmplex_italic-12.h"
+#include "ibmplex_bolditalic-12.h"
+#include "ibmplex-13.h"
+#include "ibmplex_bold-13.h"
+#include "ibmplex_italic-13.h"
+#include "ibmplex_bolditalic-13.h"
+#include "ibmplex-14.h"
+#include "ibmplex_bold-14.h"
+#include "ibmplex_italic-14.h"
+#include "ibmplex_bolditalic-14.h"
 
 typedef struct {
     const uint8_t *data;
@@ -68,12 +92,18 @@ static const variant_data_t font_variants[FONT_COUNT][FONT_VARIANT_COUNT] = {
     { VDATA(hack_9), VDATA(hack_bold_9), VDATA(hack_italic_9), VDATA(hack_bolditalic_9) },
     { VDATA(hack_10), VDATA(hack_bold_10), VDATA(hack_italic_10), VDATA(hack_bolditalic_10) },
     { VDATA(hack_11), VDATA(hack_bold_11), VDATA(hack_italic_11), VDATA(hack_bolditalic_11) },
+    { VDATA(hack_12), VDATA(hack_bold_12), VDATA(hack_italic_12), VDATA(hack_bolditalic_12) },
+    { VDATA(hack_13), VDATA(hack_bold_13), VDATA(hack_italic_13), VDATA(hack_bolditalic_13) },
+    { VDATA(hack_14), VDATA(hack_bold_14), VDATA(hack_italic_14), VDATA(hack_bolditalic_14) },
     { VDATA(ibmplex_6), VDATA(ibmplex_bold_6), VDATA(ibmplex_italic_6), VDATA(ibmplex_bolditalic_6) },
     { VDATA(ibmplex_7), VDATA(ibmplex_bold_7), VDATA(ibmplex_italic_7), VDATA(ibmplex_bolditalic_7) },
     { VDATA(ibmplex_8), VDATA(ibmplex_bold_8), VDATA(ibmplex_italic_8), VDATA(ibmplex_bolditalic_8) },
     { VDATA(ibmplex_9), VDATA(ibmplex_bold_9), VDATA(ibmplex_italic_9), VDATA(ibmplex_bolditalic_9) },
     { VDATA(ibmplex_10), VDATA(ibmplex_bold_10), VDATA(ibmplex_italic_10), VDATA(ibmplex_bolditalic_10) },
     { VDATA(ibmplex_11), VDATA(ibmplex_bold_11), VDATA(ibmplex_italic_11), VDATA(ibmplex_bolditalic_11) },
+    { VDATA(ibmplex_12), VDATA(ibmplex_bold_12), VDATA(ibmplex_italic_12), VDATA(ibmplex_bolditalic_12) },
+    { VDATA(ibmplex_13), VDATA(ibmplex_bold_13), VDATA(ibmplex_italic_13), VDATA(ibmplex_bolditalic_13) },
+    { VDATA(ibmplex_14), VDATA(ibmplex_bold_14), VDATA(ibmplex_italic_14), VDATA(ibmplex_bolditalic_14) },
 };
 
 font_info_t font_table[FONT_COUNT] = {
@@ -83,12 +113,18 @@ font_info_t font_table[FONT_COUNT] = {
     { FONT_HACK_9,    "hack 9",    "hack",    9,  5, 11 },
     { FONT_HACK_10,   "hack 10",   "hack",    10, 6, 12 },
     { FONT_HACK_11,   "hack 11",   "hack",    11, 7, 13 },
+    { FONT_HACK_12,   "hack 12",   "hack",    12, 7, 14 },
+    { FONT_HACK_13,   "hack 13",   "hack",    13, 8, 15 },
+    { FONT_HACK_14,   "hack 14",   "hack",    14, 9, 17 },
     { FONT_IBMPLEX_6, "ibmplex 6", "ibmplex", 6,  4, 8  },
     { FONT_IBMPLEX_7, "ibmplex 7", "ibmplex", 7,  4, 9  },
     { FONT_IBMPLEX_8, "ibmplex 8", "ibmplex", 8,  5, 11 },
     { FONT_IBMPLEX_9, "ibmplex 9", "ibmplex", 9,  5, 12 },
     { FONT_IBMPLEX_10,"ibmplex 10","ibmplex", 10, 6, 13 },
     { FONT_IBMPLEX_11,"ibmplex 11","ibmplex", 11, 7, 15 },
+    { FONT_IBMPLEX_12,"ibmplex 12","ibmplex", 12, 7, 16 },
+    { FONT_IBMPLEX_13,"ibmplex 13","ibmplex", 13, 8, 18 },
+    { FONT_IBMPLEX_14,"ibmplex 14","ibmplex", 14, 9, 19 },
 };
 
 
