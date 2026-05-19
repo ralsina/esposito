@@ -87,8 +87,11 @@ static int glyph_advance(char c, int size) {
 
 // Helper: convert framebuffer to RGB565 and display
 static void flush_framebuffer() {
-    int offset_x = (SCREEN_WIDTH - ARDUBOY_SCREEN_WIDTH) / 2;
-    int offset_y = (SCREEN_HEIGHT - ARDUBOY_SCREEN_HEIGHT) / 2;
+    int screen_width = display_get_width();
+    int screen_height = display_get_height();
+
+    int offset_x = (screen_width - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (screen_height - ARDUBOY_SCREEN_HEIGHT) / 2;
 
     for (int y = 0; y < ARDUBOY_SCREEN_HEIGHT; y++) {
         for (int x = 0; x < ARDUBOY_SCREEN_WIDTH; x++) {
