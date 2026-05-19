@@ -14,6 +14,10 @@ extern "C" {
 // Forward declaration
 typedef struct ui_list_widget_t ui_list_widget_t;
 
+// Callbacks
+typedef void (*ui_list_selection_changed_cb)(ui_list_widget_t *widget, int new_selection, void *user_data);
+typedef void (*ui_list_item_selected_cb)(ui_list_widget_t *widget, int item_index, void *user_data);
+
 // List widget for displaying scrollable, selectable item lists
 // Ideal for TOCs, file pickers, settings menus, etc.
 struct ui_list_widget_t {
@@ -48,8 +52,8 @@ struct ui_list_widget_t {
     bool draw_scrollbar;     // Draw a scrollbar indicator
 
     // Callbacks
-    void (*on_selection_changed)(ui_list_widget_t *widget, int new_selection);
-    void (*on_item_selected)(ui_list_widget_t *widget, int item_index);
+    ui_list_selection_changed_cb on_selection_changed;
+    ui_list_item_selected_cb on_item_selected;
     void *user_data;
 };
 
@@ -63,8 +67,8 @@ void ui_list_set_title(ui_list_widget_t *widget, const char *title);
 void ui_list_set_colors(ui_list_widget_t *widget, uint8_t normal_fg, uint8_t normal_bg,
                         uint8_t selected_fg, uint8_t selected_bg, uint8_t border_fg);
 void ui_list_set_callbacks(ui_list_widget_t *widget,
-                           void (*on_selection_changed)(ui_list_widget_t *widget, int new_selection),
-                           void (*on_item_selected)(ui_list_widget_t *widget, int item_index),
+                           ui_list_selection_changed_cb on_selection_changed,
+                           ui_list_item_selected_cb on_item_selected,
                            void *user_data);
 void ui_list_set_border(ui_list_widget_t *widget, bool draw_border);
 void ui_list_set_scrollbar(ui_list_widget_t *widget, bool draw_scrollbar);

@@ -59,8 +59,8 @@ static file_manager_t state;
 
 static void render(void);
 static void apply_name_input(void);
-static void on_name_confirm(ui_text_input_widget_t *widget);
-static void on_name_cancel(ui_text_input_widget_t *widget);
+static void on_name_confirm(ui_text_input_widget_t *widget, void *user_data);
+static void on_name_cancel(ui_text_input_widget_t *widget, void *user_data);
 
 static void trim_spaces(char *text) {
     if (!text || !text[0]) {
@@ -591,13 +591,15 @@ static void active_delete_selected(void) {
     set_status(entry->is_dir ? "Directory deleted" : "File deleted");
 }
 
-static void on_name_confirm(ui_text_input_widget_t *widget) {
+static void on_name_confirm(ui_text_input_widget_t *widget, void *user_data) {
     (void)widget;
+    (void)user_data;
     apply_name_input();
 }
 
-static void on_name_cancel(ui_text_input_widget_t *widget) {
+static void on_name_cancel(ui_text_input_widget_t *widget, void *user_data) {
     (void)widget;
+    (void)user_data;
     clear_pending_edit();
     set_status("Canceled");
     render();

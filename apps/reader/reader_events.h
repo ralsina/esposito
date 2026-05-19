@@ -22,9 +22,9 @@ void on_reading_toc_click(ui_button_t *button, void *user_data);
 void on_reading_back_click(ui_button_t *button, void *user_data);
 
 // List widget callbacks
-void on_toc_list_selection_changed(ui_list_widget_t *list, int new_selection);
-void on_toc_list_item_selected(ui_list_widget_t *list, int item_index);
-void on_file_list_selection_changed(ui_list_widget_t *list, int new_selection);
-void on_file_list_item_selected(ui_list_widget_t *list, int item_index);
+void on_toc_list_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data);
+void on_toc_list_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
+void on_file_list_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data);
+void on_file_list_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
 
 #endif

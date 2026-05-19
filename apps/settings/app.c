@@ -120,10 +120,10 @@ static settings_section_t selected_section = SECTION_WIFI;
 static int section_option_selected[SECTION_COUNT] = {0};
 
 // Forward declarations for callbacks used by widget rebuild.
-static void on_font_family_selection_changed(ui_list_widget_t *list, int new_selection);
-static void on_font_family_item_selected(ui_list_widget_t *list, int item_index);
-static void on_font_size_selection_changed(ui_list_widget_t *list, int new_selection);
-static void on_font_size_item_selected(ui_list_widget_t *list, int item_index);
+static void on_font_family_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data);
+static void on_font_family_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
+static void on_font_size_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data);
+static void on_font_size_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
 static void render(void);
 
 #define SETTINGS_KEY_TIMEZONE "time/timezone"
@@ -413,13 +413,15 @@ static font_id_t find_font_by_family_size(const char *family, int size) {
 }
 
 // Font family list callbacks
-static void on_font_family_selection_changed(ui_list_widget_t *list, int new_selection) {
+static void on_font_family_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data) {
     (void)list;
+    (void)user_data;
     font_family_selected = new_selection;
 }
 
-static void on_font_family_item_selected(ui_list_widget_t *list, int item_index) {
+static void on_font_family_item_selected(ui_list_widget_t *list, int item_index, void *user_data) {
     (void)list;
+    (void)user_data;
     if (item_index < 0 || item_index >= font_family_count) return;
 
     const char *new_family = font_family_items[item_index];
@@ -461,13 +463,15 @@ static void on_font_family_item_selected(ui_list_widget_t *list, int item_index)
 }
 
 // Font size list callbacks
-static void on_font_size_selection_changed(ui_list_widget_t *list, int new_selection) {
+static void on_font_size_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data) {
     (void)list;
+    (void)user_data;
     font_size_selected = new_selection;
 }
 
-static void on_font_size_item_selected(ui_list_widget_t *list, int item_index) {
+static void on_font_size_item_selected(ui_list_widget_t *list, int item_index, void *user_data) {
     (void)list;
+    (void)user_data;
     if (item_index >= 0 && item_index < font_size_count) {
         // Determine the size value from the label (first token before space)
         int size = 0;

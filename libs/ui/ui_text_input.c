@@ -172,9 +172,9 @@ void ui_text_input_set_colors(ui_text_input_widget_t *widget,
 }
 
 void ui_text_input_set_callbacks(ui_text_input_widget_t *widget,
-                                 void (*on_text_changed)(ui_text_input_widget_t *widget),
-                                 void (*on_confirm)(ui_text_input_widget_t *widget),
-                                 void (*on_cancel)(ui_text_input_widget_t *widget),
+                                 ui_text_input_cb on_text_changed,
+                                 ui_text_input_cb on_confirm,
+                                 ui_text_input_cb on_cancel,
                                  void *user_data) {
     if (!widget) {
         return;
@@ -210,10 +210,10 @@ void ui_text_input_draw(const ui_text_input_widget_t *widget) {
     int width = widget->width;
     int height = widget->height;
 
-    // Clear the widget area
+    // Clear the widget area using label background
     for (int row = 0; row < height; row++) {
         for (int col = 0; col < width; col++) {
-            text_mode_print_at_attr_bg(x + col, y + row, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+            text_mode_print_at_attr_bg(x + col, y + row, " ", widget->label_fg, widget->label_bg, TEXT_ATTR_NORMAL);
         }
     }
 
@@ -280,13 +280,13 @@ bool ui_text_input_handle_key(ui_text_input_widget_t *widget, char key) {
     if (key == KEY_ESC) {
         // Cancel
         if (widget->on_cancel) {
-            widget->on_cancel(widget);
+            widget->on_cancel(widget, widget->user_data);
         }
         handled = true;
     } else if (key == '\n' || key == '\r') {
         // Confirm
         if (widget->on_confirm) {
-            widget->on_confirm(widget);
+            widget->on_confirm(widget, widget->user_data);
         }
         handled = true;
     } else if (key == KEY_BS || key == KEY_DEL || key == 0x08 || key == 0x7F) {
@@ -295,7 +295,7 @@ bool ui_text_input_handle_key(ui_text_input_widget_t *widget, char key) {
         if (len > 0) {
             widget->buffer[len - 1] = '\0';
             if (widget->on_text_changed) {
-                widget->on_text_changed(widget);
+                widget->on_text_changed(widget, widget->user_data);
             }
         }
         handled = true;
@@ -306,7 +306,7 @@ bool ui_text_input_handle_key(ui_text_input_widget_t *widget, char key) {
             widget->buffer[len] = key;
             widget->buffer[len + 1] = '\0';
             if (widget->on_text_changed) {
-                widget->on_text_changed(widget);
+                widget->on_text_changed(widget, widget->user_data);
             }
         }
         handled = true;

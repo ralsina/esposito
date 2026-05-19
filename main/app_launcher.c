@@ -40,13 +40,15 @@ static int previous_selected = -1;
 static void app_launcher_show(void);
 
 // List widget callbacks
-static void on_app_list_selection_changed(ui_list_widget_t *list, int new_selection) {
+static void on_app_list_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data) {
     (void)list;
+    (void)user_data;
     app_launcher_selected = new_selection;
 }
 
-static void on_app_list_item_selected(ui_list_widget_t *list, int item_index) {
+static void on_app_list_item_selected(ui_list_widget_t *list, int item_index, void *user_data) {
     (void)list;
+    (void)user_data;
     if (app_count > 0 && item_index >= 0 && item_index < app_count) {
         ESP_LOGI(TAG, "Launching app: %s", app_names[item_index]);
         app_launcher_active = false;

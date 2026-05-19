@@ -19,8 +19,10 @@ static char ascii_lower(char ch) {
 }
 
 static void reader_nav_search_forward(reader_state_t *state, const char *query, int *bold_pending, int *underline_pending);
-static void on_goto_confirm(ui_text_input_widget_t *widget);
-static void on_goto_cancel(ui_text_input_widget_t *widget);
+static void on_goto_confirm(ui_text_input_widget_t *widget, void *user_data);
+static void on_goto_cancel(ui_text_input_widget_t *widget, void *user_data);
+static void on_search_confirm(ui_text_input_widget_t *widget, void *user_data);
+static void on_search_cancel(ui_text_input_widget_t *widget, void *user_data);
 
 static int contains_substring_nocase(const char *text, const char *needle) {
     if (!needle || !needle[0]) {
@@ -206,11 +208,12 @@ void reader_nav_handle_goto_key(reader_state_t *state, char key, int *bold_pendi
     // Callbacks handle mode switching and page navigation
 }
 
-static void on_goto_confirm(ui_text_input_widget_t *widget) {
-    if (!widget || !widget->user_data) {
+static void on_goto_confirm(ui_text_input_widget_t *widget, void *user_data) {
+    (void)widget;
+    if (!user_data) {
         return;
     }
-    reader_state_t *state = (reader_state_t*)widget->user_data;
+    reader_state_t *state = (reader_state_t*)user_data;
     int bold_pending = 0, underline_pending = 0;
 
     // Parse and go to page
@@ -221,11 +224,12 @@ static void on_goto_confirm(ui_text_input_widget_t *widget) {
     reader_nav_goto_page(state, (page > 1) ? page : 1, &bold_pending, &underline_pending);
 }
 
-static void on_goto_cancel(ui_text_input_widget_t *widget) {
-    if (!widget || !widget->user_data) {
+static void on_goto_cancel(ui_text_input_widget_t *widget, void *user_data) {
+    (void)widget;
+    if (!user_data) {
         return;
     }
-    reader_state_t *state = (reader_state_t*)widget->user_data;
+    reader_state_t *state = (reader_state_t*)user_data;
     int bold_pending = 0, underline_pending = 0;
 
     // Return to reading mode
@@ -234,22 +238,24 @@ static void on_goto_cancel(ui_text_input_widget_t *widget) {
     text_mode_flush();
 }
 
-static void on_search_confirm(ui_text_input_widget_t *widget) {
-    if (!widget || !widget->user_data) {
+static void on_search_confirm(ui_text_input_widget_t *widget, void *user_data) {
+    (void)widget;
+    if (!user_data) {
         return;
     }
-    reader_state_t *state = (reader_state_t*)widget->user_data;
+    reader_state_t *state = (reader_state_t*)user_data;
     int bold_pending = 0, underline_pending = 0;
 
     // Perform the search
     reader_nav_search_forward(state, state->search_buf, &bold_pending, &underline_pending);
 }
 
-static void on_search_cancel(ui_text_input_widget_t *widget) {
-    if (!widget || !widget->user_data) {
+static void on_search_cancel(ui_text_input_widget_t *widget, void *user_data) {
+    (void)widget;
+    if (!user_data) {
         return;
     }
-    reader_state_t *state = (reader_state_t*)widget->user_data;
+    reader_state_t *state = (reader_state_t*)user_data;
     int bold_pending = 0, underline_pending = 0;
 
     // Return to reading mode

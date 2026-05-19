@@ -106,8 +106,8 @@ void ui_list_set_colors(ui_list_widget_t *widget, uint8_t normal_fg, uint8_t nor
 }
 
 void ui_list_set_callbacks(ui_list_widget_t *widget,
-                           void (*on_selection_changed)(ui_list_widget_t *widget, int new_selection),
-                           void (*on_item_selected)(ui_list_widget_t *widget, int item_index),
+                           ui_list_selection_changed_cb on_selection_changed,
+                           ui_list_item_selected_cb on_item_selected,
                            void *user_data) {
     if (!widget) {
         return;
@@ -139,7 +139,7 @@ void ui_list_set_scrollbar(ui_list_widget_t *widget, bool draw_scrollbar) {
 }
 
 void ui_list_set_selection(ui_list_widget_t *widget, int index) {
-    if (!widget || !widget->items) {
+    if (!widget || !widget->items || widget->count <= 0) {
         return;
     }
 
@@ -161,9 +161,7 @@ void ui_list_set_selection(ui_list_widget_t *widget, int index) {
 
     // Trigger callback if selection changed
     if (old_selection != widget->selected && widget->on_selection_changed) {
-        if (widget->user_data) {  // Only call if user_data is valid
-            widget->on_selection_changed(widget, widget->selected);
-        }
+        widget->on_selection_changed(widget, widget->selected, widget->user_data);
     }
 }
 
@@ -172,7 +170,7 @@ int ui_list_get_selection(const ui_list_widget_t *widget) {
 }
 
 void ui_list_scroll_to_item(ui_list_widget_t *widget, int index) {
-    if (!widget) {
+    if (!widget || widget->count <= 0) {
         return;
     }
 
@@ -229,46 +227,46 @@ static void draw_list_border(const ui_list_widget_t *widget) {
 }
 
 static void draw_scrollbar(const ui_list_widget_t *widget) {
-    if (!widget || !widget->draw_scrollbar || widget->count <= widget->visible_rows) {
+    if (!widget || !widget->draw_scrollbar || widget->count <= widget->visible_rows || widget->count <= 0) {
         return;
     }
 
-    int content_x = widget->x + widget->width - 2; // Inside the border
-    int content_y = widget->y + 1; // Below the top border
-    int content_height = widget->height - 2; // Excluding borders
+    int content_x = widget->x + widget->width - 1; // On the right border
+    int content_y = widget->y + 1; // Inside top border
+    int content_height = widget->height - 2; // Excluding top/bottom borders
 
     if (content_height < 1) {
         return;
     }
 
     // Calculate scrollbar position and size using integer math
-    int scrollbar_height = (widget->visible_rows * content_height) / widget->count;
-    if (scrollbar_height < 1) {
-        scrollbar_height = 1;
+    int thumb_height = (widget->visible_rows * content_height) / widget->count;
+    if (thumb_height < 1) {
+        thumb_height = 1;
     }
 
-    int max_position = content_height - scrollbar_height;
-    int scrollbar_position = 0;
+    int max_position = content_height - thumb_height;
+    int thumb_position = 0;
     if (widget->count > widget->visible_rows) {
-        scrollbar_position = (widget->scroll_offset * max_position) / (widget->count - widget->visible_rows);
-    }
-    if (scrollbar_position < 0) {
-        scrollbar_position = 0;
-    }
-    if (scrollbar_position > max_position) {
-        scrollbar_position = max_position;
+        thumb_position = (widget->scroll_offset * max_position) / (widget->count - widget->visible_rows);
     }
 
-    // Draw scrollbar track
+    // Ensure thumb doesn't overflow
+    if (thumb_position < 0) thumb_position = 0;
+    if (thumb_position > max_position) thumb_position = max_position;
+
+    // Draw scrollbar on the right border column
     for (int i = 0; i < content_height; i++) {
-        text_mode_print_at_color(content_x, content_y + i, "│", TEXT_COLOR_BRIGHT_BLACK);
-    }
+        int y_pos = content_y + i;
+        uint8_t attr = TEXT_ATTR_BORDER_RIGHT | TEXT_ATTR_BORDER_LEFT;
+        bool is_thumb = (i >= thumb_position && i < thumb_position + thumb_height);
 
-    // Draw scrollbar thumb
-    for (int i = 0; i < scrollbar_height; i++) {
-        int y_pos = content_y + scrollbar_position + i;
-        if (y_pos < content_y + content_height) {
-            text_mode_print_at_color(content_x, y_pos, "█", TEXT_COLOR_WHITE);
+        if (is_thumb) {
+            // Thumb is a reverse space (white on cyan border color)
+            text_mode_print_at_attr_bg(content_x, y_pos, " ", widget->normal_bg, widget->border_fg, attr);
+        } else {
+            // Track is a normal space with border attribute
+            text_mode_print_at_attr_bg(content_x, y_pos, " ", widget->border_fg, widget->normal_bg, attr);
         }
     }
 }
@@ -308,36 +306,28 @@ void ui_list_draw(const ui_list_widget_t *widget) {
         text_mode_print_at_attr_bg(title_x + 1 + title_len, title_y, " ", widget->title_bg, widget->title_bg, TEXT_ATTR_NORMAL);
     }
 
-    // Calculate content area (below title)
+    // Calculate content area
     int content_x = widget->x + 1; // Inside left border
     int content_y = widget->y + 1; // Inside top border
     int content_width = widget->width - 2; // Excluding borders
-    int content_height = widget->height - 2; // Excluding borders
 
     if (!widget->draw_border) {
         content_x = widget->x;
         content_y = widget->y;
         content_width = widget->width;
-        content_height = widget->height;
     }
 
-    // Adjust for title (takes an extra row)
+    // Adjust for title
     if (widget->title && widget->draw_border) {
         content_y = widget->y + 2; // Skip title row
-        content_height -= 1; // Reduce available height
     }
 
-    if (content_width < 1 || content_height < 1) {
+    if (content_width < 1 || widget->visible_rows < 1) {
         return;
     }
 
-    int actual_width = content_width;
-    if (widget->draw_scrollbar && widget->count > widget->visible_rows) {
-        actual_width--; // Reserve space for scrollbar
-    }
-
-    // Draw list items
-    for (int i = 0; i < content_height && (widget->scroll_offset + i) < widget->count; i++) {
+    // Draw list items - use visible_rows instead of content_height to avoid overflow
+    for (int i = 0; i < widget->visible_rows && (widget->scroll_offset + i) < widget->count; i++) {
         int item_index = widget->scroll_offset + i;
         const char *item = widget->items[item_index];
 
@@ -346,10 +336,11 @@ void ui_list_draw(const ui_list_widget_t *widget) {
 
         bool is_selected = (item_index == widget->selected);
 
+        uint8_t fg = is_selected ? widget->selected_fg : widget->normal_fg;
+        uint8_t bg = is_selected ? widget->selected_bg : widget->normal_bg;
+
         // Clear the line
-        for (int clear_x = 0; clear_x < actual_width; clear_x++) {
-            uint8_t fg = is_selected ? widget->selected_fg : widget->normal_fg;
-            uint8_t bg = is_selected ? widget->selected_bg : widget->normal_bg;
+        for (int clear_x = 0; clear_x < content_width; clear_x++) {
             text_mode_print_at_attr_bg(x + clear_x, y, " ", fg, bg, TEXT_ATTR_NORMAL);
         }
 
@@ -359,14 +350,11 @@ void ui_list_draw(const ui_list_widget_t *widget) {
             strncpy(truncated, item, sizeof(truncated) - 1);
             truncated[sizeof(truncated) - 1] = '\0';
 
-            if ((int)strlen(truncated) > actual_width) {
-                truncated[actual_width] = '\0';
+            if ((int)strlen(truncated) > content_width - 2) {
+                truncated[content_width - 2] = '\0';
             }
 
-            // Draw item text
-            uint8_t fg = is_selected ? TEXT_COLOR_BLACK : widget->normal_fg;
-            uint8_t bg = is_selected ? TEXT_COLOR_BRIGHT_GREEN : widget->normal_bg;
-
+            // Draw selection marker and text
             if (is_selected) {
                 text_mode_print_at_attr_bg(x, y, "> ", fg, bg, TEXT_ATTR_BOLD);
                 text_mode_print_at_attr_bg(x + 2, y, truncated, fg, bg, TEXT_ATTR_NORMAL);
@@ -378,9 +366,10 @@ void ui_list_draw(const ui_list_widget_t *widget) {
     }
 
     // Fill remaining space with empty lines
-    for (int i = widget->count - widget->scroll_offset; i < content_height; i++) {
+    for (int i = widget->count - widget->scroll_offset; i < widget->visible_rows; i++) {
+        if (i < 0) continue;
         int y = content_y + i;
-        for (int clear_x = 0; clear_x < actual_width; clear_x++) {
+        for (int clear_x = 0; clear_x < content_width; clear_x++) {
             text_mode_print_at_attr_bg(content_x + clear_x, y, " ", widget->normal_fg, widget->normal_bg, TEXT_ATTR_NORMAL);
         }
     }
@@ -390,7 +379,7 @@ void ui_list_draw(const ui_list_widget_t *widget) {
 }
 
 bool ui_list_handle_key(ui_list_widget_t *widget, char key) {
-    if (!widget || !widget->enabled || !widget->items) {
+    if (!widget || !widget->enabled || !widget->items || widget->count <= 0) {
         return false;
     }
 
@@ -410,8 +399,8 @@ bool ui_list_handle_key(ui_list_widget_t *widget, char key) {
         }
     } else if (key == '\n' || key == '\r') {
         // Select item
-        if (widget->on_item_selected && widget->user_data) {
-            widget->on_item_selected(widget, widget->selected);
+        if (widget->on_item_selected) {
+            widget->on_item_selected(widget, widget->selected, widget->user_data);
         }
         handled = true;
     }
@@ -420,7 +409,7 @@ bool ui_list_handle_key(ui_list_widget_t *widget, char key) {
 }
 
 bool ui_list_handle_touch(ui_list_widget_t *widget, const event_t *event) {
-    if (!widget || !widget->enabled || !widget->visible) {
+    if (!widget || !widget->enabled || !widget->visible || widget->count <= 0) {
         return false;
     }
 
@@ -462,7 +451,7 @@ bool ui_list_handle_touch(ui_list_widget_t *widget, const event_t *event) {
 
         // Trigger item selection
         if (widget->on_item_selected) {
-            widget->on_item_selected(widget, touched_index);
+            widget->on_item_selected(widget, touched_index, widget->user_data);
         }
 
         return true;

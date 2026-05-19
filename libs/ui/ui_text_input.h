@@ -14,6 +14,9 @@ extern "C" {
 // Forward declaration
 typedef struct ui_text_input_widget_t ui_text_input_widget_t;
 
+// Callbacks
+typedef void (*ui_text_input_cb)(ui_text_input_widget_t *widget, void *user_data);
+
 // Text input widget for keyboard-based text entry
 // Ideal for search boxes, form fields, prompts, etc.
 struct ui_text_input_widget_t {
@@ -52,9 +55,9 @@ struct ui_text_input_widget_t {
     bool focused;
 
     // Callback
-    void (*on_text_changed)(ui_text_input_widget_t *widget);
-    void (*on_confirm)(ui_text_input_widget_t *widget);
-    void (*on_cancel)(ui_text_input_widget_t *widget);
+    ui_text_input_cb on_text_changed;
+    ui_text_input_cb on_confirm;
+    ui_text_input_cb on_cancel;
     void *user_data;
 };
 
@@ -74,9 +77,9 @@ void ui_text_input_set_colors(ui_text_input_widget_t *widget,
                               uint8_t text_fg, uint8_t text_bg,
                               uint8_t hint_fg, uint8_t hint_bg);
 void ui_text_input_set_callbacks(ui_text_input_widget_t *widget,
-                                 void (*on_text_changed)(ui_text_input_widget_t *widget),
-                                 void (*on_confirm)(ui_text_input_widget_t *widget),
-                                 void (*on_cancel)(ui_text_input_widget_t *widget),
+                                 ui_text_input_cb on_text_changed,
+                                 ui_text_input_cb on_confirm,
+                                 ui_text_input_cb on_cancel,
                                  void *user_data);
 
 // Text input operations

@@ -385,8 +385,6 @@ void reader_view_draw_file_list(reader_state_t *state) {
         ui_list_set_scrollbar(state->file_list, true);
 
         // Set up callbacks
-        extern void on_file_list_selection_changed(ui_list_widget_t *list, int new_selection);
-        extern void on_file_list_item_selected(ui_list_widget_t *list, int item_index);
         ui_list_set_callbacks(state->file_list, on_file_list_selection_changed,
                               on_file_list_item_selected, state);
     } else {

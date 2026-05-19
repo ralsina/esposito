@@ -86,22 +86,19 @@ void on_reading_back_click(ui_button_t *button, void *user_data) {
 }
 
 // TOC list widget callbacks
-void on_toc_list_selection_changed(ui_list_widget_t *list, int new_selection) {
-    if (!list) {
-        return;
-    }
-    reader_state_t *state = (reader_state_t*)list->user_data;
+void on_toc_list_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data) {
+    (void)list;
+    reader_state_t *state = (reader_state_t*)user_data;
     if (!state) {
         return;
     }
     state->toc_selected = new_selection;
 }
 
-void on_toc_list_item_selected(ui_list_widget_t *list, int item_index) {
-    if (!list) {
-        return;
-    }
-    reader_state_t *state = (reader_state_t*)list->user_data;
+void on_toc_list_item_selected(ui_list_widget_t *list, int item_index, void *user_data) {
+    (void)list;
+    (void)item_index;
+    reader_state_t *state = (reader_state_t*)user_data;
     if (!state) {
         return;
     }
@@ -110,22 +107,19 @@ void on_toc_list_item_selected(ui_list_widget_t *list, int item_index) {
 }
 
 // File list widget callbacks
-void on_file_list_selection_changed(ui_list_widget_t *list, int new_selection) {
-    if (!list) {
-        return;
-    }
-    reader_state_t *state = (reader_state_t*)list->user_data;
+void on_file_list_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data) {
+    (void)list;
+    reader_state_t *state = (reader_state_t*)user_data;
     if (!state) {
         return;
     }
     state->file_selected = new_selection;
 }
 
-void on_file_list_item_selected(ui_list_widget_t *list, int item_index) {
-    if (!list) {
-        return;
-    }
-    reader_state_t *state = (reader_state_t*)list->user_data;
+void on_file_list_item_selected(ui_list_widget_t *list, int item_index, void *user_data) {
+    (void)list;
+    (void)item_index;
+    reader_state_t *state = (reader_state_t*)user_data;
     if (!state) {
         return;
     }
