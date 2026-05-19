@@ -211,9 +211,9 @@ bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
     int screen_x, screen_y;
 
     switch (rotation) {
-        case 0: // Portrait - baseline transformation
-            screen_x = (raw_x - raw_x_min) * screen_width / raw_x_range;
-            screen_y = (raw_y - raw_y_min) * screen_height / raw_y_range;
+        case 0: // Portrait - axes swapped, X inverted
+            screen_x = (screen_width - 1) - ((raw_y - raw_y_min) * screen_width / raw_y_range);
+            screen_y = (raw_x - raw_x_min) * screen_height / raw_x_range;
             break;
         case 1: // Landscape 90° - baseline for calibration
             screen_x = (raw_x - raw_x_min) * screen_width / raw_x_range;

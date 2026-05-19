@@ -31,12 +31,17 @@ static void show_debug_screen(void) {
 
 static void display_touch_info(uint16_t screen_x, uint16_t screen_y) {
     // Clear previous touch data area
-    for (int i = 5; i < 15; i++) {
+    for (int i = 5; i < 16; i++) {
         text_mode_print_at_color(0, i, "                                          ", TEXT_COLOR_BLACK);
     }
 
     char line[64];
     int row = 5;
+
+    // Show calibration constants
+    snprintf(line, sizeof(line), "Calib: x_min=210, x_range=3600, y_min=260, y_range=3600");
+    text_mode_print_at_color(0, row, line, TEXT_COLOR_BRIGHT_MAGENTA);
+    row++;
 
     // Screen dimensions
     snprintf(line, sizeof(line), "Screen: %dx%d", display_get_width(), display_get_height());
