@@ -218,7 +218,7 @@ void reader_view_draw_toc(reader_state_t *state) {
         state->toc_list = ui_list_create(1, 1, cols - 2, list_height);
         ui_list_set_title(state->toc_list, "Table of Contents");
         ui_list_set_colors(state->toc_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
-                           TEXT_COLOR_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+                           TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
         ui_list_set_border(state->toc_list, true);
         ui_list_set_scrollbar(state->toc_list, true);
 
@@ -380,7 +380,7 @@ void reader_view_draw_file_list(reader_state_t *state) {
         state->file_list = ui_list_create(1, 1, cols - 2, list_height);
         ui_list_set_title(state->file_list, "Select a Book");
         ui_list_set_colors(state->file_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
-                           TEXT_COLOR_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+                           TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
         ui_list_set_border(state->file_list, true);
         ui_list_set_scrollbar(state->file_list, true);
 

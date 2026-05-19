@@ -26,8 +26,8 @@ ui_list_widget_t* ui_list_create(int x, int y, int width, int height) {
     // Default colors
     widget->normal_fg = TEXT_COLOR_WHITE;
     widget->normal_bg = TEXT_COLOR_BLACK;
-    widget->selected_fg = TEXT_COLOR_WHITE;
-    widget->selected_bg = TEXT_COLOR_BLUE;
+    widget->selected_fg = TEXT_COLOR_BRIGHT_WHITE;
+    widget->selected_bg = TEXT_COLOR_GREEN;
     widget->border_fg = TEXT_COLOR_CYAN;
     widget->title_fg = TEXT_COLOR_BRIGHT_CYAN;
     widget->title_bg = TEXT_COLOR_BLACK;
@@ -339,9 +339,15 @@ void ui_list_draw(const ui_list_widget_t *widget) {
         uint8_t fg = is_selected ? widget->selected_fg : widget->normal_fg;
         uint8_t bg = is_selected ? widget->selected_bg : widget->normal_bg;
 
+        // Check if this is the last row of the widget to preserve the box
+        uint8_t attr = TEXT_ATTR_NORMAL;
+        if (widget->draw_border && y == widget->y + widget->height - 1) {
+            attr |= TEXT_ATTR_UNDERLINE;
+        }
+
         // Clear the line
         for (int clear_x = 0; clear_x < content_width; clear_x++) {
-            text_mode_print_at_attr_bg(x + clear_x, y, " ", fg, bg, TEXT_ATTR_NORMAL);
+            text_mode_print_at_attr_bg(x + clear_x, y, " ", fg, bg, attr);
         }
 
         if (item) {
@@ -356,11 +362,11 @@ void ui_list_draw(const ui_list_widget_t *widget) {
 
             // Draw selection marker and text
             if (is_selected) {
-                text_mode_print_at_attr_bg(x, y, "> ", fg, bg, TEXT_ATTR_BOLD);
-                text_mode_print_at_attr_bg(x + 2, y, truncated, fg, bg, TEXT_ATTR_NORMAL);
+                text_mode_print_at_attr_bg(x, y, "> ", fg, bg, attr | TEXT_ATTR_BOLD);
+                text_mode_print_at_attr_bg(x + 2, y, truncated, fg, bg, attr);
             } else {
-                text_mode_print_at_attr_bg(x, y, "  ", fg, bg, TEXT_ATTR_NORMAL);
-                text_mode_print_at_attr_bg(x + 2, y, truncated, fg, bg, TEXT_ATTR_NORMAL);
+                text_mode_print_at_attr_bg(x, y, "  ", fg, bg, attr);
+                text_mode_print_at_attr_bg(x + 2, y, truncated, fg, bg, attr);
             }
         }
     }
@@ -369,8 +375,14 @@ void ui_list_draw(const ui_list_widget_t *widget) {
     for (int i = widget->count - widget->scroll_offset; i < widget->visible_rows; i++) {
         if (i < 0) continue;
         int y = content_y + i;
+
+        uint8_t attr = TEXT_ATTR_NORMAL;
+        if (widget->draw_border && y == widget->y + widget->height - 1) {
+            attr |= TEXT_ATTR_UNDERLINE;
+        }
+
         for (int clear_x = 0; clear_x < content_width; clear_x++) {
-            text_mode_print_at_attr_bg(content_x + clear_x, y, " ", widget->normal_fg, widget->normal_bg, TEXT_ATTR_NORMAL);
+            text_mode_print_at_attr_bg(content_x + clear_x, y, " ", widget->normal_fg, widget->normal_bg, attr);
         }
     }
 

@@ -113,7 +113,7 @@ static void app_launcher_show_static(void) {
         app_list = ui_list_create(1, 1, cols - 2, list_height);
         ui_list_set_title(app_list, "App Launcher");
         ui_list_set_colors(app_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
-                           TEXT_COLOR_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+                           TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
         ui_list_set_border(app_list, true);
         ui_list_set_scrollbar(app_list, true);
         ui_list_set_callbacks(app_list, on_app_list_selection_changed,
