@@ -614,13 +614,27 @@ static void draw_large_time(const os_time_status_t *time_status) {
     static char prev_time_line[32] = "";
 
     char time_line[32];
-    snprintf(time_line, sizeof(time_line), "%02d:%02d:%02d",
-             time_status->hour, time_status->minute, time_status->second);
-
+    int screen_width = text_mode_get_cols();
     const int digit_width = CLOCK_DIGIT_W * CLOCK_DIGIT_SCALE;
     const int digit_pitch = CLOCK_DIGIT_PITCH;
+    
+    // Check if screen can fit seconds
+    char time_with_seconds[32];
+    snprintf(time_with_seconds, sizeof(time_with_seconds), "%02d:%02d:%02d",
+             time_status->hour, time_status->minute, time_status->second);
+    const int time_with_seconds_width = (int)strlen(time_with_seconds) * digit_pitch - (digit_pitch - digit_width);
+    
+    if (time_with_seconds_width > screen_width) {
+        // Screen too narrow, display only HH:MM
+        snprintf(time_line, sizeof(time_line), "%02d:%02d",
+                 time_status->hour, time_status->minute);
+    } else {
+        // Screen wide enough, display HH:MM:SS
+        snprintf(time_line, sizeof(time_line), "%02d:%02d:%02d",
+                 time_status->hour, time_status->minute, time_status->second);
+    }
+
     const int time_width = (int)strlen(time_line) * digit_pitch - (digit_pitch - digit_width);
-    int screen_width = text_mode_get_cols();
     int start_x = (screen_width - time_width) / 2;
     if (start_x < 0) start_x = 0;
 
