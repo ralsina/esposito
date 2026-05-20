@@ -9,6 +9,7 @@
 #include <stdlib.h>
 
 static const char *TAG = "lali";
+#define CHECKPOINT_KEY "history"
 
 #define MAX_ENTRIES 100
 #define LINES_PER_ENTRY 2
@@ -244,6 +245,42 @@ static void show_thinking(void) {
     text_mode_flush();
 }
 
+static void save_checkpoint(void) {
+    size_t total = 0;
+    for (int i = 0; i < line_count; i++) {
+        total += strlen(lines[i]) + 1;
+    }
+    char *buf = malloc(total + 1);
+    if (!buf) return;
+    char *p = buf;
+    for (int i = 0; i < line_count; i++) {
+        size_t len = strlen(lines[i]);
+        memcpy(p, lines[i], len);
+        p += len;
+        *p++ = '\n';
+    }
+    *p = '\0';
+    checkpoint_save_string(CHECKPOINT_KEY, buf);
+    free(buf);
+}
+
+static void load_checkpoint(void) {
+    const char *data = checkpoint_load_string(CHECKPOINT_KEY);
+    if (!data) return;
+
+    const char *p = data;
+    while (*p && line_count < MAX_LINES) {
+        const char *nl = strchr(p, '\n');
+        size_t len = nl ? (size_t)(nl - p) : strlen(p);
+        if (len >= MAX_LINE_LEN) len = MAX_LINE_LEN - 1;
+        memcpy(lines[line_count], p, len);
+        lines[line_count][len] = '\0';
+        items[line_count] = lines[line_count];
+        line_count++;
+        p = nl ? nl + 1 : p + len;
+    }
+}
+
 static void on_confirm(ui_text_input_widget_t *widget, void *user_data) {
     (void)user_data;
     char saved_input[INPUT_BUF_LEN];
@@ -294,6 +331,8 @@ void app_init(app_context_t *ctx) {
     ui_text_input_set_callbacks(text_input, NULL, on_confirm, NULL, NULL);
     ui_text_input_set_focus(text_input, true);
 
+    load_checkpoint();
+
     if (!load_api_key()) {
         char line[MAX_LINE_LEN];
         snprintf(line, sizeof(line), "  ! No API key at %s", API_KEY_PATH);
@@ -322,6 +361,7 @@ void app_event(app_context_t *ctx, event_t *event) {
 
 void app_checkpoint(app_context_t *ctx) {
     (void)ctx;
+    save_checkpoint();
 }
 
 void app_close(app_context_t *ctx) {
