@@ -389,6 +389,71 @@ static esp_err_t os_http_get_event_handler(esp_http_client_event_t *event) {
     return ESP_OK;
 }
 
+int os_http_post(const char *url, const char *post_data, const char *extra_headers[],
+                 const char *ca_pem, char *out, size_t out_size, int timeout_ms) {
+    if (!url || !post_data || !out || out_size < 2) {
+        return -1;
+    }
+
+    out[0] = '\0';
+
+    os_http_get_ctx_t ctx = {
+        .out = out,
+        .out_size = out_size,
+        .len = 0,
+        .truncated = false,
+    };
+
+    size_t free_heap = esp_get_free_heap_size();
+    size_t largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    ESP_LOGI(TAG, "HTTP POST: free_heap=%u, largest=%u, url=%s",
+             (unsigned)free_heap, (unsigned)largest_free, url);
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .timeout_ms = timeout_ms > 0 ? timeout_ms : 5000,
+        .event_handler = os_http_get_event_handler,
+        .user_data = &ctx,
+        .cert_pem = ca_pem,
+        .crt_bundle_attach = ca_pem ? NULL : esp_crt_bundle_attach,
+        .buffer_size = 1024,
+        .buffer_size_tx = 512,
+        .method = HTTP_METHOD_POST,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (!client) {
+        ESP_LOGE(TAG, "HTTP POST: client init failed");
+        return -1;
+    }
+
+    esp_http_client_set_post_field(client, post_data, strlen(post_data));
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+
+    if (extra_headers) {
+        for (int i = 0; extra_headers[i] != NULL && extra_headers[i + 1] != NULL; i += 2) {
+            esp_http_client_set_header(client, extra_headers[i], extra_headers[i + 1]);
+        }
+    }
+
+    esp_err_t err = esp_http_client_perform(client);
+    if (err != ESP_OK) {
+        esp_http_client_cleanup(client);
+        return -1;
+    }
+
+    int status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    if (status != 200) {
+        return -status;
+    }
+    if (ctx.truncated) {
+        return -2;
+    }
+    return (int)ctx.len;
+}
+
 int os_http_get(const char *url, char *out, size_t out_size, int timeout_ms) {
     if (!url || !out || out_size < 2) {
         return -1;

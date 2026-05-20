@@ -109,6 +109,8 @@ bool os_get_time_status(os_time_status_t *status);
 bool os_time_is_synchronized(void);
 int64_t os_time_last_sync(void);
 int os_http_get(const char *url, char *out, size_t out_size, int timeout_ms);
+int os_http_post(const char *url, const char *post_data, const char *extra_headers[],
+                 const char *ca_pem, char *out, size_t out_size, int timeout_ms);
 size_t os_settings_get_string(const char *key_path,
                               const char *default_value,
                               char *out,

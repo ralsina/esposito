@@ -50,6 +50,7 @@ static const os_symtab_entry_t symtab[] = {
     {"os_time_is_synchronized", os_time_is_synchronized},
     {"os_time_last_sync",       os_time_last_sync},
     {"os_http_get",             os_http_get},
+    {"os_http_post",            os_http_post},
     {"os_settings_get_string",  os_settings_get_string},
     {"os_settings_set_string",  os_settings_set_string},
     {"os_settings_get_int",     os_settings_get_int},
