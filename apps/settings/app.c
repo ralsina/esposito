@@ -78,6 +78,7 @@ typedef enum {
     ACTION_SET_FONT_SIZE,
     ACTION_SET_ROTATION,
     ACTION_SET_BRIGHTNESS,
+    ACTION_SET_SCREENSAVER_TIMEOUT,
     ACTION_TOGGLE_SERIAL,
 } settings_action_t;
 
@@ -111,6 +112,7 @@ static const section_option_t display_options[] = {
     {"Font Size", ACTION_SET_FONT_SIZE},
     {"Rotation", ACTION_SET_ROTATION},
     {"Brightness", ACTION_SET_BRIGHTNESS},
+    {"Screensaver", ACTION_SET_SCREENSAVER_TIMEOUT},
 };
 
 static const section_option_t debug_options[] = {
@@ -608,6 +610,15 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
             snprintf(out, out_size, "%d%%", current * 100 / 255);
             break;
         }
+        case ACTION_SET_SCREENSAVER_TIMEOUT: {
+            int timeout = os_settings_get_int("system/screensaver_timeout", 5);
+            if (timeout > 0) {
+                snprintf(out, out_size, "%d min", timeout);
+            } else {
+                snprintf(out, out_size, "off");
+            }
+            break;
+        }
         case ACTION_TOGGLE_SERIAL:
             snprintf(out, out_size, "%s", serial_log_output_is_enabled() ? "on" : "off");
             break;
@@ -717,6 +728,26 @@ static void execute_main_action(settings_action_t action) {
             os_settings_set_int("display/backlight", next);
             display_set_backlight((uint8_t)next);
             snprintf(status_msg, sizeof(status_msg), "Brightness: %d%%", next * 100 / 255);
+            set_status(status_msg);
+            render();
+            break;
+        }
+        case ACTION_SET_SCREENSAVER_TIMEOUT: {
+            static const int levels[] = {0, 1, 5, 10, 15, 30};
+            int current = os_settings_get_int("system/screensaver_timeout", 5);
+            int next = levels[0];
+            for (int i = 0; i < 5; i++) {
+                if (levels[i] == current) {
+                    next = levels[i + 1];
+                    break;
+                }
+            }
+            os_settings_set_int("system/screensaver_timeout", next);
+            if (next > 0) {
+                snprintf(status_msg, sizeof(status_msg), "Screensaver: %d min", next);
+            } else {
+                snprintf(status_msg, sizeof(status_msg), "Screensaver: off");
+            }
             set_status(status_msg);
             render();
             break;

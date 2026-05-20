@@ -17,12 +17,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "esp_timer.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <time.h>
 
 static const char *TAG = "os_core";
+
+// Screensaver state
+static int64_t screensaver_last_activity = 0;
+static bool screensaver_active = false;
+static uint8_t screensaver_restore_brightness = 255;
 
 static void os_log_global_heap_stats(const char *label) {
     size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -534,6 +540,8 @@ void os_event_loop(void) {
     TickType_t timer_last_tick = xTaskGetTickCount();
     app_context_t *timer_last_app = NULL;
 
+    screensaver_last_activity = esp_timer_get_time();
+
     while (1) {
         event_t event;
 
@@ -671,6 +679,21 @@ void os_event_loop(void) {
 
         // Check if we have events in queue
         if (event_queue_pop(&event)) {
+            // Track activity on keyboard/touch events
+            if (event.type == EVENT_KEYBOARD || event.type == EVENT_TOUCH) {
+                screensaver_last_activity = esp_timer_get_time();
+            }
+
+            // Screensaver: wake on first keyboard or touch event
+            if (screensaver_active) {
+                if (event.type == EVENT_KEYBOARD || event.type == EVENT_TOUCH) {
+                    display_set_backlight(screensaver_restore_brightness);
+                    screensaver_active = false;
+                    ESP_LOGI(TAG, "Screensaver deactivated");
+                    continue;
+                }
+            }
+
             // Check for app launcher trigger (Ctrl+ESC)
             if (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
                 event.keyboard.key == 27 &&  // ESC key
@@ -722,6 +745,24 @@ void os_event_loop(void) {
                     in_app_callback = true;
                     current_app->event_fn(current_app, &event);
                     in_app_callback = false;
+                }
+            }
+        }
+
+        // Screensaver: check idle timeout
+        {
+            static int ss_timeout_min = -1;
+            if (ss_timeout_min < 0) {
+                ss_timeout_min = os_settings_get_int("system/screensaver_timeout", 5);
+            }
+
+            if (ss_timeout_min > 0 && !screensaver_active) {
+                int64_t idle_us = esp_timer_get_time() - screensaver_last_activity;
+                if (idle_us >= (int64_t)ss_timeout_min * 60 * 1000000LL) {
+                    screensaver_restore_brightness = (uint8_t)os_settings_get_int("display/backlight", 255);
+                    display_set_backlight(0);
+                    screensaver_active = true;
+                    ESP_LOGI(TAG, "Screensaver activated after %d min idle", ss_timeout_min);
                 }
             }
         }
