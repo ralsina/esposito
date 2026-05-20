@@ -34,6 +34,7 @@ static const os_symtab_entry_t symtab[] = {
     {"display_set_rotation",         display_set_rotation},
     {"display_get_rotation",         display_get_rotation},
     {"display_apply_saved_rotation", display_apply_saved_rotation},
+    {"display_apply_saved_backlight", display_apply_saved_backlight},
     {"display_set_backlight",        display_set_backlight},
     {"led_set_rgb",                  led_set_rgb},
     {"keyboard_read_event",          keyboard_read_event},

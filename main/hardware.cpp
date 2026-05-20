@@ -561,10 +561,17 @@ int display_get_rotation(void) {
 }
 
 void display_apply_saved_rotation(void) {
-    // Read rotation setting from storage, default to landscape (1)
     int saved_rotation = os_settings_get_int("display/rotation", DEFAULT_DISPLAY_ROTATION);
     ESP_LOGI(TAG, "Applying saved rotation setting: %d", saved_rotation);
     display_set_rotation(saved_rotation);
+}
+
+void display_apply_saved_backlight(void) {
+    int saved_brightness = os_settings_get_int("display/backlight", 255);
+    if (saved_brightness < 0) saved_brightness = 0;
+    if (saved_brightness > 255) saved_brightness = 255;
+    ESP_LOGI(TAG, "Applying saved backlight brightness: %d", saved_brightness);
+    display_set_backlight((uint8_t)saved_brightness);
 }
 
 void transform_touch_coordinates(int *x, int *y, int rotation) {

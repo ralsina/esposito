@@ -229,6 +229,9 @@ void boot_sequence(void) {
         // Apply rotation setting
         display_apply_saved_rotation();
 
+        // Apply backlight brightness setting
+        display_apply_saved_backlight();
+
         // Apply font setting
         bool font_applied = text_mode_apply_configured_font();
         ESP_LOGI(TAG, "Font apply result: %s", font_applied ? "SUCCESS" : "FAILED");
