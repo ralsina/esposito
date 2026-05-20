@@ -62,6 +62,12 @@ bool keyboard_is_available(void);
 bool timer_init(void);
 void timer_set_interval(uint32_t interval_ms);
 
+// Backlight control
+void display_set_backlight(uint8_t brightness);  // 0-255
+
+// RGB LED control
+void led_set_rgb(uint8_t r, uint8_t g, uint8_t b);
+
 // Serial functions
 bool serial_init(int baud, int data_bits, char parity, int stop_bits);
 void serial_deinit(void);

@@ -36,6 +36,18 @@
 #define SD_CMD_PIN  11   // CMD pin for SDMMC mode only
 #define SD_D0_PIN   13   // D0 pin for SDMMC mode only
 
+// RGB LED Configuration
+#define LED_RED_PIN     4
+#define LED_GREEN_PIN   16
+#define LED_BLUE_PIN    17
+#define LED_LEDC_TIMER  LEDC_TIMER_0
+#define LED_LEDC_MODE   LEDC_HIGH_SPEED_MODE
+#define LED_RESOLUTION  LEDC_TIMER_8_BIT
+#define LED_FREQ        5000
+#define LED_CH_RED      LEDC_CHANNEL_0
+#define LED_CH_GREEN    LEDC_CHANNEL_1
+#define LED_CH_BLUE     LEDC_CHANNEL_2
+
 // Touch Configuration (if available)
 #define TOUCH_I2C_ADDR 0x14
 #define TOUCH_I2C_PORT I2C_NUM_1

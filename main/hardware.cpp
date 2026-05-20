@@ -11,6 +11,7 @@
 #include <lgfx/utility/pgmspace.h>
 #include "driver/uart.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -484,6 +485,54 @@ void display_set_text_color(uint16_t color) {
     if (display_tft) {
         display_tft->setTextColor(color);
     }
+}
+
+void display_set_backlight(uint8_t brightness) {
+    if (!display_initialized || !display_tft) return;
+    display_tft->setBrightness(brightness);
+}
+
+void led_set_rgb(uint8_t r, uint8_t g, uint8_t b) {
+    static bool led_initialized = false;
+    if (!led_initialized) {
+        ledc_timer_config_t timer = {};
+        timer.speed_mode = LED_LEDC_MODE;
+        timer.duty_resolution = LED_RESOLUTION;
+        timer.timer_num = LED_LEDC_TIMER;
+        timer.freq_hz = LED_FREQ;
+        timer.clk_cfg = LEDC_AUTO_CLK;
+        ledc_timer_config(&timer);
+
+        ledc_channel_config_t ch_red = {};
+        ch_red.gpio_num = LED_RED_PIN;
+        ch_red.speed_mode = LED_LEDC_MODE;
+        ch_red.channel = LED_CH_RED;
+        ch_red.timer_sel = LED_LEDC_TIMER;
+        ledc_channel_config(&ch_red);
+
+        ledc_channel_config_t ch_green = {};
+        ch_green.gpio_num = LED_GREEN_PIN;
+        ch_green.speed_mode = LED_LEDC_MODE;
+        ch_green.channel = LED_CH_GREEN;
+        ch_green.timer_sel = LED_LEDC_TIMER;
+        ledc_channel_config(&ch_green);
+
+        ledc_channel_config_t ch_blue = {};
+        ch_blue.gpio_num = LED_BLUE_PIN;
+        ch_blue.speed_mode = LED_LEDC_MODE;
+        ch_blue.channel = LED_CH_BLUE;
+        ch_blue.timer_sel = LED_LEDC_TIMER;
+        ledc_channel_config(&ch_blue);
+
+        led_initialized = true;
+    }
+
+    ledc_set_duty(LED_LEDC_MODE, LED_CH_RED,   r);
+    ledc_set_duty(LED_LEDC_MODE, LED_CH_GREEN, g);
+    ledc_set_duty(LED_LEDC_MODE, LED_CH_BLUE,  b);
+    ledc_update_duty(LED_LEDC_MODE, LED_CH_RED);
+    ledc_update_duty(LED_LEDC_MODE, LED_CH_GREEN);
+    ledc_update_duty(LED_LEDC_MODE, LED_CH_BLUE);
 }
 
 bool display_load_vlw_font(const char *path) {
