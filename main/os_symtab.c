@@ -4,7 +4,6 @@
 #include "app_manifest.h"
 #include "os_core.h"
 #include "hardware.h"
-#include "checkpoint.h"
 #include "app_launcher.h"
 #include "terminal_mode.h"
 #include "text_mode.h"
@@ -36,13 +35,6 @@ static const os_symtab_entry_t symtab[] = {
     {"display_get_rotation",         display_get_rotation},
     {"display_apply_saved_rotation", display_apply_saved_rotation},
     {"keyboard_read_event",          keyboard_read_event},
-    {"checkpoint_save_string",  checkpoint_save_string},
-    {"checkpoint_load_string",  checkpoint_load_string},
-    {"checkpoint_save_int",     checkpoint_save_int},
-    {"checkpoint_load_int",     checkpoint_load_int},
-    {"checkpoint_save",         checkpoint_save},
-    {"checkpoint_open",         checkpoint_open},
-    {"checkpoint_close",        checkpoint_close},
     {"os_load_app",             os_load_app},
     {"os_open_app_with_file",   os_open_app_with_file},
     {"os_consume_startup_file", os_consume_startup_file},

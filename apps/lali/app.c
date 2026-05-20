@@ -1,4 +1,5 @@
 #include "os_core.h"
+#include "app_config.h"
 #include "text_mode.h"
 #include "ui.h"
 #include "ui_list.h"
@@ -246,12 +247,17 @@ static void show_thinking(void) {
 }
 
 static void save_checkpoint(void) {
+    printf("save_checkpoint: starting, line_count=%d\n", line_count);
     size_t total = 0;
     for (int i = 0; i < line_count; i++) {
         total += strlen(lines[i]) + 1;
     }
+    os_log(TAG, "save_checkpoint: %d lines, %u bytes", line_count, (unsigned)total);
     char *buf = malloc(total + 1);
-    if (!buf) return;
+    if (!buf) {
+        printf("save_checkpoint: malloc failed\n");
+        return;
+    }
     char *p = buf;
     for (int i = 0; i < line_count; i++) {
         size_t len = strlen(lines[i]);
@@ -260,17 +266,26 @@ static void save_checkpoint(void) {
         *p++ = '\n';
     }
     *p = '\0';
-    checkpoint_save_string(CHECKPOINT_KEY, buf);
+    os_log(TAG, "save_checkpoint: saving key=%s", CHECKPOINT_KEY);
+    bool ok = config_set_string(CHECKPOINT_KEY, buf);
+    printf("save_checkpoint: config_set_string returned %d\n", ok);
     free(buf);
+    printf("save_checkpoint: done\n");
 }
 
 static void load_checkpoint(void) {
-    const char *data = checkpoint_load_string(CHECKPOINT_KEY);
-    if (!data) return;
+    os_log(TAG, "load_checkpoint: loading key=%s", CHECKPOINT_KEY);
+    size_t data_size = 0;
+    char *data = config_read_all_alloc(CHECKPOINT_KEY, &data_size);
+    if (!data) {
+        os_log(TAG, "load_checkpoint: no data found");
+        return;
+    }
+    os_log(TAG, "load_checkpoint: data=%u bytes", (unsigned)data_size);
 
-    const char *p = data;
+    char *p = data;
     while (*p && line_count < MAX_LINES) {
-        const char *nl = strchr(p, '\n');
+        char *nl = strchr(p, '\n');
         size_t len = nl ? (size_t)(nl - p) : strlen(p);
         if (len >= MAX_LINE_LEN) len = MAX_LINE_LEN - 1;
         memcpy(lines[line_count], p, len);
@@ -279,6 +294,8 @@ static void load_checkpoint(void) {
         line_count++;
         p = nl ? nl + 1 : p + len;
     }
+    config_free(data);
+    os_log(TAG, "load_checkpoint: loaded %d lines", line_count);
 }
 
 static void on_confirm(ui_text_input_widget_t *widget, void *user_data) {
@@ -331,7 +348,12 @@ void app_init(app_context_t *ctx) {
     ui_text_input_set_callbacks(text_input, NULL, on_confirm, NULL, NULL);
     ui_text_input_set_focus(text_input, true);
 
+    os_log(TAG, "app_init: loading checkpoint");
     load_checkpoint();
+    os_log(TAG, "app_init: loaded %d lines", line_count);
+    if (line_count > 0) {
+        update_list();
+    }
 
     if (!load_api_key()) {
         char line[MAX_LINE_LEN];
@@ -361,6 +383,7 @@ void app_event(app_context_t *ctx, event_t *event) {
 
 void app_checkpoint(app_context_t *ctx) {
     (void)ctx;
+    printf("lali checkpoint called, line_count=%d\n", line_count);
     save_checkpoint();
 }
 

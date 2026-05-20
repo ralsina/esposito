@@ -1,4 +1,5 @@
 #include "os_core.h"
+#include "app_config.h"
 #include "text_mode.h"
 #include <stdio.h>
 #include <string.h>
@@ -7,7 +8,7 @@ static const char *TAG = "hello_world";
 static int counter = 0;
 
 void app_init(app_context_t *ctx) {
-    counter = checkpoint_load_int("counter");
+    counter = config_get_int("counter", 0);
 
     ctx->subscriptions = EVENT_KEYBOARD;
     ctx->timer_interval_ms = 0;
@@ -30,7 +31,7 @@ void app_init(app_context_t *ctx) {
 }
 
 void app_checkpoint(app_context_t *ctx) {
-    checkpoint_save_int("counter", counter);
+    config_set_int("counter", counter);
     os_log(TAG, "Counter saved: %d", counter);
 }
 

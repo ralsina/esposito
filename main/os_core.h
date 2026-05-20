@@ -123,13 +123,6 @@ bool os_settings_set_bool(const char *key_path, bool value);
 void os_unload_app(void);
 app_context_t *os_get_current_app(void);
 void os_set_current_app(app_context_t *app);
-
-// Checkpoint API for apps
-void checkpoint_save_string(const char *key, const char *value);
-const char *checkpoint_load_string(const char *key);
-void checkpoint_save_int(const char *key, int value);
-int checkpoint_load_int(const char *key);
-
 #ifdef __cplusplus
 }
 #endif

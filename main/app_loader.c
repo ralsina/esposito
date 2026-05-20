@@ -5,7 +5,6 @@
 #include "os_core.h"
 #include "elf_loader.h"
 #include "sd_card.h"
-#include "checkpoint.h"
 #include "hardware.h"
 #include "esp_log.h"
 #include <string.h>
@@ -116,7 +115,6 @@ bool app_loader_load(const char *app_name) {
         return false;
     }
 
-    checkpoint_open(ctx->name);
     if (!config_bind_app(ctx->name)) {
         ESP_LOGW(TAG, "Failed to bind config namespace for app %s", ctx->name);
     }

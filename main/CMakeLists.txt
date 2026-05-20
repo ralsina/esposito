@@ -9,7 +9,6 @@ idf_component_register(
         "elf_loader.c"
         "app_loader.c"
         "app_launcher.c"
-        "checkpoint.c"
         "hardware.cpp"
         "boot.cpp"
         "bbq20_keyboard.c"

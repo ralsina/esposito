@@ -4,7 +4,6 @@
 #include "app_loader.h"
 #include "app_launcher.h"
 #include "elf_loader.h"
-#include "checkpoint.h"
 #include "hardware.h"
 #include "text_mode.h"
 #include "terminal_mode.h"
@@ -190,13 +189,10 @@ bool os_load_app(const char *app_name) {
     os_log_global_heap_stats("before load");
     app_heap_log_stats("before load");
 
-    // Checkpoint and close current app
     if (current_app) {
         if (current_app->checkpoint) {
             current_app->checkpoint(current_app);
         }
-        checkpoint_save();
-        checkpoint_close();
         os_unload_app();
     }
 
@@ -680,6 +676,24 @@ void os_event_loop(void) {
                 event.keyboard.key == 27 &&  // ESC key
                 (event.keyboard.modifiers & MODIFIER_CTRL)) {
                 ESP_LOGI(TAG, "Launcher activated (Ctrl+ESC)");
+                ESP_LOGI(TAG, "ctrl-esc: current_app=%p checkpoint=%p",
+                         (void*)current_app,
+                         current_app ? (void*)current_app->checkpoint : NULL);
+                if (current_app && current_app->checkpoint) {
+                    current_app->checkpoint(current_app);
+                }
+                ESP_LOGI(TAG, "ctrl-esc: checkpoint done");
+                {
+                    FILE *chk = fopen("/sdcard/apps/lali/config/history", "r");
+                    if (chk) {
+                        fseek(chk, 0, SEEK_END);
+                        long sz = ftell(chk);
+                        fclose(chk);
+                        ESP_LOGI(TAG, "ctrl-esc: history file exists, size=%ld", sz);
+                    } else {
+                        ESP_LOGI(TAG, "ctrl-esc: history file NOT FOUND");
+                    }
+                }
                 app_launcher_start();
                 continue;
             }

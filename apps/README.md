@@ -9,9 +9,9 @@ The exact symbol list lives in `main/os_symtab.c`, but the main groups are:
 
 ### App lifecycle
 
-- `app_init(app_context_t *ctx)` sets subscriptions and initializes the app.
+- `app_init(app_context_t *ctx)` sets subscriptions, loads saved state, and initializes the app.
 - `app_event(app_context_t *ctx, event_t *event)` receives timer, keyboard, touch, and serial events.
-- `app_checkpoint(app_context_t *ctx)` saves state before the app switches away.
+- `app_checkpoint(app_context_t *ctx)` saves app state before the OS switches away to another app or the launcher.
 - `app_close(app_context_t *ctx)` releases resources and clears the display.
 
 ### App switching and startup files
@@ -64,11 +64,33 @@ cells instead of literal glyphs. The renderer also understands VT100 ACS
 letters such as `q`, `x`, `l`, `k`, `m`, `j`, `n`, `t`, `u`, `v`, and `w`
 when that attribute is set.
 
-### Checkpoint and config
+### App configuration (state persistence)
 
-- `checkpoint_save_*()` / `checkpoint_load_*()` store app state in the app checkpoint.
-- `config_bind_app(name)` / `config_unbind_app()` select an app config namespace.
-- `config_get_*()` and `config_set_*()` read and write app settings.
+The OS automatically binds the app's config namespace before calling `app_init()`, so apps can read/write settings directly using the config API. State is stored as files under `/sdcard/apps/<app_name>/config/`.
+
+- `config_bind_app(name)` / `config_unbind_app()` select an app config namespace. The OS manages this automatically — apps only need to call these if they need to re-bind after a function like `os_consume_startup_file()` has temporarily unbound it.
+- `config_set_string(key, value)` / `config_get_string(key, default, out, size)` save and load string values.
+- `config_set_int(key, value)` / `config_get_int(key, default)` save and load integer values.
+- `config_set_bool(key, value)` / `config_get_bool(key, default)` save and load boolean values.
+- `config_set_float(key, value)` / `config_get_float(key, default)` save and load float values.
+- `config_read_all_alloc(key, &size)` reads a raw config entry into a heap buffer (must free with `config_free()`).
+- `config_delete(key)` removes a config entry.
+
+#### Example
+
+```c
+void app_init(app_context_t *ctx) {
+    // Config namespace is already bound — just read state:
+    int volume = config_get_int("volume", 50);
+    char last_file[256];
+    config_get_string("last_file", "", last_file, sizeof(last_file));
+}
+
+void app_checkpoint(app_context_t *ctx) {
+    config_set_int("volume", current_volume);
+    config_set_string("last_file", current_file);
+}
+```
 
 ### Shared system settings
 
@@ -171,7 +193,7 @@ for (int i = 0; i < count; i++) {
 
 - `malloc`, `calloc`, `realloc`, and `free` are mapped to the app heap, not the global firmware heap.
 
-If you are writing a new app, start from [app_template/](app_template/) and keep the event loop small: most apps just set up state in `app_init`, react to events in `app_event`, and save state in `app_checkpoint`.
+If you are writing a new app, start from [app_template/](app_template/) and keep the event loop small: most apps just set up state and load saved config in `app_init`, react to events in `app_event`, and save config in `app_checkpoint`.
 
 ## Apps
 
@@ -191,7 +213,7 @@ A touch-first pixel paint app. 16-color canvas with pencil, eraser, line, and re
 
 ### [reader](reader/)
 
-A markdown ebook reader. Reads `.md` files from `/sdcard/books/`, with paragraph reflow, page navigation, search, and checkpoint resume.
+A markdown ebook reader. Reads `.md` files from `/sdcard/books/`, with paragraph reflow, page navigation, search, and progress resume.
 
 ![reader](reader/reader.png)
 

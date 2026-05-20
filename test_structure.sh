@@ -24,8 +24,7 @@ required_files=(
     "main/hardware_config.h"
     "main/app_loader.h"
     "main/app_loader.c"
-    "main/checkpoint.h"
-    "main/checkpoint.c"
+
     "apps/hello_world/app.c"
     "apps/hello_world/CMakeLists.txt"
 )

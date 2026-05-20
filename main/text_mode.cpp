@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 
 extern "C" {
-    #include "checkpoint.h"
+    #include "app_config.h"
 }
 
 static const char *TAG = "text_mode";
@@ -300,8 +300,18 @@ bool text_mode_init(void) {
     char font_setting[32];
     extern size_t os_settings_get_string(const char *key, const char *default_val, char *out, size_t out_size);
     extern font_id_t font_lookup_by_name(const char *name);
+    extern app_context_t *os_get_current_app(void);
+
+    // os_settings_get_string unbinds config; save the current app's binding to restore it
+    const char *saved_app = NULL;
+    app_context_t *ctx = os_get_current_app();
+    if (ctx) saved_app = ctx->name;
 
     size_t len = os_settings_get_string("system/default_font", "hack 8", font_setting, sizeof(font_setting));
+
+    if (saved_app) {
+        config_bind_app(saved_app);
+    }
 
     font_id_t default_font = font_lookup_by_name(font_setting);
     if (default_font < 0 || default_font >= FONT_COUNT) {
@@ -557,10 +567,11 @@ void text_mode_set_cursor(int x, int y) {
 }
 
 void text_mode_save(void) {
-    checkpoint_save_int("tm_cursor_x", cursor_x);
-    checkpoint_save_int("tm_cursor_y", cursor_y);
-    checkpoint_save_int("tm_bg_color", bg_color);
-    checkpoint_save_int("tm_font", current_font);
+    config_bind_app("_text");
+    config_set_int("tm_cursor_x", cursor_x);
+    config_set_int("tm_cursor_y", cursor_y);
+    config_set_int("tm_bg_color", bg_color);
+    config_set_int("tm_font", current_font);
 
     for (int y = 0; y < grid_rows; y++) {
         char key[32];
@@ -581,17 +592,19 @@ void text_mode_save(void) {
         attrs[ap] = '\0';
 
         snprintf(key, sizeof(key), "tm_rc_%d", y);
-        checkpoint_save_string(key, chars);
+        config_set_string(key, chars);
         snprintf(key, sizeof(key), "tm_ra_%d", y);
-        checkpoint_save_string(key, attrs);
+        config_set_string(key, attrs);
     }
+    config_unbind_app();
 }
 
 void text_mode_restore(void) {
-    cursor_x = checkpoint_load_int("tm_cursor_x");
-    cursor_y = checkpoint_load_int("tm_cursor_y");
-    bg_color = checkpoint_load_int("tm_bg_color");
-    font_id_t saved_font = (font_id_t)checkpoint_load_int("tm_font");
+    config_bind_app("_text");
+    cursor_x = config_get_int("tm_cursor_x", 0);
+    cursor_y = config_get_int("tm_cursor_y", 0);
+    bg_color = config_get_int("tm_bg_color", 0);
+    font_id_t saved_font = (font_id_t)config_get_int("tm_font", 0);
     if (saved_font < 0 || saved_font >= FONT_COUNT) saved_font = FONT_HACK_8;
 
     init_grid(saved_font);
@@ -599,18 +612,21 @@ void text_mode_restore(void) {
     for (int y = 0; y < grid_rows; y++) {
         char key[32];
         snprintf(key, sizeof(key), "tm_rc_%d", y);
-        const char *chars = checkpoint_load_string(key);
+        size_t chars_size = 0;
+        char *chars = config_read_all_alloc(key, &chars_size);
         snprintf(key, sizeof(key), "tm_ra_%d", y);
-        const char *attrs = checkpoint_load_string(key);
+        size_t attrs_size = 0;
+        char *attrs = config_read_all_alloc(key, &attrs_size);
 
         int x = 0;
         if (chars) {
             for (; x < grid_cols && chars[x]; x++) {
                 grid[y * grid_cols + x].character = chars[x];
             }
+            config_free(chars);
         }
         if (attrs) {
-            const char *p = attrs;
+            char *p = attrs;
             x = 0;
             while (*p && x < grid_cols) {
                 int c = 0, b = 0, a = 0;
@@ -627,6 +643,7 @@ void text_mode_restore(void) {
                 if (*p == ';') p++;
                 x++;
             }
+            config_free(attrs);
         }
     }
 
@@ -635,6 +652,7 @@ void text_mode_restore(void) {
             update_cell(x, y);
         }
     }
+    config_unbind_app();
 }
 
 static uint32_t vlw_read_be32(const uint8_t *p) {

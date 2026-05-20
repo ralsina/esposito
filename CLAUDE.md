@@ -122,7 +122,7 @@ Apps link against the firmware through exported symbols. Key API groups:
 - `os_get_time_status(&status)`, `os_time_is_synchronized()`
 
 ### Config & Settings
-- `checkpoint_save*()`, `checkpoint_load*()` - App state persistence
+- `config_set*()`, `config_get*()` - App state persistence via config API
 - `config_bind_app(name)`, `config_get*()`, `config_set*()` - App settings
 - `os_settings_get*()`, `os_settings_set*()` - Global system settings
 
