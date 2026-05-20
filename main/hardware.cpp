@@ -127,7 +127,7 @@ bool display_load_font(font_id_t id, font_variant_t variant) {
 
     bool ok = tft.loadFont(data);
     if (ok) {
-        ESP_LOGI(TAG, "Loaded font %s variant %d (%dx%d)",
+        ESP_LOGD(TAG, "Loaded font %s variant %d (%dx%d)",
                  font_table[id].name, variant, disp_font_width, disp_font_height);
     } else {
         disp_font_width = 5;

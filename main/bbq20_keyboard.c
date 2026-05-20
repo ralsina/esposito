@@ -235,10 +235,6 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state) {
     if (key_code == 10) return '\n';  // Enter key (0x0A)
     if (key_code == BBQ20_KEY_ESCAPE) return 27;  // Escape key
     if (key_code == 8) return '\b';   // Backspace key (0x08)
-    if (key_code == 40) return ' ';
-    if (key_code == 41) return '\t';
-    if (key_code == 42) return '\n';
-    if (key_code == 43) return '\b';
 
     // BBQ20 keyboard sends ASCII directly (0x61 = 'a', 0x41 = 'A', etc.)
     // Check if it's a printable ASCII character
