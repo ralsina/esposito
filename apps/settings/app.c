@@ -77,6 +77,7 @@ typedef enum {
     ACTION_SET_FONT_FAMILY,
     ACTION_SET_FONT_SIZE,
     ACTION_SET_ROTATION,
+    ACTION_SET_BRIGHTNESS,
     ACTION_TOGGLE_SERIAL,
 } settings_action_t;
 
@@ -109,6 +110,7 @@ static const section_option_t display_options[] = {
     {"Font Family", ACTION_SET_FONT_FAMILY},
     {"Font Size", ACTION_SET_FONT_SIZE},
     {"Rotation", ACTION_SET_ROTATION},
+    {"Brightness", ACTION_SET_BRIGHTNESS},
 };
 
 static const section_option_t debug_options[] = {
@@ -601,6 +603,11 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
             snprintf(out, out_size, "%s", rot_names[current]);
             break;
         }
+        case ACTION_SET_BRIGHTNESS: {
+            int current = os_settings_get_int("display/backlight", 255);
+            snprintf(out, out_size, "%d%%", current * 100 / 255);
+            break;
+        }
         case ACTION_TOGGLE_SERIAL:
             snprintf(out, out_size, "%s", serial_log_output_is_enabled() ? "on" : "off");
             break;
@@ -693,6 +700,23 @@ static void execute_main_action(settings_action_t action) {
             display_set_rotation(new_rotation);
             const char *rot_names[] = {"0° (Portrait)", "90° (Landscape)", "180° (Inverted Portrait)", "270° (Inverted Landscape)"};
             snprintf(status_msg, sizeof(status_msg), "Rotation: %s", rot_names[new_rotation]);
+            set_status(status_msg);
+            render();
+            break;
+        }
+        case ACTION_SET_BRIGHTNESS: {
+            static const int levels[] = {255, 192, 128, 64, 0};
+            int current = os_settings_get_int("display/backlight", 255);
+            int next = levels[0];
+            for (int i = 0; i < 4; i++) {
+                if (levels[i] == current) {
+                    next = levels[i + 1];
+                    break;
+                }
+            }
+            os_settings_set_int("display/backlight", next);
+            display_set_backlight((uint8_t)next);
+            snprintf(status_msg, sizeof(status_msg), "Brightness: %d%%", next * 100 / 255);
             set_status(status_msg);
             render();
             break;
