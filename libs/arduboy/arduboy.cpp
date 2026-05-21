@@ -3,10 +3,22 @@
 #include <os_core.h>
 #include <hardware.h>
 #include <hardware_config.h>
+#include <graphics_mode.h>
 #include "glcdfont.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// Undefine conflicting macros from hardware_config.h
+#ifdef COLOR_BLACK
+#undef COLOR_BLACK
+#endif
+#ifdef COLOR_GREEN
+#undef COLOR_GREEN
+#endif
+
+// Forward declare malloc from OS symbol table
+extern "C" void *malloc(size_t size);
 
 // Forward declarations for Arduino functions (these are C++ functions from the game)
 void setup();
@@ -25,36 +37,44 @@ static uint8_t g_pending_button_presses = 0;
 // Arduboy screen: 128x64 pixels, 1-bit color
 #define ARDUBOY_SCREEN_WIDTH 128
 #define ARDUBOY_SCREEN_HEIGHT 64
-#define ARDUBOY_BUFFER_SIZE ((ARDUBOY_SCREEN_WIDTH * ARDUBOY_SCREEN_HEIGHT) / 8)
+#define ARDUBOY_BUFFER_SIZE ((ARDUBOY_SCREEN_WIDTH * ARDUBOY_SCREEN_HEIGHT) / 2)
 #define ARDUBOY_FONT_WIDTH 5
 #define ARDUBOY_FONT_SPACING 1
 #define ARDUBOY_FONT_LINE_HEIGHT 8
 
-// 1-bit framebuffer for Arduboy screen (row-major, MSB first)
-static uint8_t arduboy_framebuffer[ARDUBOY_BUFFER_SIZE];
+// 4bpp sprite buffer allocated from app heap (320x240/2 = 38400 bytes)
+static uint8_t *g_sprite_buffer = NULL;
 
-// Helper: set pixel in 1-bit framebuffer
+// Palette indices for Arduboy's 1-bit colors
+#define COLOR_BLACK 0
+#define COLOR_GREEN 1
+
+// Helper: set pixel in 4bpp sprite buffer via graphics_mode
 static void set_pixel(int x, int y, bool color) {
     if (x < 0 || x >= ARDUBOY_SCREEN_WIDTH || y < 0 || y >= ARDUBOY_SCREEN_HEIGHT) return;
 
-    int index = (y * ARDUBOY_SCREEN_WIDTH + x) / 8;
-    int bit = 7 - ((y * ARDUBOY_SCREEN_WIDTH + x) % 8);
+    // Offset to center on 320x240 display
+    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
 
-    if (color) {
-        arduboy_framebuffer[index] |= (1 << bit);
-    } else {
-        arduboy_framebuffer[index] &= ~(1 << bit);
-    }
+    graphics_draw_pixel(offset_x + x, offset_y + y, color ? COLOR_GREEN : COLOR_BLACK);
 }
 
-// Helper: get pixel from 1-bit framebuffer
+// Helper: get pixel from 4bpp sprite buffer (read back from sprite)
 static bool get_pixel(int x, int y) {
     if (x < 0 || x >= ARDUBOY_SCREEN_WIDTH || y < 0 || y >= ARDUBOY_SCREEN_HEIGHT) return false;
 
-    int index = (y * ARDUBOY_SCREEN_WIDTH + x) / 8;
-    int bit = 7 - ((y * ARDUBOY_SCREEN_WIDTH + x) % 8);
+    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
 
-    return (arduboy_framebuffer[index] >> bit) & 1;
+    // Read directly from the sprite buffer
+    if (!g_sprite_buffer) return false;
+    int screen_x = offset_x + x;
+    int screen_y = offset_y + y;
+    int index = (screen_y * 320 + screen_x) / 2;
+    bool is_low = (screen_x % 2) == 0;
+    uint8_t color = is_low ? (g_sprite_buffer[index] >> 4) & 0x0F : g_sprite_buffer[index] & 0x0F;
+    return color == COLOR_GREEN;
 }
 
 // Helper: draw character to framebuffer using the classic Arduboy 5x7 font.
@@ -85,31 +105,31 @@ static int glyph_advance(char c, int size) {
     return (ARDUBOY_FONT_WIDTH + ARDUBOY_FONT_SPACING) * size;
 }
 
-// Helper: convert framebuffer to RGB565 and display
+// Helper: display the sprite buffer
 static void flush_framebuffer() {
-    int screen_width = display_get_width();
-    int screen_height = display_get_height();
-
-    int offset_x = (screen_width - ARDUBOY_SCREEN_WIDTH) / 2;
-    int offset_y = (screen_height - ARDUBOY_SCREEN_HEIGHT) / 2;
-
-    for (int y = 0; y < ARDUBOY_SCREEN_HEIGHT; y++) {
-        for (int x = 0; x < ARDUBOY_SCREEN_WIDTH; x++) {
-            bool pixel = get_pixel(x, y);
-            uint16_t color = pixel ? COLOR_GREEN : COLOR_BLACK;
-            display_draw_pixel(offset_x + x, offset_y + y, color);
-        }
-    }
+    graphics_flush();
 }
 
 void Arduboy::begin() {
     printf("Arduboy::begin() - initializing\n");
 
-    // Clear framebuffer
-    memset(arduboy_framebuffer, 0, ARDUBOY_BUFFER_SIZE);
+    // Allocate sprite buffer from app heap
+    if (!g_sprite_buffer) {
+        g_sprite_buffer = (uint8_t *)malloc(320 * 240 / 2);
+        if (!g_sprite_buffer) {
+            printf("Arduboy::begin() - failed to allocate sprite buffer\n");
+            return;
+        }
+    }
 
-    // Clear the actual display
-    display_clear(0x0000);
+    // Initialize graphics mode with our buffer
+    graphics_mode_init(g_sprite_buffer, 320 * 240 / 2);
+
+    // Set palette: index 0 = black, index 1 = green (Arduboy colors)
+    uint16_t palette[16] = {0};
+    palette[0] = 0x0000; // Black
+    palette[1] = 0x07E0; // Green
+    graphics_set_palette(palette, 2);
 
     initialized = true;
     frameRate = 60;
@@ -124,12 +144,10 @@ void Arduboy::begin() {
 }
 
 void Arduboy::clear() {
-    // Clear framebuffer to black
-    memset(arduboy_framebuffer, 0, ARDUBOY_BUFFER_SIZE);
+    graphics_clear(COLOR_BLACK);
 }
 
 void Arduboy::display() {
-    // Convert and display framebuffer
     flush_framebuffer();
 }
 
@@ -196,35 +214,30 @@ void Arduboy::drawPixel(int x, int y, uint8_t color) {
 }
 
 void Arduboy::drawRect(int x, int y, int width, int height, uint8_t color) {
-    if (width <= 0 || height <= 0) {
-        return;
-    }
+    if (width <= 0 || height <= 0) return;
 
-    for (int px = x; px < x + width; px++) {
-        set_pixel(px, y, color > 0);
-        set_pixel(px, y + height - 1, color > 0);
-    }
+    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
+    uint8_t c = color > 0 ? COLOR_GREEN : COLOR_BLACK;
 
-    for (int py = y; py < y + height; py++) {
-        set_pixel(x, py, color > 0);
-        set_pixel(x + width - 1, py, color > 0);
-    }
+    graphics_draw_rect(offset_x + x, offset_y + y, width, height, c);
 }
 
 void Arduboy::fillRect(int x, int y, int width, int height, uint8_t color) {
-    if (width <= 0 || height <= 0) {
-        return;
-    }
+    if (width <= 0 || height <= 0) return;
 
-    for (int py = y; py < y + height; py++) {
-        for (int px = x; px < x + width; px++) {
-            set_pixel(px, py, color > 0);
-        }
-    }
+    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
+    uint8_t c = color > 0 ? COLOR_GREEN : COLOR_BLACK;
+
+    graphics_fill_rect(offset_x + x, offset_y + y, width, height, c);
 }
 
 void Arduboy::fillCircle(int x, int y, int radius, uint8_t color) {
-    // Simple circle drawing algorithm
+    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
+    uint8_t c = color > 0 ? COLOR_GREEN : COLOR_BLACK;
+
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
             if (dx*dx + dy*dy <= radius*radius) {

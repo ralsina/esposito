@@ -1,5 +1,6 @@
 #include "text_mode.h"
 #include "hardware.h"
+#include "graphics_mode.h"
 #include "fonts.h"
 #include "sd_card.h"
 #include "esp_log.h"
@@ -173,6 +174,7 @@ static void grid_to_pixel(int gx, int gy, int *px, int *py) {
 }
 
 static void update_cell(int x, int y) {
+    if (graphics_mode_is_active()) return;
     if (!grid || x < 0 || x >= grid_cols || y < 0 || y >= grid_rows) return;
 
     text_cell_t *cell = &grid[y * grid_cols + x];

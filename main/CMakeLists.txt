@@ -17,6 +17,7 @@ idf_component_register(
         "terminal_vt100.c"
         "terminal_mode.c"
         "text_mode.cpp"
+        "graphics_mode.cpp"
         "wifi.cpp"
         "../libs/ui/ui.c"
         "../libs/ui/ui_button.c"

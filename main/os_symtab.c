@@ -7,6 +7,7 @@
 #include "app_launcher.h"
 #include "terminal_mode.h"
 #include "text_mode.h"
+#include "graphics_mode.h"
 #include "fonts.h"
 #include "wifi.h"
 #include "os_printf.h"
@@ -76,6 +77,16 @@ static const os_symtab_entry_t symtab[] = {
     {"text_mode_flush",         text_mode_flush},
     {"text_mode_set_font",      text_mode_set_font},
     {"text_mode_apply_configured_font", text_mode_apply_configured_font},
+    {"graphics_mode_init",        graphics_mode_init},
+    {"graphics_mode_deinit",      graphics_mode_deinit},
+    {"graphics_mode_is_active",   graphics_mode_is_active},
+    {"graphics_set_palette",      graphics_set_palette},
+    {"graphics_clear",            graphics_clear},
+    {"graphics_draw_pixel",       graphics_draw_pixel},
+    {"graphics_draw_line",        graphics_draw_line},
+    {"graphics_fill_rect",        graphics_fill_rect},
+    {"graphics_draw_rect",        graphics_draw_rect},
+    {"graphics_flush",            graphics_flush},
     {"printf",                  printf},
     {"puts",                    puts},
     {"sprintf",                 sprintf},
