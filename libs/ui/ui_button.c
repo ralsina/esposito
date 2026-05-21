@@ -77,15 +77,32 @@ void ui_button_draw(ui_button_t *button) {
         }
     }
 
-    // Draw button text centered
+    // Draw button text centered WITH border attributes preserved
     if (button->text) {
         int text_len = strlen(button->text);
         int text_x = button->x + (button->width - text_len) / 2;
         int text_y = button->y + (button->height - 1) / 2;
 
         if (text_x >= button->x && text_y >= button->y) {
-            // Don't draw borders on the text itself
-            text_mode_print_at_attr_bg(text_x, text_y, button->text, button->fg_color, button->bg_color, TEXT_ATTR_NORMAL);
+            // Calculate attributes for text position (preserve borders)
+            uint8_t text_attr = TEXT_ATTR_NORMAL;
+            
+            // Add borders if text is at edges
+            if (text_y == button->y) {
+                text_attr |= TEXT_ATTR_BORDER_TOP;
+            }
+            if (text_y == button->y + button->height - 1) {
+                text_attr |= TEXT_ATTR_UNDERLINE; // Bottom border
+            }
+            if (text_x == button->x) {
+                text_attr |= TEXT_ATTR_BORDER_LEFT;
+            }
+            if (text_x + text_len == button->x + button->width) {
+                text_attr |= TEXT_ATTR_BORDER_RIGHT;
+            }
+            
+            // Draw text with preserved border attributes
+            text_mode_print_at_attr_bg(text_x, text_y, button->text, button->fg_color, button->bg_color, text_attr);
         }
     }
 }
