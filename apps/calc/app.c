@@ -200,35 +200,58 @@ void create_buttons() {
     int screen_cols = text_mode_get_cols();
     int screen_rows = text_mode_get_rows();
 
-    // Calculate available space for buttons (minimum 4 columns wide, 5 rows tall)
+    // Minimum space needed: 
+    // - Width: 4 columns minimum, each button needs at least 2 chars (1 char + 1 space) + 2 chars margin
+    // - Height: 2 rows for display + 5 rows for buttons (no gaps initially)
     int min_button_cols = 4;
+    int min_width = min_button_cols * 2 + 2;
+    int min_display_rows = 2;
     int min_button_rows = 5;
-    int min_width = min_button_cols * 2;  // Each button at least 1 char wide + 1 space
-    int min_height = min_button_rows * 1.5; // Reduced height requirement for tight spacing
-
-    if (screen_cols < min_width || screen_rows < min_height + 6) {
+    int min_height = min_display_rows + min_button_rows;
+    
+    if (screen_cols < min_width || screen_rows < min_height) {
         // Screen too small, cannot fit calculator
         return;
     }
 
-    // Calculate available width for button area
-    int available_width = screen_cols;
-    int start_x = 0;  // Left-aligned for narrow screens
+    // Calculate available width for button area (leave 1 char margin on each side)
+    int available_width = screen_cols - 2;
+    int start_x = 1;  // Left margin
     
-    // Dynamic vertical positioning - anchor to bottom, leave extra space at top
-    int display_gap = 2;  // Space between display and buttons
-    int local_vertical_gap = 1; // Gap between button rows
-    int bottom_margin = 0; // No margin at bottom - buttons flush with edge
+    // Reserve space for display at the top (2 rows)
+    int display_rows = 2;
+    int available_rows_for_buttons = screen_rows - display_rows;
     
-    // Set button height based on screen size
-    int local_button_height = 2;  // Reduced height for smaller screens
-    if (screen_rows >= 15) {
-        local_button_height = 3;  // Use taller buttons on larger screens
+    // We have 5 button rows. Each row consists of (gap + button) where gap is above the button.
+    // So we split available_rows_for_buttons into 5 equal chunks.
+    int chunk_height = available_rows_for_buttons / 5;  // Integer division
+    
+    // Determine gap and button heights based on chunk height
+    int local_button_height;
+    int local_vertical_gap;
+    
+    if (chunk_height >= 2) {
+        // We can afford a 1-cell gap
+        local_button_height = chunk_height - 1;
+        local_vertical_gap = 1;
+    } else {
+        // Not enough space for gaps, make buttons as tall as chunks
+        local_button_height = chunk_height;
+        local_vertical_gap = 0;
     }
     
-    // Calculate button positioning from bottom up
-    int buttons_height = 5 * (local_button_height + local_vertical_gap) - local_vertical_gap;
-    int local_button_start_y = screen_rows - bottom_margin - buttons_height;  // Where buttons start
+    // Ensure minimum button height of 1
+    if (local_button_height < 1) {
+        local_button_height = 1;
+    }
+    
+    // Calculate total button area height and center it vertically
+    int buttons_total_height = 5 * local_button_height + 4 * local_vertical_gap;
+    int local_button_start_y = display_rows + (available_rows_for_buttons - buttons_total_height) / 2;
+    // Ensure we don't go negative (shouldn't happen with our checks, but just in case)
+    if (local_button_start_y < display_rows) {
+        local_button_start_y = display_rows;
+    }
     
     // Update global variables for display positioning
     extern int button_height;
@@ -288,12 +311,12 @@ void create_buttons() {
     }
     button_count = 0;
 
-printf("Screen: %dx%d, Layout at start_x=%d, button_start_y=%d\n",
-           screen_cols, screen_rows, start_x, button_start_y);
+    printf("Screen: %dx%d, Layout at start_x=%d, button_start_y=%d\n",
+            screen_cols, screen_rows, start_x, button_start_y);
     printf("Normal button size: %dx%d, Equals button: %dx%d\n",
-           normal_button_width, button_height, equals_button_width, button_height);
-    printf("Display gap: %d, vertical gap: %d, button height: %d\n",
-           display_gap, vertical_gap, button_height);
+            normal_button_width, button_height, equals_button_width, button_height);
+    printf("Vertical gap: %d, button height: %d\n",
+            vertical_gap, button_height);
 
     // Clear existing buttons
     for (int i = 0; i < button_count; i++) {
@@ -383,23 +406,26 @@ void draw_display() {
     int screen_cols = text_mode_get_cols();
     int screen_rows = text_mode_get_rows();
 
-    // Dynamic display sizing - positioned above buttons
-    int display_width, display_x, display_y;
-    
-    if (screen_cols >= 40) {
-        // Full display on wider screens
-        display_width = 36 * char_width;
-        display_x = ((text_mode_get_cols() * char_width) - (40 * char_width)) / 2 + (2 * char_width);
-        display_y = 1 * char_height;  // Top row only
-    } else {
-        // Narrow screen - position display just above buttons
-        display_width = (screen_cols - 2) * char_width;  // Minimal margins
-        display_x = 1 * char_width;  // Left-align with minimal margin
-        // Position display just above buttons
-        display_y = button_start_y - 2;  // 2 rows above buttons
-    }
-    
-    int display_height = 2 * char_height;
+      // Dynamic display sizing - positioned at the top
+      int display_width, display_x, display_y;
+      
+      // Display takes the first few rows
+      int display_rows = 3;  // Fixed number of rows for display
+      
+      if (screen_cols >= 40) {
+          // Full display on wider screens
+          display_width = 36 * char_width;
+          display_x = ((text_mode_get_cols() * char_width) - (40 * char_width)) / 2 + (2 * char_width);
+          display_y = 0;  // Start at top
+      } else {
+          // Narrow screen - use full width with margins
+          display_width = (screen_cols - 2) * char_width;  // Minimal margins
+          display_x = 1 * char_width;  // Left-align with minimal margin
+          display_y = 0;  // Start at top
+      }
+      
+      // Display height in pixels
+      int display_height = display_rows * char_height;
 
     // Clear display area with black background
     display_fill_rect(display_x, display_y, display_width, display_height, 0x0000);
