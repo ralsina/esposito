@@ -3,6 +3,7 @@
 #include "app_config.h"
 #include "app_loader.h"
 #include "app_launcher.h"
+#include "app_manifest.h"
 #include "elf_loader.h"
 #include "hardware.h"
 #include "text_mode.h"
@@ -220,7 +221,11 @@ bool os_load_app(const char *app_name) {
     os_log_global_heap_stats("after load");
     app_heap_log_stats("after load");
 
-    os_settings_set_string("system/last_app", app_name);
+    // Only save as last app if it should appear in the launcher
+    app_sd_manifest_t manifest;
+    if (app_manifest_read(app_name, &manifest) && manifest.show_in_launcher) {
+        os_settings_set_string("system/last_app", app_name);
+    }
     config_bind_app(app_name);
     return true;
 }

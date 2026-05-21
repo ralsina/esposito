@@ -187,7 +187,7 @@ static bool boot_check_crash_loop(void) {
 
     bool crash_loop = false;
 
-    if (last_boot > 0 && elapsed >= 0 && elapsed < 10.0) {
+    if (last_boot > 0 && elapsed >= 0 && elapsed < 15.0) {
         boot_count++;
         ESP_LOGW(TAG, "Rapid reboot #%d (%.0fs since last boot)", boot_count, elapsed);
         if (boot_count >= 3) {
@@ -340,10 +340,20 @@ void boot_sequence(void) {
     boot_display_progress(BOOT_STAGE_APP_LOADER_INIT, true, "App loader ready");
     boot_report_app_memory();
 
-    // Stage 6: Show launcher
-    boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, "Starting app launcher");
+    // Stage 6: Crash-loop check and auto-load last app
+    boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, "Checking boot state");
 
-    app_launcher_start();
+    bool crash_loop = boot_check_crash_loop();
+    if (crash_loop) {
+        ESP_LOGW(TAG, "Crash loop detected, starting launcher instead of last app");
+    } else {
+        boot_auto_load_last_app();
+    }
+
+    // If no last app was loaded (or crash loop), start the launcher
+    if (os_get_current_app() == NULL) {
+        app_launcher_start();
+    }
 
     // For now, just say we're ready
     ESP_LOGI(TAG, "");
