@@ -76,5 +76,6 @@ pg98.md
 shot_*.ppm
 shot_*.png
 
-# CAD files
-bbcase/
+# CAD backup files
+bbcase/*.FCBak
+bbcase/*.3mf
