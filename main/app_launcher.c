@@ -275,6 +275,10 @@ static void app_launcher_handle_key(char key) {
 void app_launcher_start(void) {
     ESP_LOGI(TAG, "Starting app launcher");
 
+    // Ensure text mode is active (may have been left in graphics mode)
+    text_mode_init();
+    text_mode_clear(TEXT_COLOR_BLACK);
+
     if (!sd_card_is_mounted()) {
         ESP_LOGE(TAG, "SD card not mounted!");
         app_count = 0;

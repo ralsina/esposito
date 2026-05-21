@@ -3,6 +3,7 @@
 #include "paint_render.h"
 #include "paint_storage.h"
 #include "hardware.h"
+#include "graphics_mode.h"
 
 #include <string.h>
 
@@ -11,21 +12,22 @@ static void preview_reset(paint_state_t *state) {
 }
 
 static void preview_restore_previous(paint_state_t *state) {
-    if (!state || !state->preview_points_x || !state->preview_points_y) {
+    if (!state || !state->preview_points_x || !state->preview_points_y || !state->preview_points_original) {
         return;
     }
 
     for (int index = 0; index < state->preview_point_count; index++) {
         int x = state->preview_points_x[index];
         int y = state->preview_points_y[index];
-        paint_render_pixel(state, x, y);
+        uint8_t original = state->preview_points_original[index];
+        graphics_draw_pixel(x, y, original);
     }
 
     preview_reset(state);
 }
 
 static void preview_add_point(paint_state_t *state, int x, int y) {
-    if (!state || !state->preview_points_x || !state->preview_points_y) {
+    if (!state || !state->preview_points_x || !state->preview_points_y || !state->preview_points_original) {
         return;
     }
     if (x < 0 || x >= display_get_width() || y < 0 || y >= display_get_height()) {
@@ -35,10 +37,18 @@ static void preview_add_point(paint_state_t *state, int x, int y) {
         return;
     }
 
+    // Skip if this pixel is already in the preview list (e.g. rectangle corners)
+    for (int i = 0; i < state->preview_point_count; i++) {
+        if (state->preview_points_x[i] == x && state->preview_points_y[i] == y) {
+            return;
+        }
+    }
+
     state->preview_points_x[state->preview_point_count] = (int16_t)x;
     state->preview_points_y[state->preview_point_count] = (int16_t)y;
+    state->preview_points_original[state->preview_point_count] = paint_canvas_get(state, x, y);
     state->preview_point_count++;
-    display_draw_pixel(x, y, 0xFFFF);
+    graphics_draw_pixel(x, y, state->current_color);
 }
 
 static void preview_draw_line(paint_state_t *state, int x0, int y0, int x1, int y1) {
@@ -362,7 +372,7 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
         state->preview_active = false;
         if (state->shape_pending && state->touch_active) {
             if (state->tool == PAINT_TOOL_LINE) {
-                draw_line_on_canvas(state, state->shape_start_x, state->shape_start_y, 
+                draw_line_on_canvas(state, state->shape_start_x, state->shape_start_y,
                                   state->preview_x, state->preview_y, state->current_color);
                 render_line_from_canvas(state, state->shape_start_x, state->shape_start_y,
                                         state->preview_x, state->preview_y);
@@ -377,6 +387,7 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
                 state->status[sizeof(state->status) - 1] = '\0';
             }
             state->shape_pending = false;
+            graphics_flush();
         }
         state->touch_active = false;
         return;
@@ -389,6 +400,7 @@ static void handle_canvas_touch(paint_state_t *state, int x, int y, bool pressed
             state->preview_y = y;
             state->preview_active = true;
             preview_draw_shape(state);
+            graphics_flush();
         }
         return;
     }

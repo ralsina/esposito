@@ -72,5 +72,6 @@ void arduboy_call_setup(void);
 void arduboy_call_loop(void);
 void arduboy_handle_key_event(char key, bool pressed);
 void arduboy_handle_touch_event(int x, int y, bool pressed);
+void arduboy_cleanup(void);
 
 #endif // ARDUBOY_H

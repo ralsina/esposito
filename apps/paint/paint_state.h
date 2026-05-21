@@ -32,6 +32,7 @@ typedef struct {
     uint8_t *undo;
     int16_t *preview_points_x;
     int16_t *preview_points_y;
+    uint8_t *preview_points_original;
     bool has_undo;
     bool touch_active;
     int stroke_last_x;

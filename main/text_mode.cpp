@@ -277,6 +277,9 @@ bool text_mode_init_ex(font_id_t font) {
 
     if (!init_grid(font)) return false;
 
+    // Deactivate graphics mode if it was active
+    graphics_mode_deinit();
+
     cursor_x = 0;
     cursor_y = 0;
     bg_color = TEXT_COLOR_BLACK;

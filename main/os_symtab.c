@@ -23,6 +23,7 @@
 static const os_symtab_entry_t symtab[] = {
     {"display_clear",           display_clear},
     {"display_draw_text",       display_draw_text},
+    {"display_draw_text_bg",    display_draw_text_bg},
     {"display_draw_pixel",      display_draw_pixel},
     {"display_fill_rect",       display_fill_rect},
     {"display_draw_char_at",    display_draw_char_at},
@@ -86,7 +87,10 @@ static const os_symtab_entry_t symtab[] = {
     {"graphics_draw_line",        graphics_draw_line},
     {"graphics_fill_rect",        graphics_fill_rect},
     {"graphics_draw_rect",        graphics_draw_rect},
+    {"graphics_draw_string",      graphics_draw_string},
     {"graphics_flush",            graphics_flush},
+    {"graphics_mode_get_buffer",  graphics_mode_get_buffer},
+    {"graphics_mode_get_buffer_size", graphics_mode_get_buffer_size},
     {"printf",                  printf},
     {"puts",                    puts},
     {"sprintf",                 sprintf},

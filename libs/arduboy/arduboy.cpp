@@ -9,6 +9,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Forward declare malloc/free from OS symbol table (C linkage)
+extern "C" {
+    void *malloc(size_t size);
+    void free(void *ptr);
+}
+
 // Undefine conflicting macros from hardware_config.h
 #ifdef COLOR_BLACK
 #undef COLOR_BLACK
@@ -17,16 +23,11 @@
 #undef COLOR_GREEN
 #endif
 
-// Forward declare malloc from OS symbol table
-extern "C" void *malloc(size_t size);
-
 // Forward declarations for Arduino functions (these are C++ functions from the game)
 void setup();
 void loop();
 
 // Global instances are defined in the Numbers game, not here
-// Arduboy arduboy;
-// ArduboyTunes tunes;
 extern Arduboy arduboy;
 
 // Global state for hardware integration
@@ -37,7 +38,6 @@ static uint8_t g_pending_button_presses = 0;
 // Arduboy screen: 128x64 pixels, 1-bit color
 #define ARDUBOY_SCREEN_WIDTH 128
 #define ARDUBOY_SCREEN_HEIGHT 64
-#define ARDUBOY_BUFFER_SIZE ((ARDUBOY_SCREEN_WIDTH * ARDUBOY_SCREEN_HEIGHT) / 2)
 #define ARDUBOY_FONT_WIDTH 5
 #define ARDUBOY_FONT_SPACING 1
 #define ARDUBOY_FONT_LINE_HEIGHT 8
@@ -60,7 +60,7 @@ static void set_pixel(int x, int y, bool color) {
     graphics_draw_pixel(offset_x + x, offset_y + y, color ? COLOR_GREEN : COLOR_BLACK);
 }
 
-// Helper: get pixel from 4bpp sprite buffer (read back from sprite)
+// Helper: get pixel from sprite buffer (read back from sprite)
 static bool get_pixel(int x, int y) {
     if (x < 0 || x >= ARDUBOY_SCREEN_WIDTH || y < 0 || y >= ARDUBOY_SCREEN_HEIGHT) return false;
 
@@ -111,7 +111,7 @@ static void flush_framebuffer() {
 }
 
 void Arduboy::begin() {
-    printf("Arduboy::begin() - initializing\n");
+    printf("Arduboy::begin() - entering\n");
 
     // Allocate sprite buffer from app heap
     if (!g_sprite_buffer) {
@@ -120,10 +120,17 @@ void Arduboy::begin() {
             printf("Arduboy::begin() - failed to allocate sprite buffer\n");
             return;
         }
+        printf("Arduboy::begin() - sprite buffer allocated at %p\n", g_sprite_buffer);
     }
 
-    // Initialize graphics mode with our buffer
+    // Initialize graphics mode with our pre-allocated buffer
     graphics_mode_init(g_sprite_buffer, 320 * 240 / 2);
+    printf("Arduboy::begin() - graphics_mode_init returned, active=%d\n", graphics_mode_is_active());
+
+    if (!graphics_mode_is_active()) {
+        printf("Arduboy::begin() - graphics mode NOT active, aborting\n");
+        return;
+    }
 
     // Set palette: index 0 = black, index 1 = green (Arduboy colors)
     uint16_t palette[16] = {0};
@@ -316,4 +323,12 @@ void arduboy_handle_key_event(char key, bool pressed) {
 void arduboy_handle_touch_event(int x, int y, bool pressed) {
     // Map touch zones to buttons
     // Left side: LEFT, Right side: RIGHT, etc.
+}
+
+void arduboy_cleanup(void) {
+    if (g_sprite_buffer) {
+        free(g_sprite_buffer);
+        g_sprite_buffer = NULL;
+    }
+    graphics_mode_deinit();
 }

@@ -64,7 +64,5 @@ void app_checkpoint(app_context_t *ctx) {
 }
 
 void app_close(app_context_t *ctx) {
-    // Cleanup
-    text_mode_clear(0x0000);
-    text_mode_flush();
+    arduboy_cleanup();
 }

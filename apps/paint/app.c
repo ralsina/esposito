@@ -1,6 +1,7 @@
 #include "os_core.h"
 #include "app_config.h"
 #include "hardware.h"
+#include "graphics_mode.h"
 #include "paint_state.h"
 #include "paint_render.h"
 #include "paint_storage.h"
@@ -24,6 +25,7 @@ void app_init(app_context_t *ctx) {
     state.undo = (uint8_t *)malloc(canvas_bytes);
     state.preview_points_x = (int16_t *)malloc(sizeof(int16_t) * PAINT_PREVIEW_MAX_POINTS);
     state.preview_points_y = (int16_t *)malloc(sizeof(int16_t) * PAINT_PREVIEW_MAX_POINTS);
+    state.preview_points_original = (uint8_t *)malloc(PAINT_PREVIEW_MAX_POINTS);
     state.current_color = 15;
     state.tool = PAINT_TOOL_PENCIL;
     strncpy(state.project_path, "/sdcard/paint_last.pt16", sizeof(state.project_path) - 1);
@@ -36,7 +38,7 @@ void app_init(app_context_t *ctx) {
         state.project_path[sizeof(state.project_path) - 1] = '\0';
     }
 
-    if (!state.canvas || !state.undo || !state.preview_points_x || !state.preview_points_y) {
+    if (!state.canvas || !state.undo || !state.preview_points_x || !state.preview_points_y || !state.preview_points_original) {
         if (state.canvas) {
             free(state.canvas);
             state.canvas = NULL;
@@ -53,6 +55,10 @@ void app_init(app_context_t *ctx) {
             free(state.preview_points_y);
             state.preview_points_y = NULL;
         }
+        if (state.preview_points_original) {
+            free(state.preview_points_original);
+            state.preview_points_original = NULL;
+        }
         display_clear(0x0000);
         display_draw_text(4, 4, "Paint app: out of memory", 0xF800);
         display_draw_text(4, 20, "Press Ctrl+ESC", 0xFFFF);
@@ -68,6 +74,9 @@ void app_init(app_context_t *ctx) {
         state.status[sizeof(state.status) - 1] = '\0';
     }
 
+    // Initialize graphics mode using the canvas buffer directly
+    graphics_mode_init(state.canvas, canvas_bytes);
+    paint_render_set_palette();
     paint_render_all(&state);
 }
 
@@ -97,6 +106,8 @@ void app_close(app_context_t *ctx) {
         paint_storage_save(&state, state.project_path);
     }
 
+    graphics_mode_deinit();
+
     if (state.canvas) {
         free(state.canvas);
         state.canvas = NULL;
@@ -112,6 +123,10 @@ void app_close(app_context_t *ctx) {
     if (state.preview_points_y) {
         free(state.preview_points_y);
         state.preview_points_y = NULL;
+    }
+    if (state.preview_points_original) {
+        free(state.preview_points_original);
+        state.preview_points_original = NULL;
     }
 
     display_clear(0x0000);
