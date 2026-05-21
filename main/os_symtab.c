@@ -73,8 +73,6 @@ static const os_symtab_entry_t symtab[] = {
     {"text_mode_printf_at_attr_bg",text_mode_printf_at_attr_bg},
     {"text_mode_get_cursor",    text_mode_get_cursor},
     {"text_mode_set_cursor",    text_mode_set_cursor},
-    {"text_mode_save",          text_mode_save},
-    {"text_mode_restore",       text_mode_restore},
     {"text_mode_flush",         text_mode_flush},
     {"text_mode_set_font",      text_mode_set_font},
     {"text_mode_apply_configured_font", text_mode_apply_configured_font},

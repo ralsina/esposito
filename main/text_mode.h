@@ -110,12 +110,6 @@ void text_mode_get_cursor(int *x, int *y);
 // Set cursor position
 void text_mode_set_cursor(int x, int y);
 
-// Save current text mode state to checkpoint
-void text_mode_save(void);
-
-// Restore text mode state from checkpoint
-void text_mode_restore(void);
-
 // Switch to graphics mode (direct LovyanGFX access)
 void text_mode_switch_graphics(void);
 

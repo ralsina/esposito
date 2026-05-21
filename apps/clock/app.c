@@ -558,7 +558,7 @@ static void print_padded_line(int x, int y, uint8_t color, uint8_t attr, const c
     text_mode_print_at_attr(x, y, line, color, attr);
 }
 
-#define LARGE_TIME_Y 4
+extern int large_time_y;  // Defined dynamically in draw_clock()
 
 static void clear_large_digit(int x, int y) {
     for (int row = 0; row < CLOCK_DIGIT_H * CLOCK_DIGIT_SCALE; row++) {
@@ -606,9 +606,19 @@ static void draw_large_digit(int x, int y, char ch) {
 
 static void draw_static_clock(void) {
     text_mode_clear(TEXT_COLOR_BLACK);
-    text_mode_print_at_attr(2, 0, "Clock", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr(10, 0, "UTC", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+    int screen_cols = text_mode_get_cols();
+    
+    if (screen_cols >= 30) {
+        text_mode_print_at_attr(2, 0, "Clock", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_NORMAL);
+        text_mode_print_at_attr(10, 0, "UTC", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+    } else {
+        // Narrow screen - abbreviated title
+        text_mode_print_at_attr(2, 0, "Clock", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_NORMAL);
+        // Skip UTC on very narrow screens
+    }
 }
+
+extern int large_time_y;  // Defined dynamically in draw_clock()
 
 static void draw_large_time(const os_time_status_t *time_status) {
     static char prev_time_line[32] = "";
@@ -642,15 +652,21 @@ static void draw_large_time(const os_time_status_t *time_status) {
         if (prev_time_line[i] == time_line[i]) {
             continue;
         }
-        draw_large_digit(start_x + (int)i * digit_pitch, LARGE_TIME_Y, time_line[i]);
+        draw_large_digit(start_x + (int)i * digit_pitch, large_time_y, time_line[i]);
     }
 
     strncpy(prev_time_line, time_line, sizeof(prev_time_line) - 1);
     prev_time_line[sizeof(prev_time_line) - 1] = '\0';
 }
 
+// Global variable for dynamic time position
+int large_time_y = 4;
+
 static void draw_clock(void) {
     refresh_weather_if_needed(0);
+
+    int screen_rows = text_mode_get_rows();
+    int screen_cols = text_mode_get_cols();
 
     os_time_status_t time_status;
     if (!os_get_time_status(&time_status)) {
@@ -675,41 +691,121 @@ static void draw_clock(void) {
         apply_timezone_offset(&time_status, tz_offset_seconds, &display_status);
     }
 
+    // Dynamic layout based on screen size
+    int time_row = 0;           // Row for timezone/NTP
+    int date_row = 1;           // Row for date
+    int weather_row = 2;        // Row for weather
+    int large_time_y = 4;       // Row for large time display
+
+    // For landscape/narrow screens, adjust layout to ensure weather is visible
+    if (screen_rows <= 12) {
+        // Very limited rows - compact layout
+        time_row = 0;
+        date_row = -1;          // Skip date to save space for weather
+        weather_row = 1;
+        large_time_y = 3;
+    } else if (screen_rows <= 16) {
+        // Limited rows - reduced spacing
+        time_row = 0;
+        date_row = 1;
+        weather_row = 2;
+        large_time_y = 4;
+    } else {
+        // Plenty of rows - full layout
+        time_row = 0;
+        date_row = 1;
+        weather_row = 2;
+        large_time_y = 4;
+    }
+
+    // Header section (timezone and NTP)
     snprintf(line, sizeof(line), "%-14s", timezone);
-    text_mode_print_at_attr(10, 0, line, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+    if (screen_cols >= 40) {
+        text_mode_print_at_attr(10, time_row, line, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+    } else {
+        // Narrow screen - left-align timezone
+        text_mode_print_at_attr(2, time_row, line, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+    }
 
     if (time_status.synchronized) {
-        text_mode_print_at_attr(29, 0, "NTP", TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL);
+        if (screen_cols >= 40) {
+            text_mode_print_at_attr(29, time_row, "NTP", TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL);
+        } else {
+            // Skip NTP on very narrow screens to save space
+            if (screen_cols >= 20) {
+                text_mode_print_at_attr(screen_cols - 10, time_row, "NTP", TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL);
+            }
+        }
     } else {
-        text_mode_print_at_attr(29, 0, "NTP", TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+        if (screen_cols >= 40) {
+            text_mode_print_at_attr(29, time_row, "NTP", TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+        } else {
+            // Skip NTP on very narrow screens to save space
+            if (screen_cols >= 20) {
+                text_mode_print_at_attr(screen_cols - 10, time_row, "NTP", TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+            }
+        }
     }
 
-    /* Text rows 18+ are safely below the large time area */
-    static const char *weekday_names[] = {
-        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
-    };
-    const char *weekday = "Unknown";
-    if (display_status.weekday >= 0 && display_status.weekday < 7) {
-        weekday = weekday_names[display_status.weekday];
+    // Date section (only if there's space)
+    if (date_row >= 0) {
+        static const char *weekday_names[] = {
+            "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+        };
+        const char *weekday = "Unknown";
+        if (display_status.weekday >= 0 && display_status.weekday < 7) {
+            weekday = weekday_names[display_status.weekday];
+        }
+        snprintf(line, sizeof(line), "%s %02d/%02d/%04d", weekday, display_status.day, display_status.month, display_status.year);
+        if (screen_cols >= 30) {
+            print_padded_line(2, date_row, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL, line, screen_cols - 4);
+        } else {
+            // Narrow screen - shorter date format
+            snprintf(line, sizeof(line), "%s %02d/%02d", weekday, display_status.day, display_status.month);
+            print_padded_line(2, date_row, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL, line, screen_cols - 4);
+        }
     }
-    snprintf(line, sizeof(line), "%s %02d/%02d/%04d", weekday, display_status.day, display_status.month, display_status.year);
-    print_padded_line(2, 18, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL, line, 40);
 
+    // Weather section - ensure it's always visible
     if (weather.has_data) {
         int abs_t = weather.temperature_tenths_c < 0 ? -weather.temperature_tenths_c : weather.temperature_tenths_c;
         int whole = abs_t / 10;
         int frac = abs_t % 10;
         char sign = weather.temperature_tenths_c < 0 ? '-' : '\0';
-        if (sign) {
-            snprintf(line, sizeof(line), "Weather: %c%d.%d C  %s", sign, whole, frac, weather_code_label(weather.weather_code));
+        
+        if (screen_cols >= 30) {
+            if (sign) {
+                snprintf(line, sizeof(line), "Weather: %c%d.%d C  %s", sign, whole, frac, weather_code_label(weather.weather_code));
+            } else {
+                snprintf(line, sizeof(line), "Weather: %d.%d C  %s", whole, frac, weather_code_label(weather.weather_code));
+            }
+            print_padded_line(2, weather_row, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, screen_cols - 4);
         } else {
-            snprintf(line, sizeof(line), "Weather: %d.%d C  %s", whole, frac, weather_code_label(weather.weather_code));
+            // Very narrow screen - abbreviated weather
+            const char *weather_label = weather_code_label(weather.weather_code);
+            if (sign) {
+                snprintf(line, sizeof(line), "%c%d.%d %s", sign, whole, frac, weather_label);
+            } else {
+                snprintf(line, sizeof(line), "%d.%d %s", whole, frac, weather_label);
+            }
+            print_padded_line(2, weather_row, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, screen_cols - 4);
         }
-        print_padded_line(2, 20, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, 40);
     } else {
-        print_padded_line(2, 20, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, weather.status, 40);
+        // Weather status - abbreviated on narrow screens
+        const char *status = weather.status;
+        if (screen_cols < 25) {
+            // Truncate long status messages on very narrow screens
+            char truncated_status[screen_cols - 8];
+            strncpy(truncated_status, status, sizeof(truncated_status) - 1);
+            truncated_status[sizeof(truncated_status) - 1] = '\0';
+            print_padded_line(2, weather_row, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, truncated_status, screen_cols - 4);
+        } else {
+            print_padded_line(2, weather_row, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, status, screen_cols - 4);
+        }
     }
 
+    // Set LARGE_TIME_Y dynamically based on layout
+    #define LARGE_TIME_Y large_time_y
 
     /* Flush text-mode cells first, then paint the large clock cells on top */
     text_mode_flush();

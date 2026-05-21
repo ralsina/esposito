@@ -1003,7 +1003,7 @@ void app_init(app_context_t *ctx) {
 }
 
 void app_checkpoint(app_context_t *ctx) {
-    text_mode_save();
+    // No state to save - settings are saved immediately when changed
 }
 
 void app_close(app_context_t *ctx) {

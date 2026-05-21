@@ -24,6 +24,8 @@ static char pending_op = 0;
 static bool new_entry = true;
 static bool decimal_entered = false;
 
+
+
 static ui_button_t *buttons[20];
 static int button_count = 0;
 
@@ -198,21 +200,100 @@ void create_buttons() {
     int screen_cols = text_mode_get_cols();
     int screen_rows = text_mode_get_rows();
 
-    // We designed for 40 columns, center it on the actual screen
-    int designed_width = 40;
-    int start_x = (screen_cols - designed_width) / 2;  // Center horizontally
-    int start_y = 7;
+    // Calculate available space for buttons (minimum 4 columns wide, 5 rows tall)
+    int min_button_cols = 4;
+    int min_button_rows = 5;
+    int min_width = min_button_cols * 2;  // Each button at least 1 char wide + 1 space
+    int min_height = min_button_rows * 1.5; // Reduced height requirement for tight spacing
 
-    // Button sizes based on our 40-column design
-    int normal_button_width = 9;  // 36 available / 4 buttons = 9 each
-    int button_height = 3;
-    int equals_button_width = 19;  // Fixed width for = button
+    if (screen_cols < min_width || screen_rows < min_height + 6) {
+        // Screen too small, cannot fit calculator
+        return;
+    }
 
-    // Debug output
-    printf("Screen: %dx%d, Centered 40-col layout at start_x=%d, start_y=%d\n",
-           screen_cols, screen_rows, start_x, start_y);
+    // Calculate available width for button area
+    int available_width = screen_cols;
+    int start_x = 0;  // Left-aligned for narrow screens
+    
+    // Dynamic vertical positioning - anchor to bottom, leave extra space at top
+    int display_gap = 2;  // Space between display and buttons
+    int local_vertical_gap = 1; // Gap between button rows
+    int bottom_margin = 0; // No margin at bottom - buttons flush with edge
+    
+    // Set button height based on screen size
+    int local_button_height = 2;  // Reduced height for smaller screens
+    if (screen_rows >= 15) {
+        local_button_height = 3;  // Use taller buttons on larger screens
+    }
+    
+    // Calculate button positioning from bottom up
+    int buttons_height = 5 * (local_button_height + local_vertical_gap) - local_vertical_gap;
+    int local_button_start_y = screen_rows - bottom_margin - buttons_height;  // Where buttons start
+    
+    // Update global variables for display positioning
+    extern int button_height;
+    extern int button_start_y; 
+    extern int vertical_gap;
+    button_height = local_button_height;
+    button_start_y = local_button_start_y;
+    vertical_gap = local_vertical_gap;
+
+    // Dynamic button sizing
+    int normal_button_width;
+    int equals_button_width;
+
+    if (available_width >= 40) {
+        // Full layout - maintain original proportions
+        start_x = (available_width - 40) / 2;  // Center on wider screens
+        normal_button_width = 9;
+        equals_button_width = 19;
+    } else {
+        // Narrow screen - pack tightly
+        int button_area_width = available_width - 2;  // 1 char margin each side
+        int spacing = 1;  // Single space between buttons
+        int buttons_per_row = 4;
+        
+        // Calculate minimum button width that can fit
+        int min_individual_width = 1;  // Each button can be as small as 1 char
+        int spacing_needed = (buttons_per_row - 1) * spacing;
+        int total_min_width = buttons_per_row * min_individual_width + spacing_needed;
+        
+        if (button_area_width < total_min_width) {
+            // Must use single character buttons
+            normal_button_width = 1;
+            equals_button_width = 1;  // Will be handled specially
+            start_x = 0;  // No centering possible
+        } else {
+            // Distribute available space among buttons
+            int extra_space = button_area_width - total_min_width;
+            normal_button_width = min_individual_width + extra_space / buttons_per_row;
+            
+            // Make sure normal_button_width is at least 1
+            if (normal_button_width < 1) normal_button_width = 1;
+            
+            // Equals button gets more space when possible
+            if (normal_button_width > 1) {
+                equals_button_width = normal_button_width * 2 + spacing;
+            } else {
+                equals_button_width = 1;
+            }
+        }
+    }
+
+    // Clear existing buttons
+    for (int i = 0; i < button_count; i++) {
+        if (buttons[i]) {
+            ui_button_destroy(buttons[i]);
+        }
+    }
+    button_count = 0;
+
+printf("Screen: %dx%d, Layout at start_x=%d, button_start_y=%d\n",
+           screen_cols, screen_rows, start_x, button_start_y);
     printf("Normal button size: %dx%d, Equals button: %dx%d\n",
            normal_button_width, button_height, equals_button_width, button_height);
+    printf("Display gap: %d, vertical gap: %d, button height: %d\n",
+           display_gap, vertical_gap, button_height);
 
     // Clear existing buttons
     for (int i = 0; i < button_count; i++) {
@@ -226,10 +307,16 @@ void create_buttons() {
     for (int row = 0; row < 5; row++) {
         int col = 0;
         for (int idx = row * 4; idx < row * 4 + 4; idx++) {
-            int x = start_x + col * (normal_button_width + 1);
-            int y = start_y + row * (button_height + 1);
-
             const char *label = button_labels[idx];
+            
+            // Skip empty button (for layout)
+            if (strcmp(label, "") == 0) {
+                continue;
+            }
+
+            // Calculate position
+            int x = start_x + col * (normal_button_width + 1);
+            int y = button_start_y + row * (button_height + vertical_gap);
             int width = normal_button_width;
 
             // Last row has special widths
@@ -237,10 +324,11 @@ void create_buttons() {
                 if (strcmp(label, "=") == 0) {
                     width = equals_button_width;
                     // Adjust x position for the wider equals button
-                    x = start_x + normal_button_width + normal_button_width + 2;  // After 0 and .
-                } else if (strcmp(label, "") == 0) {
-                    // Skip empty button
-                    continue;
+                    if (normal_button_width > 1) {
+                        x = start_x + normal_button_width + normal_button_width + 2;  // After 0 and .
+                    } else {
+                        x = start_x + 2;  // Position after 0 and . on single-char layout
+                    }
                 }
             }
 
@@ -279,6 +367,11 @@ void create_buttons() {
     }
 }
 
+// Global variables for button layout coordination
+int button_start_y = 0;
+int button_height = 3;
+int vertical_gap = 1;
+
 void draw_display() {
     extern void display_fill_rect(int x, int y, int width, int height, uint16_t color);
     extern void display_draw_scaled_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg, int scale);
@@ -287,12 +380,26 @@ void draw_display() {
 
     int char_width = text_mode_get_char_width();
     int char_height = text_mode_get_char_height();
+    int screen_cols = text_mode_get_cols();
+    int screen_rows = text_mode_get_rows();
 
-    // Display area in pixels (centered, using our 40-column design)
-    int display_width = 36 * char_width;   // 36 chars wide
-    int display_height = 2 * char_height;  // 2 chars tall
-    int display_x = ((text_mode_get_cols() * char_width) - (40 * char_width)) / 2 + (2 * char_width);
-    int display_y = 3 * char_height;
+    // Dynamic display sizing - positioned above buttons
+    int display_width, display_x, display_y;
+    
+    if (screen_cols >= 40) {
+        // Full display on wider screens
+        display_width = 36 * char_width;
+        display_x = ((text_mode_get_cols() * char_width) - (40 * char_width)) / 2 + (2 * char_width);
+        display_y = 1 * char_height;  // Top row only
+    } else {
+        // Narrow screen - position display just above buttons
+        display_width = (screen_cols - 2) * char_width;  // Minimal margins
+        display_x = 1 * char_width;  // Left-align with minimal margin
+        // Position display just above buttons
+        display_y = button_start_y - 2;  // 2 rows above buttons
+    }
+    
+    int display_height = 2 * char_height;
 
     // Clear display area with black background
     display_fill_rect(display_x, display_y, display_width, display_height, 0x0000);
@@ -300,22 +407,29 @@ void draw_display() {
     // Measure text to right-align it
     extern void display_measure_scaled_text(const char *text, int scale, int *width, int *height);
     int text_width, text_height;
-    display_measure_scaled_text(display_buffer, 3, &text_width, &text_height);
+    
+    // Adjust scale based on display width and screen size
+    int text_scale;
+    if (display_width >= 30 * char_width) {
+        text_scale = 3;
+    } else if (display_width >= 20 * char_width) {
+        text_scale = 2;
+    } else {
+        text_scale = 1;  // Single character display on very small screens
+    }
+    display_measure_scaled_text(display_buffer, text_scale, &text_width, &text_height);
 
     // Calculate position to right-align the text
     int text_x = display_x + display_width - text_width - (char_width / 2);
     int text_y = display_y + (display_height - text_height) / 2;
 
-    // Draw the display value in bright green with 3x scale
-    display_draw_scaled_text_bg(text_x, text_y, display_buffer, 0x07E0, 0x0000, 3);
+    // Draw the display value in bright green with calculated scale
+    display_draw_scaled_text_bg(text_x, text_y, display_buffer, 0x07E0, 0x0000, text_scale);
 }
 
 void app_init(app_context_t *ctx) {
     text_mode_init();
     text_mode_clear(0x0000);
-
-    // Draw title at the top left
-    text_mode_print_at(0, 0, "Calculator");
 
     draw_display();
     create_buttons();

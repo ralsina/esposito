@@ -4,6 +4,7 @@
 #include "reader_md.h"
 #include "text_mode.h"
 #include "ui.h"
+#include "hardware.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -121,11 +122,25 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
     ui_clear();
 
     int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
 
     const char *file_name = state->current_file;
     const char *slash = strrchr(file_name, '/');
     if (slash) {
         file_name = slash + 1;
+    }
+
+    // Check if this is a markdown file and show title without extension
+    const char *display_name = file_name;
+    char temp_name[256];
+    if (strlen(file_name) > 3 && strcmp(file_name + strlen(file_name) - 3, ".md") == 0) {
+        strncpy(temp_name, file_name, sizeof(temp_name) - 1);
+        temp_name[sizeof(temp_name) - 1] = '\0';
+        // Remove .md extension
+        if (strlen(temp_name) > 3) {
+            temp_name[strlen(temp_name) - 3] = '\0';
+        }
+        display_name = temp_name;
     }
 
     char page_info[48];
@@ -135,73 +150,164 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
         snprintf(page_info, sizeof(page_info), "Page %d", state->page_number);
     }
 
-    for (int x = 0; x < cols; x++) {
-        text_mode_print_at_attr_bg(x, 0, " ", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE);
-    }
-    text_mode_print_at_attr(1, 0, file_name, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
-
-    // Calculate header button positions dynamically
-    int btn_width = 7;
-    int btn_gap = 1;
-    int total_btn_width = (btn_width * 2) + btn_gap;
-
-    int back_btn_x = cols - btn_width - 1;
-    int toc_btn_x = back_btn_x - btn_width - btn_gap;
-
-    int info_x = toc_btn_x - 1 - (int)strlen(page_info);
-    if (info_x > 0) {
-        text_mode_print_at_attr(info_x, 0, page_info, TEXT_COLOR_CYAN, TEXT_ATTR_UNDERLINE);
-    }
-
-    // Create/update reading mode header buttons
-    reader_state_t *mutable_state = (reader_state_t*)state;
-    if (!mutable_state->btn_jump) {
-        mutable_state->btn_jump = ui_button_create(toc_btn_x, 0, btn_width, 1, "TOC");
-        ui_button_set_callback(mutable_state->btn_jump, on_reading_toc_click, mutable_state);
-
-        mutable_state->btn_back = ui_button_create(back_btn_x, 0, btn_width, 1, "<<<");
-        ui_button_set_callback(mutable_state->btn_back, on_reading_back_click, mutable_state);
-    } else {
-        // Update positions if screen size changed
-        mutable_state->btn_jump->x = toc_btn_x;
-        mutable_state->btn_jump->y = 0;
-        mutable_state->btn_jump->width = btn_width;
-
-        mutable_state->btn_back->x = back_btn_x;
-        mutable_state->btn_back->y = 0;
-        mutable_state->btn_back->width = btn_width;
-        mutable_state->btn_back->y = 0;
-    }
-
-    // Draw header buttons
-    ui_button_draw(state->btn_jump);
-    ui_button_draw(state->btn_back);
-
-    if (state->search_status[0]) {
-        int status_len = (int)strlen(state->search_status);
-        if (status_len > cols - 2) {
-            status_len = cols - 2;
-        }
-        char status[96];
-        strncpy(status, state->search_status, sizeof(status) - 1);
-        status[sizeof(status) - 1] = '\0';
-        if ((int)strlen(status) > status_len) {
-            status[status_len] = '\0';
-        }
-
+    // Responsive layout based on screen orientation (pixel dimensions)
+    bool is_portrait = display_get_height() >= display_get_width();
+    
+    if (is_portrait) {
+        // Portrait mode: top row just for book name, bottom row for controls
+        
+        // Top row - book name only
         for (int x = 0; x < cols; x++) {
-            text_mode_print_at_color(x, 1, " ", TEXT_COLOR_CYAN);
+            text_mode_print_at_attr_bg(x, 0, " ", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE);
         }
-        text_mode_print_at_color(1, 1, status, TEXT_COLOR_CYAN);
-    }
+        text_mode_print_at_attr(1, 0, display_name, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
+        
+        // Draw content starting from row 2 (row 0 is title, row 1 is empty for spacing)
+        int content_start_row = 2;
+        int content_rows_available = rows - 4;  // Leave 1 empty row above bottom bar
+        
+        // Search status display
+        if (state->search_status[0]) {
+            int status_len = (int)strlen(state->search_status);
+            if (status_len > cols - 2) {
+                status_len = cols - 2;
+            }
+            char status[96];
+            strncpy(status, state->search_status, sizeof(status) - 1);
+            status[sizeof(status) - 1] = '\0';
+            if ((int)strlen(status) > status_len) {
+                status[status_len] = '\0';
+            }
 
-    for (int line_index = 0; line_index < state->line_count && line_index < state->content_rows; line_index++) {
-        const rendered_line_t *rendered_line = &state->lines[line_index];
-        if (rendered_line->text[0] == '\0') {
-            *bold_pending = 0;
-            *underline_pending = 0;
+            for (int x = 0; x < cols; x++) {
+                text_mode_print_at_color(x, content_start_row, " ", TEXT_COLOR_CYAN);
+            }
+            text_mode_print_at_color(1, content_start_row, status, TEXT_COLOR_CYAN);
+            content_start_row++;
+            content_rows_available--;
         }
-        draw_rich_line(MARGIN, 2 + line_index, rendered_line->text, rendered_line->color, TEXT_COLOR_BLACK, rendered_line->attr, bold_pending, underline_pending);
+
+        // Bottom area - progress and buttons (actual bottom row)
+        int bottom_row = rows - 1;
+        for (int x = 0; x < cols; x++) {
+            text_mode_print_at_attr_bg(x, bottom_row, " ", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_BORDER_TOP);
+        }
+        
+        // Bottom row - progress info
+        int info_x = 1;
+        text_mode_print_at_attr(info_x, bottom_row, page_info, TEXT_COLOR_CYAN, TEXT_ATTR_BORDER_TOP);
+        
+        // Bottom row buttons - TOC and Back
+        int btn_width = 7;
+        int btn_gap = 1;
+        int total_btn_width = (btn_width * 2) + btn_gap;
+        
+        int back_btn_x = cols - btn_width - 1;
+        int toc_btn_x = back_btn_x - btn_width - btn_gap;
+        
+        // Create/update reading mode header buttons at bottom
+        reader_state_t *mutable_state = (reader_state_t*)state;
+        if (!mutable_state->btn_jump) {
+            mutable_state->btn_jump = ui_button_create(toc_btn_x, bottom_row, btn_width, 1, "TOC");
+            ui_button_set_callback(mutable_state->btn_jump, on_reading_toc_click, mutable_state);
+
+            mutable_state->btn_back = ui_button_create(back_btn_x, bottom_row, btn_width, 1, "<<<");
+            ui_button_set_callback(mutable_state->btn_back, on_reading_back_click, mutable_state);
+        } else {
+            // Update positions if screen size changed
+            mutable_state->btn_jump->x = toc_btn_x;
+            mutable_state->btn_jump->y = bottom_row;
+            mutable_state->btn_jump->width = btn_width;
+
+            mutable_state->btn_back->x = back_btn_x;
+            mutable_state->btn_back->y = bottom_row;
+            mutable_state->btn_back->width = btn_width;
+        }
+
+        // Draw header buttons at bottom
+        ui_button_draw(state->btn_jump);
+        ui_button_draw(state->btn_back);
+        
+        // Draw content
+        for (int line_index = 0; line_index < state->line_count && line_index < content_rows_available; line_index++) {
+            const rendered_line_t *rendered_line = &state->lines[line_index];
+            if (rendered_line->text[0] == '\0') {
+                *bold_pending = 0;
+                *underline_pending = 0;
+            }
+            draw_rich_line(MARGIN, content_start_row + line_index, rendered_line->text, rendered_line->color, TEXT_COLOR_BLACK, rendered_line->attr, bold_pending, underline_pending);
+        }
+        
+    } else {
+        // Landscape mode - keep current layout
+        for (int x = 0; x < cols; x++) {
+            text_mode_print_at_attr_bg(x, 0, " ", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE);
+        }
+        text_mode_print_at_attr(1, 0, display_name, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
+
+        // Calculate header button positions dynamically
+        int btn_width = 7;
+        int btn_gap = 1;
+        int total_btn_width = (btn_width * 2) + btn_gap;
+
+        int back_btn_x = cols - btn_width - 1;
+        int toc_btn_x = back_btn_x - btn_width - btn_gap;
+
+        int info_x = toc_btn_x - 1 - (int)strlen(page_info);
+        if (info_x > 0) {
+            text_mode_print_at_attr(info_x, 0, page_info, TEXT_COLOR_CYAN, TEXT_ATTR_UNDERLINE);
+        }
+
+        // Create/update reading mode header buttons
+        reader_state_t *mutable_state = (reader_state_t*)state;
+        if (!mutable_state->btn_jump) {
+            mutable_state->btn_jump = ui_button_create(toc_btn_x, 0, btn_width, 1, "TOC");
+            ui_button_set_callback(mutable_state->btn_jump, on_reading_toc_click, mutable_state);
+
+            mutable_state->btn_back = ui_button_create(back_btn_x, 0, btn_width, 1, "<<<");
+            ui_button_set_callback(mutable_state->btn_back, on_reading_back_click, mutable_state);
+        } else {
+            // Update positions if screen size changed
+            mutable_state->btn_jump->x = toc_btn_x;
+            mutable_state->btn_jump->y = 0;
+            mutable_state->btn_jump->width = btn_width;
+
+            mutable_state->btn_back->x = back_btn_x;
+            mutable_state->btn_back->y = 0;
+            mutable_state->btn_back->width = btn_width;
+            mutable_state->btn_back->y = 0;
+        }
+
+        // Draw header buttons
+        ui_button_draw(state->btn_jump);
+        ui_button_draw(state->btn_back);
+
+        if (state->search_status[0]) {
+            int status_len = (int)strlen(state->search_status);
+            if (status_len > cols - 2) {
+                status_len = cols - 2;
+            }
+            char status[96];
+            strncpy(status, state->search_status, sizeof(status) - 1);
+            status[sizeof(status) - 1] = '\0';
+            if ((int)strlen(status) > status_len) {
+                status[status_len] = '\0';
+            }
+
+            for (int x = 0; x < cols; x++) {
+                text_mode_print_at_color(x, 1, " ", TEXT_COLOR_CYAN);
+            }
+            text_mode_print_at_color(1, 1, status, TEXT_COLOR_CYAN);
+        }
+
+        for (int line_index = 0; line_index < state->line_count && line_index < state->content_rows; line_index++) {
+            const rendered_line_t *rendered_line = &state->lines[line_index];
+            if (rendered_line->text[0] == '\0') {
+                *bold_pending = 0;
+                *underline_pending = 0;
+            }
+            draw_rich_line(MARGIN, 2 + line_index, rendered_line->text, rendered_line->color, TEXT_COLOR_BLACK, rendered_line->attr, bold_pending, underline_pending);
+        }
     }
 }
 
