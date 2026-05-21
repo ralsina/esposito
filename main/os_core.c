@@ -9,6 +9,7 @@
 #include "terminal_mode.h"
 #include "touchscreen.h"
 #include "wifi.h"
+#include "bbq20_keyboard.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
@@ -18,6 +19,7 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "esp_pm.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -29,6 +31,9 @@ static const char *TAG = "os_core";
 static int64_t screensaver_last_activity = 0;
 static bool screensaver_active = false;
 static uint8_t screensaver_restore_brightness = 255;
+static uint8_t screensaver_restore_kbd_backlight = 255;
+static esp_pm_config_t screensaver_saved_pm_config;
+static bool screensaver_saved_pm_config_valid = false;
 
 static void os_log_global_heap_stats(const char *label) {
     size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -214,6 +219,9 @@ bool os_load_app(const char *app_name) {
              app_name, (unsigned long)current_app->subscriptions);
     os_log_global_heap_stats("after load");
     app_heap_log_stats("after load");
+
+    os_settings_set_string("system/last_app", app_name);
+    config_bind_app(app_name);
     return true;
 }
 
@@ -688,8 +696,21 @@ void os_event_loop(void) {
             if (screensaver_active) {
                 if (event.type == EVENT_KEYBOARD || event.type == EVENT_TOUCH) {
                     display_set_backlight(screensaver_restore_brightness);
+                    bbq20_set_backlight(screensaver_restore_kbd_backlight);
+
+                    // Restore saved PM config to bring CPU back to normal frequency
+                    int restored_cpu_mhz = 160;
+                    if (screensaver_saved_pm_config_valid) {
+                        restored_cpu_mhz = screensaver_saved_pm_config.max_freq_mhz;
+                        esp_pm_configure(&screensaver_saved_pm_config);
+                        screensaver_saved_pm_config_valid = false;
+                    }
+
                     screensaver_active = false;
-                    ESP_LOGI(TAG, "Screensaver deactivated");
+                    ESP_LOGI(TAG, "Screensaver deactivated (display=%d%%, keyboard backlight=%d%%, CPU=%d MHz)",
+                             screensaver_restore_brightness * 100 / 255,
+                             screensaver_restore_kbd_backlight * 100 / 255,
+                             restored_cpu_mhz);
                     continue;
                 }
             }
@@ -761,8 +782,23 @@ void os_event_loop(void) {
                 if (idle_us >= (int64_t)ss_timeout_min * 60 * 1000000LL) {
                     screensaver_restore_brightness = (uint8_t)os_settings_get_int("display/backlight", 255);
                     display_set_backlight(0);
+
+                    screensaver_restore_kbd_backlight = bbq20_get_backlight();
+                    bbq20_set_backlight(0);
+
+                    // Save current PM config and reduce CPU to 80 MHz
+                    if (esp_pm_get_configuration(&screensaver_saved_pm_config) == ESP_OK) {
+                        screensaver_saved_pm_config_valid = true;
+                        esp_pm_config_t pm_config = {
+                            .max_freq_mhz = 80,
+                            .min_freq_mhz = 80,
+                            .light_sleep_enable = false,
+                        };
+                        esp_pm_configure(&pm_config);
+                    }
+
                     screensaver_active = true;
-                    ESP_LOGI(TAG, "Screensaver activated after %d min idle", ss_timeout_min);
+                    ESP_LOGI(TAG, "Screensaver activated after %d min idle (display=0%%, keyboard backlight=0%%, CPU=80 MHz)", ss_timeout_min);
                 }
             }
         }

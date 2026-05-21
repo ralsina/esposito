@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdio.h>
+#include <time.h>
 
 extern "C" {
     #include "sd_card.h"
@@ -163,6 +164,74 @@ void boot_display_splash(void) {
     text_mode_print_at_color(2, 17, "Press Ctrl+ESC for app launcher", TEXT_COLOR_YELLOW);
 
     ESP_LOGI(TAG, "Splash screen displayed");
+}
+
+static bool boot_check_crash_loop(void) {
+    time_t now = time(NULL);
+
+    if (now < 1700000000LL) {
+        ESP_LOGI(TAG, "RTC not set (now=%lld), skipping crash-loop detection", (long long)now);
+        return false;
+    }
+
+    if (!config_bind_app("settings")) {
+        ESP_LOGE(TAG, "Cannot bind settings for crash-loop check");
+        return false;
+    }
+
+    int boot_count = config_get_int("system/boot_count", 0);
+    time_t last_boot = (time_t)config_get_int("system/last_boot_time", 0);
+    double elapsed = difftime(now, last_boot);
+
+    ESP_LOGI(TAG, "Boot check: count=%d, elapsed=%.0fs", boot_count, elapsed);
+
+    bool crash_loop = false;
+
+    if (last_boot > 0 && elapsed >= 0 && elapsed < 10.0) {
+        boot_count++;
+        ESP_LOGW(TAG, "Rapid reboot #%d (%.0fs since last boot)", boot_count, elapsed);
+        if (boot_count >= 3) {
+            ESP_LOGE(TAG, "Crash loop detected! Clearing last app.");
+            config_delete("system/last_app");
+            config_set_int("system/boot_count", 0);
+            config_set_int("system/last_boot_time", 0);
+            crash_loop = true;
+        }
+    } else {
+        boot_count = 1;
+    }
+
+    if (!crash_loop) {
+        config_set_int("system/boot_count", boot_count);
+        config_set_int("system/last_boot_time", (int)now);
+    }
+
+    config_unbind_app();
+    return crash_loop;
+}
+
+static void boot_auto_load_last_app(void) {
+    if (!config_bind_app("settings")) {
+        return;
+    }
+
+    char last_app[64] = {0};
+    size_t len = config_get_string("system/last_app", "", last_app, sizeof(last_app));
+    config_unbind_app();
+
+    if (len == 0 || last_app[0] == '\0') {
+        ESP_LOGI(TAG, "No saved last app, starting launcher");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Auto-loading last app: %s", last_app);
+    if (!os_load_app(last_app)) {
+        ESP_LOGW(TAG, "Failed to load '%s', starting launcher", last_app);
+        if (config_bind_app("settings")) {
+            config_delete("system/last_app");
+            config_unbind_app();
+        }
+    }
 }
 
 void boot_sequence(void) {

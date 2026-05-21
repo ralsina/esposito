@@ -2,6 +2,7 @@
 #include "hardware_config.h"
 #include "esp_log.h"
 #include "driver/i2c_master.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -34,6 +35,7 @@ static i2c_master_dev_handle_t i2c_device = NULL;
 #define BBQ20_REG_FW_VERSION   0x01
 #define BBQ20_REG_STATUS      0x04
 #define BBQ20_REG_FIFO        0x09
+#define BBQ20_REG_BACKLIGHT   0x19
 
 // BBQ10 key states from Arduino library
 #define BBQ10_STATE_IDLE     0x00
@@ -47,6 +49,7 @@ static i2c_master_dev_handle_t i2c_device = NULL;
 #define BBQ10_NUMLOCK        (1 << 6)  // 0x40
 
 static bool bbq20_initialized = false;
+static bool bbq20_recovering = false;
 
 // Update modifier key state based on key code and state
 static void update_modifier_state(uint8_t key_code, uint8_t state) {
@@ -83,10 +86,38 @@ uint8_t bbq20_get_modifiers(void) {
     return modifiers;
 }
 
+// Attempt to recover the I2C bus after an error
+static void bbq20_recover_i2c(void) {
+    if (bbq20_recovering) return;
+    bbq20_recovering = true;
+
+    ESP_LOGI(TAG, "I2C bus error, attempting recovery...");
+
+    // Full teardown of current I2C bus
+    if (i2c_device) {
+        i2c_master_bus_rm_device(i2c_device);
+        i2c_device = NULL;
+    }
+    if (i2c_bus) {
+        i2c_del_master_bus(i2c_bus);
+        i2c_bus = NULL;
+    }
+
+    // Force release GPIO pins so they can be re-claimed
+    gpio_reset_pin(I2C_SDA);
+    gpio_reset_pin(I2C_SCL);
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    // Re-initialize from scratch
+    bbq20_initialized = false;
+    bbq20_keyboard_init();
+
+    bbq20_recovering = false;
+}
+
 // Read from BBQ20 register using new I2C master driver
 static esp_err_t bbq20_read_reg(uint8_t reg, uint8_t *data, size_t len) {
     if (!i2c_device) {
-        ESP_LOGW(TAG, "I2C device not initialized");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -94,8 +125,43 @@ static esp_err_t bbq20_read_reg(uint8_t reg, uint8_t *data, size_t len) {
     esp_err_t ret = i2c_master_transmit_receive(i2c_device, &reg, 1, data, len, pdMS_TO_TICKS(100));
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "I2C read failed: reg=0x%02X, error=%s", reg, esp_err_to_name(ret));
+        bbq20_recover_i2c();
+        // Retry once after recovery
+        if (i2c_device) {
+            ret = i2c_master_transmit_receive(i2c_device, &reg, 1, data, len, pdMS_TO_TICKS(100));
+        }
     }
     return ret;
+}
+
+// Write to BBQ20 register
+static esp_err_t bbq20_write_reg(uint8_t reg, uint8_t data) {
+    if (!i2c_device) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    uint8_t buf[2] = {reg, data};
+    esp_err_t ret = i2c_master_transmit(i2c_device, buf, 2, pdMS_TO_TICKS(100));
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "I2C write failed: reg=0x%02X, error=%s", reg, esp_err_to_name(ret));
+        bbq20_recover_i2c();
+        // Retry once after recovery
+        if (i2c_device) {
+            ret = i2c_master_transmit(i2c_device, buf, 2, pdMS_TO_TICKS(100));
+        }
+    }
+    return ret;
+}
+
+void bbq20_set_backlight(uint8_t brightness) {
+    if (!bbq20_initialized) return;
+    bbq20_write_reg(BBQ20_REG_BACKLIGHT, brightness);
+}
+
+uint8_t bbq20_get_backlight(void) {
+    if (!bbq20_initialized) return 0;
+    uint8_t value = 0;
+    bbq20_read_reg(BBQ20_REG_BACKLIGHT, &value, 1);
+    return value;
 }
 
 void bbq20_keyboard_deinit(void) {

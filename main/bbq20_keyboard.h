@@ -34,6 +34,10 @@ char bbq20_key_to_ascii(uint8_t key_code, uint8_t state);
 // Get current modifier key state
 uint8_t bbq20_get_modifiers(void);
 
+// Keyboard backlight control (0 = off, 255 = max)
+void bbq20_set_backlight(uint8_t brightness);
+uint8_t bbq20_get_backlight(void);
+
 #ifdef __cplusplus
 }
 #endif
