@@ -948,7 +948,7 @@ void app_init(app_context_t *ctx) {
         return;
     }
 
-    ctx->subscriptions = EVENT_KEYBOARD;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 100;
 
     state = STATE_MAIN;
@@ -1244,14 +1244,79 @@ void app_event(app_context_t *ctx, event_t *event) {
 
         switch (state) {
             case STATE_FONT_SELECTION:
-                ui_list_handle_touch(font_family_list, &char_event);
+                {
+                    // Adjust for widget position (2,2)
+                    int adjusted_x = x_col - 2;
+                    int adjusted_y = y_col - 2;
+                    // Only process if within widget bounds
+                    if (adjusted_x >= 0 && adjusted_y >= 0) {
+                        event_t char_event = *event;
+                        char_event.touch.x = adjusted_x;
+                        char_event.touch.y = adjusted_y;
+                        ui_list_handle_touch(font_family_list, &char_event);
+                    }
+                }
                 render();
                 break;
             case STATE_FONT_SIZE_SELECTION:
-                ui_list_handle_touch(font_size_list, &char_event);
+                {
+                    // Adjust for widget position (2,2)
+                    int adjusted_x = x_col - 2;
+                    int adjusted_y = y_col - 2;
+                    // Only process if within widget bounds
+                    if (adjusted_x >= 0 && adjusted_y >= 0) {
+                        event_t char_event = *event;
+                        char_event.touch.x = adjusted_x;
+                        char_event.touch.y = adjusted_y;
+                        ui_list_handle_touch(font_size_list, &char_event);
+                    }
+                }
                 render();
                 break;
-            default:
+            case STATE_MAIN:
+                {
+                    // Calculate layout dimensions (same as in draw_main_split_layout)
+                    const int cols = text_mode_get_cols();
+                    const int rows = text_mode_get_rows();
+                    const int left_width = 11;
+                    const int divider_col = left_width;
+                    const int right_x = left_width + 1;
+                    const int right_width = cols - right_x;
+                    const int content_top = 2;
+                    const int content_bottom = rows - 3;
+                    const int content_height = content_bottom - content_top + 1;
+                    
+                    // Check if touch is in left pane (section list)
+                    if (x_col < left_width) {
+                        // Check if touch is in the section area
+                        if (y_col >= content_top && y_col <= content_bottom) {
+                            int touched_section = y_col - content_top;
+                            if (touched_section >= 0 && touched_section < SECTION_COUNT) {
+                                selected_section = touched_section;
+                                // Reset option selection when changing sections
+                                section_option_selected[selected_section] = 0;
+                                main_focus = MAIN_FOCUS_LEFT;
+                                render();
+                            }
+                        }
+                    }
+                    // Check if touch is in right pane (options list) and treat as selection
+                    else if (x_col >= right_x) {
+                        int option_count = 0;
+                        const section_option_t *options = section_options(selected_section, &option_count);
+                        if (option_count > 0 && options) {
+                            // Check if touch is in the options area
+                            if (y_col >= content_top && y_col <= content_bottom) {
+                                int touched_option = y_col - content_top;
+                                if (touched_option >= 0 && touched_option < option_count) {
+                                    section_option_selected[selected_section] = touched_option;
+                                    // Execute the action for the touched option
+                                    execute_main_action(options[touched_option].action);
+                                }
+                            }
+                        }
+                    }
+                }
                 break;
         }
     } else if (event->type == EVENT_TIMER) {
