@@ -132,6 +132,8 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
     state->page_number = actual_page;
     reader_load_current_page(state, bold_pending, underline_pending);
     reader_view_draw_reading_page(state, bold_pending, underline_pending);
+    // Save progress after page change
+    reader_save_current_book_progress(state);
 }
 
 void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underline_pending) {
@@ -146,6 +148,8 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
     state->page_number++;
     reader_load_current_page(state, bold_pending, underline_pending);
     reader_view_draw_reading_page(state, bold_pending, underline_pending);
+    // Save progress after page change
+    reader_save_current_book_progress(state);
 }
 
 void reader_nav_prev_page(reader_state_t *state, int *bold_pending, int *underline_pending) {
@@ -154,6 +158,8 @@ void reader_nav_prev_page(reader_state_t *state, int *bold_pending, int *underli
         state->page_number--;
         reader_load_current_page(state, bold_pending, underline_pending);
         reader_view_draw_reading_page(state, bold_pending, underline_pending);
+        // Save progress after page change
+        reader_save_current_book_progress(state);
         return;
     }
 
