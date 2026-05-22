@@ -200,21 +200,73 @@ static void render(void) {
         return;
     }
 
+    int screen_cols = text_mode_get_cols();
+    int screen_rows = text_mode_get_rows();
+
     // Clear screen
     text_mode_clear(TEXT_COLOR_BLACK);
 
-    // Draw input buffer and cursor
-    // We'll draw the input buffer at (0,0)
-    text_mode_print_at(0, 0, input_buffer);
-    // Draw cursor as an underscore at the current cursor position
-    // But note: if the cursor is at the end of the string, we want to show it after the last character.
-    // We'll draw the cursor at (cursor_pos, 0) as '_'
-    if (cursor_pos < INPUT_MAX) {
-        // We'll draw the cursor only if it's within the buffer bounds (it always is)
-        text_mode_print_at(cursor_pos, 0, "_");
+    // Input box: 2 rows high, full width, starting at row 0
+    int box_top = 0;
+    int box_left = 0;
+    int box_width = screen_cols;
+    int box_height = 2;
+
+    // Draw top border with proper corners
+    // Top-left corner: top + left borders
+    text_mode_print_at_attr_bg(box_left, box_top, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_BORDER_TOP | TEXT_ATTR_BORDER_LEFT);
+    // Top border (excluding corners)
+    for (int x = box_left + 1; x < box_left + box_width - 1; x++) {
+        text_mode_print_at_attr_bg(x, box_top, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_BORDER_TOP);
+    }
+    // Top-right corner: top + right borders
+    text_mode_print_at_attr_bg(box_left + box_width - 1, box_top, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_BORDER_TOP | TEXT_ATTR_BORDER_RIGHT);
+
+    // Draw bottom border with proper corners
+    // Bottom-left corner: bottom + left borders
+    text_mode_print_at_attr_bg(box_left, box_top + box_height - 1, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE | TEXT_ATTR_BORDER_LEFT);
+    // Bottom border (excluding corners)
+    for (int x = box_left + 1; x < box_left + box_width - 1; x++) {
+        text_mode_print_at_attr_bg(x, box_top + box_height - 1, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE);
+    }
+    // Bottom-right corner: bottom + right borders
+    text_mode_print_at_attr_bg(box_left + box_width - 1, box_top + box_height - 1, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE | TEXT_ATTR_BORDER_RIGHT);
+
+    // Draw input text in the inner area (with padding)
+    int inner_top = box_top;
+    int inner_left = box_left + 1;
+    int inner_width = box_width - 2; // because we have left and right borders (1 char each)
+
+    // Determine what to show: always input_buffer (no prompt concept in this version)
+    const char *text_to_show = input_buffer;
+    int text_len = strlen(text_to_show);
+    if (text_len > inner_width) text_len = inner_width;
+
+    // Choose color: white for input
+    uint16_t text_color = TEXT_COLOR_WHITE;
+
+    // Draw the text
+    for (int i = 0; i < text_len; i++) {
+        char c = text_to_show[i];
+        char str[2] = {c, '\0'};
+        text_mode_print_at_attr_bg(inner_left + i, inner_top, str, text_color, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
     }
 
-    // Draw all buttons
+    // Draw the cursor: only if cursor is within inner width
+    if (cursor_pos < inner_width) {
+        // Draw the cursor as the character at that position with underscore to indicate cursor position
+        if (cursor_pos < text_len) {
+            char c = text_to_show[cursor_pos];
+            char str[2] = {c, '\0'};
+            text_mode_print_at_attr_bg(inner_left + cursor_pos, inner_top, str, text_color, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE);
+        } else {
+            // Cursor is past the end of text, show underscore at cursor position
+            text_mode_print_at_attr_bg(inner_left + cursor_pos, inner_top, "_", text_color, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+        }
+    }
+    // Note: if cursor_pos >= inner_width, we do not draw the cursor specially (it would be at or past the border)
+
+    // Draw all buttons (starting from row 2 to leave space for input box)
     for (int i = 0; i < button_count; i++) {
         if (buttons[i]) {
             ui_button_draw(buttons[i]);
@@ -232,6 +284,28 @@ void app_event(app_context_t *ctx, event_t *event) {
         int char_height = text_mode_get_char_height();
         int touch_col = event->touch.x / char_width;
         int touch_row = event->touch.y / char_height;
+
+        // Check if touch is in the input area (row 0, columns 1 to screen_cols-2)
+        int screen_cols = text_mode_get_cols();
+        int input_area_top = 0; // box_top
+        int input_area_left = 1; // box_left + 1 (for left border)
+        int input_area_width = screen_cols - 2; // box_width - 2 (for left and right borders)
+        
+        if (touch_row == input_area_top && 
+            touch_col >= input_area_left && 
+            touch_col < input_area_left + input_area_width) {
+            // Set cursor position based on touch position within input area
+            // Subtract 1 to account for the left border/padding
+            cursor_pos = touch_col - input_area_left;
+            // Ensure cursor_pos doesn't exceed input_buffer length
+            int input_len = strlen(input_buffer);
+            if (cursor_pos > input_len) {
+                cursor_pos = input_len;
+            }
+            needs_redraw = true;
+            render();
+            return;
+        }
 
         // Check each button
         for (int i = 0; i < button_count; i++) {
@@ -255,6 +329,11 @@ void app_event(app_context_t *ctx, event_t *event) {
         // We'll only handle printable ASCII for simplicity
         if (key >= 32 && key <= 126) {
             if (cursor_pos < INPUT_MAX - 1) {
+                // Shift characters right to make space for the new character
+                int len = strlen(input_buffer);
+                for (int i = len; i >= cursor_pos; i--) {
+                    input_buffer[i + 1] = input_buffer[i];
+                }
                 input_buffer[cursor_pos++] = key;
                 input_buffer[cursor_pos] = '\0';
                 needs_redraw = true;
@@ -262,7 +341,11 @@ void app_event(app_context_t *ctx, event_t *event) {
             }
         } else if (key == 8 || key == 127) { // Backspace or Delete
             if (cursor_pos > 0) {
-                input_buffer[--cursor_pos] = '\0';
+                // Shift characters left to fill the gap
+                for (int i = cursor_pos; i < INPUT_MAX; i++) {
+                    input_buffer[i - 1] = input_buffer[i];
+                }
+                cursor_pos--;
                 needs_redraw = true;
                 render();
             }
