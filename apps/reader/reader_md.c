@@ -455,16 +455,16 @@ int md_scan_page_with_levels(FILE *f, rendered_line_t *lines, uint8_t *heading_l
             rem_attr = TEXT_ATTR_BOLD;
         }
 
+        // Process the remainder - if page fills, stop here
         if (append_wrapped_lines(lines, heading_levels, remainder_para_type == 1 ? remainder_heading_level : 0, &count, max_lines, src, screen_width, rem_color, rem_attr, para_remainder, sizeof(para_remainder))) {
-            // Page is full, remainder has been updated with the leftover text
+            // Page is full - we're in the middle of this element
             carry_spacer = 0;
+            // Keep has_remainder=1 to indicate we're mid-element, but clear the text
+            // The next page will continue reading from the current file position
             return count;
         }
-        // All remainder text fit, clear the remainder flag and continue
+        // All remainder text fit - we're done with this element
         has_remainder = 0;
-        remainder_para_type = 0;
-        remainder_heading_level = 0;
-    }
 
         has_remainder = 0;
         remainder_para_type = 0;
@@ -532,20 +532,22 @@ void md_set_parser_state(const md_parser_state_t *state) {
         has_remainder = 1;
         remainder_para_type = 0;  // Paragraph
         remainder_heading_level = 0;
+        // Don't store remainder text - we'll re-read from file position
+        para_remainder[0] = '\0';
     } else if (state->in_heading) {
         has_remainder = 1;
         remainder_para_type = 1;  // Heading
         remainder_heading_level = state->heading_level;
+        // Don't store remainder text - we'll re-read from file position
+        para_remainder[0] = '\0';
     } else {
         has_remainder = 0;  // Starting fresh
         remainder_para_type = 0;
         remainder_heading_level = 0;
+        para_remainder[0] = '\0';
     }
     carry_spacer = state->carry_spacer;
     in_tag = state->in_tag;
-
-    // Clear the remainder content - we'll re-read it from the file
-    para_remainder[0] = '\0';
 }
 
 // Get the file offset where the current remainder starts
