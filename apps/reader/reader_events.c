@@ -8,6 +8,7 @@
 #include "reader_view.h"
 #include "text_mode.h"
 #include "ui_button.h"
+#include "hardware.h"
 
 #include <string.h>
 
@@ -137,7 +138,14 @@ int reader_events_open_book(reader_state_t *state, const char *path, int *bold_p
 void reader_events_enter_reading_mode(reader_state_t *state, int *bold_pending, int *underline_pending) {
     state->mode = MODE_READING;
     state->screen_width = text_mode_get_cols() - MARGIN * 2;
-    state->content_rows = text_mode_get_rows() - 2;
+    // Calculate content rows based on orientation
+    int rows = text_mode_get_rows();
+    bool is_portrait = display_get_height() >= display_get_width();
+    if (is_portrait) {
+        state->content_rows = rows - 4;  // Account for top 2 rows and bottom 2 rows in portrait
+    } else {
+        state->content_rows = rows - 2;  // Account for top 2 rows in landscape
+    }
     load_current_page(state, bold_pending, underline_pending);
     reader_view_draw_reading_page(state, bold_pending, underline_pending);
 }
@@ -228,18 +236,9 @@ static void handle_file_list_touch(reader_state_t *state, int x_col, int *bold_p
 }
 
 static void handle_reading_touch(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending) {
-    // Get current font dimensions for proper coordinate conversion
-    int char_width = text_mode_get_char_width();
-    int char_height = text_mode_get_char_height();
-
-    // UI widgets handle pixel-to-character conversion internally
-    // Pass the original pixel coordinates directly
-
-    // Check header buttons first (in row 0)
-    if (event->touch.y < char_height) {
-        if (state->btn_jump && ui_button_handle_touch(state->btn_jump, event)) return;
-        if (state->btn_back && ui_button_handle_touch(state->btn_back, event)) return;
-    }
+    // Check buttons first - they will handle their own bounds checking
+    if (state->btn_jump && ui_button_handle_touch(state->btn_jump, event)) return;
+    if (state->btn_back && ui_button_handle_touch(state->btn_back, event)) return;
 
     // Page navigation touch zones
     if (event->touch.x < TOUCH_PAGE_SPLIT_X) {
