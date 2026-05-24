@@ -768,7 +768,6 @@ CONFIG_COMPILER_CXX_GLIBCXX_CONSTEXPR_NO_CHANGE=y
 #
 # Bluetooth
 #
-# default:
 # CONFIG_BT_ENABLED is not set
 
 #

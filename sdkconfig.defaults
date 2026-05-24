@@ -23,3 +23,6 @@ CONFIG_SPIFFS_USE_MAGIC_LENGTH=y
 
 # Main task stack size
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Disable Bluetooth to free memory
+CONFIG_BT_ENABLED=n

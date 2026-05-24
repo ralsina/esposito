@@ -53,6 +53,9 @@ static int font_size_selected = 0;
 static ui_list_widget_t *font_size_list;
 static bool layout_needs_rebuild = false;
 
+// Main screen exit button
+static ui_button_t *main_exit_btn;
+
 typedef enum {
     MAIN_FOCUS_LEFT,
     MAIN_FOCUS_RIGHT,
@@ -128,6 +131,7 @@ static void on_font_family_selection_changed(ui_list_widget_t *list, int new_sel
 static void on_font_family_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
 static void on_font_size_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data);
 static void on_font_size_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
+static void on_main_exit_click(ui_button_t *button, void *user_data);
 static void render(void);
 
 #define SETTINGS_KEY_TIMEZONE "time/timezone"
@@ -301,6 +305,12 @@ static void set_status(const char *msg) {
     msg_timer = 150;
 }
 
+static void on_main_exit_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    os_load_app("launcher");
+}
+
 static void rebuild_layout_widgets(void) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
@@ -328,6 +338,10 @@ static void rebuild_layout_widgets(void) {
     if (font_size_list) {
         ui_list_destroy(font_size_list);
         font_size_list = NULL;
+    }
+    if (main_exit_btn) {
+        ui_button_destroy(main_exit_btn);
+        main_exit_btn = NULL;
     }
 
     ssid_input = ui_text_input_create(0, rows - 4, cols, 4);
@@ -371,6 +385,10 @@ static void rebuild_layout_widgets(void) {
     ui_list_set_items(font_size_list, font_size_items, font_size_count);
     ui_list_set_selection(font_size_list, font_size_selected);
     ui_list_set_callbacks(font_size_list, on_font_size_selection_changed, on_font_size_item_selected, font_size_list);
+
+    // Create main screen exit button
+    main_exit_btn = ui_button_create(cols - 7, rows - 2, 5, 1, "Exit");
+    ui_button_set_callback(main_exit_btn, on_main_exit_click, NULL);
 }
 
 static void build_font_family_items(void) {
@@ -839,12 +857,16 @@ static void draw_main_split_layout(void) {
         text_mode_printf_at_attr_bg(right_x, screen_y, color, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL, "%c%s", marker, clipped);
     }
 
-    ui_status_bar(rows - 2, "W/S move  A/D pane  Enter select  Esc back", status_msg[0] ? status_msg : "Settings");
+    // Show keyboard hints only if keyboard is available
+    bool has_keyboard = keyboard_is_available();
+    const char *hints = has_keyboard ? "W/S move  A/D pane  Enter select  Esc back" : "";
+    ui_status_bar(rows - 2, hints, status_msg[0] ? status_msg : "Settings");
 }
 
 static void draw_main(void) {
     ui_clear();
     draw_main_split_layout();
+    ui_button_draw(main_exit_btn);
 }
 
 static void draw_scan_results(void) {
@@ -1033,6 +1055,10 @@ void app_close(app_context_t *ctx) {
     if (font_size_list) {
         ui_list_destroy(font_size_list);
         font_size_list = NULL;
+    }
+    if (main_exit_btn) {
+        ui_button_destroy(main_exit_btn);
+        main_exit_btn = NULL;
     }
 
     text_mode_clear(TEXT_COLOR_BLACK);
@@ -1244,36 +1270,20 @@ void app_event(app_context_t *ctx, event_t *event) {
 
         switch (state) {
             case STATE_FONT_SELECTION:
-                {
-                    // Adjust for widget position (2,2)
-                    int adjusted_x = x_col - 2;
-                    int adjusted_y = y_col - 2;
-                    // Only process if within widget bounds
-                    if (adjusted_x >= 0 && adjusted_y >= 0) {
-                        event_t char_event = *event;
-                        char_event.touch.x = adjusted_x;
-                        char_event.touch.y = adjusted_y;
-                        ui_list_handle_touch(font_family_list, &char_event);
-                    }
+                if (ui_list_handle_touch(font_family_list, event)) {
+                    render();
                 }
-                render();
                 break;
             case STATE_FONT_SIZE_SELECTION:
-                {
-                    // Adjust for widget position (2,2)
-                    int adjusted_x = x_col - 2;
-                    int adjusted_y = y_col - 2;
-                    // Only process if within widget bounds
-                    if (adjusted_x >= 0 && adjusted_y >= 0) {
-                        event_t char_event = *event;
-                        char_event.touch.x = adjusted_x;
-                        char_event.touch.y = adjusted_y;
-                        ui_list_handle_touch(font_size_list, &char_event);
-                    }
+                if (ui_list_handle_touch(font_size_list, event)) {
+                    render();
                 }
-                render();
                 break;
             case STATE_MAIN:
+                // Check exit button first
+                if (ui_button_handle_touch(main_exit_btn, event)) {
+                    return;
+                }
                 {
                     // Calculate layout dimensions (same as in draw_main_split_layout)
                     const int cols = text_mode_get_cols();
@@ -1285,7 +1295,7 @@ void app_event(app_context_t *ctx, event_t *event) {
                     const int content_top = 2;
                     const int content_bottom = rows - 3;
                     const int content_height = content_bottom - content_top + 1;
-                    
+
                     // Check if touch is in left pane (section list)
                     if (x_col < left_width) {
                         // Check if touch is in the section area

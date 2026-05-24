@@ -4,9 +4,10 @@
 #include "app_config.h"
 #include "app_launcher.h"
 #include "app_manifest.h"
+#include "ui_button.h"
+#include "hardware.h"
 
 #include <dirent.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,6 +53,12 @@ typedef struct {
     char pending_edit_path[FM_MAX_PATH];
     char pending_name[FM_MAX_NAME];
     ui_text_input_widget_t *name_input;
+    ui_button_t *btn_new_file;
+    ui_button_t *btn_mkdir;
+    ui_button_t *btn_rename;
+    ui_button_t *btn_copy;
+    ui_button_t *btn_delete;
+    ui_button_t *btn_exit;
 } file_manager_t;
 
 static const char *TAG = "file_manager";
@@ -61,6 +68,20 @@ static void render(void);
 static void apply_name_input(void);
 static void on_name_confirm(ui_text_input_widget_t *widget, void *user_data);
 static void on_name_cancel(ui_text_input_widget_t *widget, void *user_data);
+static void on_new_file_click(ui_button_t *button, void *user_data);
+static void on_mkdir_click(ui_button_t *button, void *user_data);
+static void on_rename_click(ui_button_t *button, void *user_data);
+static void on_copy_click(ui_button_t *button, void *user_data);
+static void on_delete_click(ui_button_t *button, void *user_data);
+static void on_exit_click(ui_button_t *button, void *user_data);
+
+// Forward declarations for functions used by button callbacks
+static void start_new_file(void);
+static void active_mkdir(void);
+static void start_rename_selected(void);
+static void active_copy_to_other_pane(void);
+static void active_delete_selected(void);
+static void active_up_or_exit(void);
 
 static void trim_spaces(char *text) {
     if (!text || !text[0]) {
@@ -195,6 +216,42 @@ static void pane_sort_entries(fm_pane_t *pane) {
 static void set_status(const char *message) {
     if (!message) message = "";
     snprintf(state.status, sizeof(state.status), "%s", message);
+}
+
+static void on_new_file_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    start_new_file();
+}
+
+static void on_mkdir_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    active_mkdir();
+}
+
+static void on_rename_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    start_rename_selected();
+}
+
+static void on_copy_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    active_copy_to_other_pane();
+}
+
+static void on_delete_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    active_delete_selected();
+}
+
+static void on_exit_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    active_up_or_exit();
 }
 
 static void clear_pending_open(void) {
@@ -722,8 +779,21 @@ static void render(void) {
     draw_pane(0, 0, left_width, pane_height);
     draw_pane(1, left_width, right_width, pane_height);
 
-    ui_status_bar(rows - 2, state.status, "R reload Tab pane Esc up/exit");
-    ui_label(1, rows - 1, "W/S move A/D switch Enter open M rename N file K dir C copy X del", TEXT_COLOR_BRIGHT_BLACK);
+    // Show keyboard hints only if keyboard is available
+    bool has_keyboard = keyboard_is_available();
+    if (has_keyboard) {
+        ui_status_bar(rows - 2, state.status, "R reload Tab pane Esc up/exit");
+        ui_label(1, rows - 1, "W/S move A/D switch Enter open M rename N file K dir C copy X del", TEXT_COLOR_BRIGHT_BLACK);
+    } else {
+        ui_status_bar(rows - 2, state.status, "");
+        // Draw action buttons
+        ui_button_draw(state.btn_new_file);
+        ui_button_draw(state.btn_mkdir);
+        ui_button_draw(state.btn_rename);
+        ui_button_draw(state.btn_copy);
+        ui_button_draw(state.btn_delete);
+        ui_button_draw(state.btn_exit);
+    }
 
     text_mode_flush();
 }
@@ -789,7 +859,7 @@ void app_init(app_context_t *ctx) {
         return;
     }
 
-    ctx->subscriptions = EVENT_KEYBOARD;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 0;
 
     snprintf(state.panes[0].cwd, sizeof(state.panes[0].cwd), "%s", FM_ROOT_PATH);
@@ -829,6 +899,35 @@ void app_init(app_context_t *ctx) {
     ui_text_input_set_hints(state.name_input, "Type name  Enter Confirm", "ESC Cancel");
     ui_text_input_set_callbacks(state.name_input, NULL, on_name_confirm, on_name_cancel, NULL);
 
+    // Create action buttons for touch mode
+    int button_y = rows - 1;
+    int button_width = 6;
+    int gap = 1;
+    int x = 0;
+
+    state.btn_new_file = ui_button_create(x, button_y, button_width, 1, "New");
+    ui_button_set_callback(state.btn_new_file, on_new_file_click, NULL);
+    x += button_width + gap;
+
+    state.btn_mkdir = ui_button_create(x, button_y, button_width, 1, "Dir");
+    ui_button_set_callback(state.btn_mkdir, on_mkdir_click, NULL);
+    x += button_width + gap;
+
+    state.btn_rename = ui_button_create(x, button_y, button_width, 1, "Ren");
+    ui_button_set_callback(state.btn_rename, on_rename_click, NULL);
+    x += button_width + gap;
+
+    state.btn_copy = ui_button_create(x, button_y, button_width, 1, "Cpy");
+    ui_button_set_callback(state.btn_copy, on_copy_click, NULL);
+    x += button_width + gap;
+
+    state.btn_delete = ui_button_create(x, button_y, button_width, 1, "Del");
+    ui_button_set_callback(state.btn_delete, on_delete_click, NULL);
+    x += button_width + gap;
+
+    state.btn_exit = ui_button_create(x, button_y, button_width, 1, "Exit");
+    ui_button_set_callback(state.btn_exit, on_exit_click, NULL);
+
     int config_ok = config_bind_app("file_manager");
     char left_selected[FM_MAX_PATH];
     char right_selected[FM_MAX_PATH];
@@ -864,6 +963,58 @@ void app_init(app_context_t *ctx) {
 
 void app_event(app_context_t *ctx, event_t *event) {
     (void)ctx;
+
+    // Handle touch events
+    if (event->type == EVENT_TOUCH && event->touch.pressed) {
+        // Convert pixel coordinates to character coordinates
+        int cw = text_mode_get_char_width();
+        int ch = text_mode_get_char_height();
+        int x_col = event->touch.x / cw;
+        int y_col = event->touch.y / ch;
+
+        // Handle button touches when no keyboard
+        if (!keyboard_is_available()) {
+            if (ui_button_handle_touch(state.btn_new_file, event)) return;
+            if (ui_button_handle_touch(state.btn_mkdir, event)) return;
+            if (ui_button_handle_touch(state.btn_rename, event)) return;
+            if (ui_button_handle_touch(state.btn_copy, event)) return;
+            if (ui_button_handle_touch(state.btn_delete, event)) return;
+            if (ui_button_handle_touch(state.btn_exit, event)) return;
+        }
+
+        // Handle pane touches
+        int cols = text_mode_get_cols();
+        int rows = text_mode_get_rows();
+        int pane_height = rows - 2;
+        int left_width = cols / 2;
+
+        // Check if touch is within the file list area
+        if (y_col >= 1 && y_col < pane_height) {
+            fm_pane_t *touched_pane;
+
+            if (x_col < left_width) {
+                // Left pane
+                touched_pane = &state.panes[0];
+            } else {
+                // Right pane
+                touched_pane = &state.panes[1];
+            }
+
+            // Calculate which entry was touched (accounting for header)
+            int entry_index = (y_col - 1) + touched_pane->scroll;
+
+            if (entry_index >= 0 && entry_index < touched_pane->entry_count) {
+                // Select the touched entry and make this pane active
+                state.active_pane = (x_col < left_width) ? 0 : 1;
+                touched_pane->selected = entry_index;
+
+                // Open the entry on touch
+                active_open_selected();
+                render();
+            }
+        }
+        return;
+    }
 
     if (event->type != EVENT_KEYBOARD || !event->keyboard.pressed) {
         return;
@@ -944,6 +1095,33 @@ void app_close(app_context_t *ctx) {
         ui_text_input_destroy(state.name_input);
         state.name_input = NULL;
     }
+
+    // Clean up buttons
+    if (state.btn_new_file) {
+        ui_button_destroy(state.btn_new_file);
+        state.btn_new_file = NULL;
+    }
+    if (state.btn_mkdir) {
+        ui_button_destroy(state.btn_mkdir);
+        state.btn_mkdir = NULL;
+    }
+    if (state.btn_rename) {
+        ui_button_destroy(state.btn_rename);
+        state.btn_rename = NULL;
+    }
+    if (state.btn_copy) {
+        ui_button_destroy(state.btn_copy);
+        state.btn_copy = NULL;
+    }
+    if (state.btn_delete) {
+        ui_button_destroy(state.btn_delete);
+        state.btn_delete = NULL;
+    }
+    if (state.btn_exit) {
+        ui_button_destroy(state.btn_exit);
+        state.btn_exit = NULL;
+    }
+
     for (int pane_index = 0; pane_index < FM_PANES; pane_index++) {
         pane_free_display_list(&state.panes[pane_index]);
         if (state.panes[pane_index].entries) {

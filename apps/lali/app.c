@@ -4,6 +4,8 @@
 #include "ui.h"
 #include "ui_list.h"
 #include "ui_text_input.h"
+#include "ui_osk.h"
+#include "hardware.h"
 #include "core_json.h"
 #include <stdio.h>
 #include <string.h>
@@ -329,7 +331,7 @@ void app_init(app_context_t *ctx) {
         return;
     }
 
-    ctx->subscriptions = EVENT_KEYBOARD;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 0;
 
     input_buffer[0] = '\0';
@@ -344,7 +346,15 @@ void app_init(app_context_t *ctx) {
     text_input = ui_text_input_create(0, rows - 3, cols, 3);
     ui_text_input_set_buffer(text_input, input_buffer, INPUT_BUF_LEN);
     ui_text_input_set_label(text_input, ">");
-    ui_text_input_set_hints(text_input, "Enter to send", "FN+W/S scroll history");
+
+    // Show keyboard hints only if keyboard is available
+    bool has_keyboard = keyboard_is_available();
+    if (has_keyboard) {
+        ui_text_input_set_hints(text_input, "Enter to send", "FN+W/S scroll history");
+    } else {
+        ui_text_input_set_hints(text_input, "Touch input to type", "Tap list to scroll");
+    }
+
     ui_text_input_set_callbacks(text_input, NULL, on_confirm, NULL, NULL);
     ui_text_input_set_focus(text_input, true);
 
@@ -366,6 +376,25 @@ void app_init(app_context_t *ctx) {
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
+    // Check if OSK is active and handle its events first
+    if (ui_osk_is_active()) {
+        ui_osk_handle_event(NULL, (event_t*)event);
+
+        // Check if OSK just completed
+        if (!ui_osk_is_active()) {
+            ui_osk_result_t result = ui_osk_get_result();
+
+            if (result == UI_OSK_RESULT_CONFIRMED) {
+                // OSK completed successfully - get the input and process it
+                on_confirm(NULL, NULL);
+            } else {
+                // OSK was cancelled - just redraw
+                render();
+            }
+        }
+        return;
+    }
+
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         char key = event->keyboard.key;
         uint8_t modifiers = event->keyboard.modifiers;
@@ -378,6 +407,33 @@ void app_event(app_context_t *ctx, event_t *event) {
             ui_text_input_handle_key(text_input, key);
         }
         render();
+    } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
+        // Convert pixel coordinates to character coordinates
+        int cw = text_mode_get_char_width();
+        int ch = text_mode_get_char_height();
+        int x_col = event->touch.x / cw;
+        int y_col = event->touch.y / ch;
+
+        int cols = text_mode_get_cols();
+        int rows = text_mode_get_rows();
+
+        // Check if touch is on the text input area
+        if (y_col >= rows - 3) {
+            // Launch OSK for text input when no physical keyboard
+            if (!keyboard_is_available()) {
+                if (ui_osk_input_text("Message:", input_buffer, INPUT_BUF_LEN, input_buffer, false)) {
+                    // OSK started - will be handled in next event loop
+                    // Clear the input buffer to avoid double-processing
+                    // input_buffer[0] = '\0';
+                    // ui_text_input_clear(text_input);
+                    // render();
+                }
+            }
+        } else if (y_col < rows - 3) {
+            // Handle list scrolling with touch
+            ui_list_handle_touch(list, event);
+            render();
+        }
     }
 }
 
