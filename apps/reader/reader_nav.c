@@ -167,14 +167,14 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
         printf("NAV_NEXT: Current file pos = %ld (next page starts here)\n", current_pos);
 
         page_cache_add_next(&state->page_cache, (uint32_t)current_pos);
+        page_cache_next(&state->page_cache);
 
-        // Save parser state - this captures "we're in the middle of a paragraph/heading"
+        // Save parser state for the NEW current page (after moving forward)
         int new_index = state->page_cache.current;
         page_cache_set_parser_state(&state->page_cache, new_index);
         state->page_cache.entries[new_index].screen_width = state->screen_width;
         state->page_cache.entries[new_index].content_rows = state->content_rows;
         printf("NAV_NEXT: Cached new page at offset %u, index %d\n", (uint32_t)current_pos, new_index);
-        page_cache_next(&state->page_cache);
     }
 
     state->page_number++;
