@@ -420,13 +420,65 @@ static void render_block(rendered_line_t *lines, uint8_t *heading_levels, int *c
         line_attr = TEXT_ATTR_BOLD;
     }
 
-    if (append_wrapped_lines(lines, heading_levels, block->type == 1 ? block->heading_level : 0, count, max_lines, src, screen_width, line_color, line_attr, para_remainder, sizeof(para_remainder))) {
-        has_remainder = 1;
-        remainder_para_type = block->type;
-        remainder_heading_level = block->heading_level;
-        carry_spacer = 0;
-    } else {
-        carry_spacer = 1;
+    // Track word boundaries for file position rewinding
+    const char *word_start = block->text;
+    long word_start_file_pos = block->start_pos;
+
+    // Process text word by word
+    const char *text_ptr = block->text;
+    while (*src && *count < max_lines) {
+        // Find the next word boundary
+        const char *word_end = src;
+        while (*word_end && *word_end != ' ' && *word_end != '\n' && *word_end != '\r') {
+            word_end++;
+        }
+
+        // Calculate word length
+        int word_len = word_end - src;
+        if (word_len == 0) break;
+
+        // Try to add this word to the current line
+        // For simplicity, we'll use the existing wrap_line but track positions
+        rendered_line_t line;
+        int consumed = wrap_line(src, screen_width, line.text, MAX_LINE_TEXT);
+
+        if (consumed <= 0) {
+            break;
+        }
+
+        // Check if this would be the last line that fits
+        if (*count + 1 >= max_lines) {
+            // This is the last line - check if there's more text after it
+            const char *remaining = src + consumed;
+            while (*remaining && (*remaining == ' ' || *remaining == '\n' || *remaining == '\r')) {
+                remaining++;
+            }
+
+            if (*remaining) {
+                // There's more text that won't fit - rewind file to current word start
+                fseek(f, word_start_file_pos, SEEK_SET);
+
+                // Set state to indicate we're mid-paragraph
+                has_remainder = 1;
+                remainder_para_type = (block->type == 1) ? 1 : 0;
+                remainder_heading_level = block->heading_level;
+                carry_spacer = 0;
+                return;
+            }
+        }
+
+        // Word fits - add it to the page
+        line.color = line_color;
+        line.attr = line_attr;
+        lines[*count] = line;
+        if (heading_levels) {
+            heading_levels[*count] = (uint8_t)((block->type == 1) ? block->heading_level : 0);
+        }
+        (*count)++;
+
+        // Update word start position for the next iteration
+        word_start_file_pos += (text_ptr - block->text) + consumed;
+        text_ptr += consumed;
     }
 }
 
@@ -444,33 +496,9 @@ int md_scan_page_with_levels(FILE *f, rendered_line_t *lines, uint8_t *heading_l
         }
     }
 
-    // Process any paragraph remainder from a previous mid-paragraph break
-    if (has_remainder) {
-        const char *src = para_remainder;
-        uint8_t rem_color = TEXT_COLOR_WHITE;
-        uint8_t rem_attr = TEXT_ATTR_NORMAL;
-
-        if (remainder_para_type == 1) {
-            rem_color = (remainder_heading_level == 1) ? TEXT_COLOR_BRIGHT_WHITE : TEXT_COLOR_BRIGHT_CYAN;
-            rem_attr = TEXT_ATTR_BOLD;
-        }
-
-        // Process the remainder - if page fills, stop here
-        if (append_wrapped_lines(lines, heading_levels, remainder_para_type == 1 ? remainder_heading_level : 0, &count, max_lines, src, screen_width, rem_color, rem_attr, para_remainder, sizeof(para_remainder))) {
-            // Page is full - we're in the middle of this element
-            carry_spacer = 0;
-            // Keep has_remainder=1 to indicate we're mid-element, but clear the text
-            // The next page will continue reading from the current file position
-            return count;
-        }
-        // All remainder text fit - we're done with this element
-        has_remainder = 0;
-
-        has_remainder = 0;
-        remainder_para_type = 0;
-        remainder_heading_level = 0;
-        carry_spacer = 1;
-    }
+    // If has_remainder is set, we're continuing from mid-paragraph
+    // The file position is already at the correct place to continue reading
+    // Just proceed to read new content from the file
 
     // Read new content from file
     while (count < max_lines) {
@@ -513,6 +541,7 @@ void md_clear_remainder(void) {
     remainder_heading_level = 0;
     carry_spacer = 0;
     in_tag = 0;
+    // No need to clear para_remainder since we don't use it anymore
 }
 
 void md_get_parser_state(md_parser_state_t *state) {
@@ -532,19 +561,14 @@ void md_set_parser_state(const md_parser_state_t *state) {
         has_remainder = 1;
         remainder_para_type = 0;  // Paragraph
         remainder_heading_level = 0;
-        // Don't store remainder text - we'll re-read from file position
-        para_remainder[0] = '\0';
     } else if (state->in_heading) {
         has_remainder = 1;
         remainder_para_type = 1;  // Heading
         remainder_heading_level = state->heading_level;
-        // Don't store remainder text - we'll re-read from file position
-        para_remainder[0] = '\0';
     } else {
         has_remainder = 0;  // Starting fresh
         remainder_para_type = 0;
         remainder_heading_level = 0;
-        para_remainder[0] = '\0';
     }
     carry_spacer = state->carry_spacer;
     in_tag = state->in_tag;
