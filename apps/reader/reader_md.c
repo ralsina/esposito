@@ -456,9 +456,15 @@ int md_scan_page_with_levels(FILE *f, rendered_line_t *lines, uint8_t *heading_l
         }
 
         if (append_wrapped_lines(lines, heading_levels, remainder_para_type == 1 ? remainder_heading_level : 0, &count, max_lines, src, screen_width, rem_color, rem_attr, para_remainder, sizeof(para_remainder))) {
+            // Page is full, remainder has been updated with the leftover text
             carry_spacer = 0;
             return count;
         }
+        // All remainder text fit, clear the remainder flag and continue
+        has_remainder = 0;
+        remainder_para_type = 0;
+        remainder_heading_level = 0;
+    }
 
         has_remainder = 0;
         remainder_para_type = 0;
