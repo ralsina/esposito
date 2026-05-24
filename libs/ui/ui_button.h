@@ -45,6 +45,9 @@ void ui_button_set_callback(ui_button_t *button, void (*on_click)(ui_button_t *b
 // Set button colors
 void ui_button_set_colors(ui_button_t *button, uint16_t fg, uint16_t bg);
 
+// Set button text (properly handles memory management)
+void ui_button_set_text(ui_button_t *button, const char *text);
+
 // Enable/disable button
 void ui_button_set_enabled(ui_button_t *button, bool enabled);
 

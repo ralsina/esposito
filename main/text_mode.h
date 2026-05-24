@@ -122,6 +122,33 @@ void text_mode_flush(void);
 // Save screenshot of current text grid as PPM on SD card
 bool text_mode_save_screenshot(void);
 
+// Screen snapshot for save/restore operations
+typedef struct {
+    text_cell_t *cells;  // Copy of entire text grid
+    int cols;            // Grid dimensions when saved
+    int rows;
+    int cursor_x;        // Cursor position when saved
+    int cursor_y;
+    uint8_t bg_color;    // Background color when saved
+    font_id_t font;      // Font in use when saved
+    font_variant_t variant; // Font variant when saved
+} text_mode_snapshot_t;
+
+// Save current screen state to a snapshot
+text_mode_snapshot_t* text_mode_save_snapshot(void);
+
+// Restore screen state from a snapshot
+void text_mode_restore_snapshot(text_mode_snapshot_t *snapshot);
+
+// Free a snapshot and its associated memory
+void text_mode_free_snapshot(text_mode_snapshot_t *snapshot);
+
+// Convert pixel coordinates to character grid coordinates
+void text_mode_pixel_to_cell(int pixel_x, int pixel_y, int *cell_x, int *cell_y);
+
+// Convert character grid coordinates to pixel coordinates
+void text_mode_cell_to_pixel(int cell_x, int cell_y, int *pixel_x, int *pixel_y);
+
 #ifdef __cplusplus
 }
 #endif

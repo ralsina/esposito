@@ -9,6 +9,7 @@
 #include "ui_button.h"
 #include "ui_list.h"
 #include "ui_text_input.h"
+#include "ui_osk.h"
 
 #ifdef __cplusplus
 extern "C" {

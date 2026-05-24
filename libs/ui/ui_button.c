@@ -77,32 +77,15 @@ void ui_button_draw(ui_button_t *button) {
         }
     }
 
-    // Draw button text centered WITH border attributes preserved
+    // Draw button text centered WITHOUT per-character borders
     if (button->text) {
         int text_len = strlen(button->text);
         int text_x = button->x + (button->width - text_len) / 2;
         int text_y = button->y + (button->height - 1) / 2;
 
         if (text_x >= button->x && text_y >= button->y) {
-            // Calculate attributes for text position (preserve borders)
-            uint8_t text_attr = TEXT_ATTR_NORMAL;
-            
-            // Add borders if text is at edges
-            if (text_y == button->y) {
-                text_attr |= TEXT_ATTR_BORDER_TOP;
-            }
-            if (text_y == button->y + button->height - 1) {
-                text_attr |= TEXT_ATTR_UNDERLINE; // Bottom border
-            }
-            if (text_x == button->x) {
-                text_attr |= TEXT_ATTR_BORDER_LEFT;
-            }
-            if (text_x + text_len == button->x + button->width) {
-                text_attr |= TEXT_ATTR_BORDER_RIGHT;
-            }
-            
-            // Draw text with preserved border attributes
-            text_mode_print_at_attr_bg(text_x, text_y, button->text, button->fg_color, button->bg_color, text_attr);
+            // Draw text without border attributes (borders are only for the button frame)
+            text_mode_print_at_attr_bg(text_x, text_y, button->text, button->fg_color, button->bg_color, TEXT_ATTR_NORMAL);
         }
     }
 }
@@ -128,24 +111,9 @@ bool ui_button_handle_touch(ui_button_t *button, const event_t *event) {
     int touch_col = event->touch.x / char_width;
     int touch_row = event->touch.y / char_height;
 
-    // Debug logging - show conversion details
-    printf("Button touch conversion:\n");
-    printf("  Pixel coords: (%d, %d)\n", event->touch.x, event->touch.y);
-    printf("  Char dimensions: %dx%d pixels\n", char_width, char_height);
-    printf("  Char calculation: %d/%d=%d, %d/%d=%d\n",
-           event->touch.x, char_width, touch_col,
-           event->touch.y, char_height, touch_row);
-    printf("  Button bounds: x=%d, y=%d, w=%d, h=%d\n",
-           button->x, button->y, button->width, button->height);
-    printf("  Hit test: %d>=%d && %d<%d && %d>=%d && %d<%d\n",
-           touch_col, button->x, touch_col, button->x + button->width,
-           touch_row, button->y, touch_row, button->y + button->height);
-
     // Check if touch is within button bounds (using character coordinates)
     if (touch_col >= button->x && touch_col < button->x + button->width &&
         touch_row >= button->y && touch_row < button->y + button->height) {
-
-        printf("Button HIT! Triggering callback\n");
 
         // Trigger callback
         if (button->on_click) {
@@ -154,7 +122,6 @@ bool ui_button_handle_touch(ui_button_t *button, const event_t *event) {
         return true;
     }
 
-    printf("Button MISS - touch outside bounds\n");
     return false;
 }
 
@@ -190,4 +157,25 @@ void ui_button_set_visible(ui_button_t *button, bool visible) {
     }
 
     button->visible = visible;
+}
+
+void ui_button_set_text(ui_button_t *button, const char *text) {
+    if (!button) {
+        return;
+    }
+
+    // Free existing text if it exists
+    if (button->text) {
+        free(button->text);
+        button->text = NULL;
+    }
+
+    // Set new text if provided - use malloc/memcpy like ui_button_create does
+    if (text) {
+        size_t len = strlen(text);
+        button->text = (char*)malloc(len + 1);
+        if (button->text) {
+            memcpy(button->text, text, len + 1);
+        }
+    }
 }

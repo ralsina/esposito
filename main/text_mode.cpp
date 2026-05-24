@@ -774,3 +774,135 @@ void text_mode_switch_text(void) {
         }
     }
 }
+
+text_mode_snapshot_t* text_mode_save_snapshot(void) {
+    if (!initialized || !grid) {
+        return NULL;
+    }
+
+    text_mode_snapshot_t *snapshot = (text_mode_snapshot_t*)malloc(sizeof(text_mode_snapshot_t));
+    if (!snapshot) {
+        return NULL;
+    }
+
+    // Save grid dimensions and state
+    snapshot->cols = grid_cols;
+    snapshot->rows = grid_rows;
+    snapshot->cursor_x = cursor_x;
+    snapshot->cursor_y = cursor_y;
+    snapshot->bg_color = bg_color;
+    snapshot->font = current_font;
+    snapshot->variant = current_variant;
+
+    // Allocate and copy grid cells
+    size_t grid_size = grid_cols * grid_rows * sizeof(text_cell_t);
+    snapshot->cells = (text_cell_t*)malloc(grid_size);
+    if (!snapshot->cells) {
+        free(snapshot);
+        return NULL;
+    }
+
+    memcpy(snapshot->cells, grid, grid_size);
+
+    ESP_LOGI(TAG, "Saved snapshot: %dx%d grid", grid_cols, grid_rows);
+    return snapshot;
+}
+
+void text_mode_restore_snapshot(text_mode_snapshot_t *snapshot) {
+    if (!snapshot || !snapshot->cells) {
+        ESP_LOGW(TAG, "Cannot restore NULL snapshot");
+        return;
+    }
+
+    // Check if grid dimensions match
+    if (snapshot->cols != grid_cols || snapshot->rows != grid_rows) {
+        ESP_LOGW(TAG, "Grid dimensions changed: was %dx%d, now %dx%d. Reinitializing grid.",
+                 snapshot->cols, snapshot->rows, grid_cols, grid_rows);
+
+        // Free current grid and allocate new one with snapshot dimensions
+        if (grid) {
+            free(grid);
+        }
+
+        grid_cols = snapshot->cols;
+        grid_rows = snapshot->rows;
+        size_t grid_size = grid_cols * grid_rows * sizeof(text_cell_t);
+        grid = (text_cell_t*)malloc(grid_size);
+        if (!grid) {
+            ESP_LOGE(TAG, "Failed to allocate grid for restore");
+            return;
+        }
+    }
+
+    // Copy grid cells back
+    size_t grid_size = grid_cols * grid_rows * sizeof(text_cell_t);
+    memcpy(grid, snapshot->cells, grid_size);
+
+    // Restore cursor position and background color
+    cursor_x = snapshot->cursor_x;
+    cursor_y = snapshot->cursor_y;
+    bg_color = snapshot->bg_color;
+
+    // Restore font if needed
+    if (snapshot->font != current_font || snapshot->variant != current_variant) {
+        if (display_load_font(snapshot->font, snapshot->variant)) {
+            current_font = snapshot->font;
+            current_variant = snapshot->variant;
+
+            // Update font dimensions
+            font_width = font_table[current_font].char_width;
+            font_height = font_table[current_font].char_height;
+        }
+    }
+
+    // Redraw all cells
+    for (int y = 0; y < grid_rows; y++) {
+        for (int x = 0; x < grid_cols; x++) {
+            update_cell(x, y);
+        }
+    }
+
+    ESP_LOGI(TAG, "Restored snapshot: %dx%d grid", grid_cols, grid_rows);
+}
+
+void text_mode_free_snapshot(text_mode_snapshot_t *snapshot) {
+    if (!snapshot) {
+        return;
+    }
+
+    if (snapshot->cells) {
+        free(snapshot->cells);
+    }
+
+    free(snapshot);
+}
+
+void text_mode_pixel_to_cell(int pixel_x, int pixel_y, int *cell_x, int *cell_y) {
+    if (!cell_x || !cell_y) {
+        return;
+    }
+
+    *cell_x = pixel_x / font_width;
+    *cell_y = pixel_y / font_height;
+
+    // Clamp to grid bounds
+    if (*cell_x < 0) *cell_x = 0;
+    if (*cell_x >= grid_cols) *cell_x = grid_cols - 1;
+    if (*cell_y < 0) *cell_y = 0;
+    if (*cell_y >= grid_rows) *cell_y = grid_rows - 1;
+}
+
+void text_mode_cell_to_pixel(int cell_x, int cell_y, int *pixel_x, int *pixel_y) {
+    if (!pixel_x || !pixel_y) {
+        return;
+    }
+
+    // Clamp cell coordinates to grid bounds
+    if (cell_x < 0) cell_x = 0;
+    if (cell_x >= grid_cols) cell_x = grid_cols - 1;
+    if (cell_y < 0) cell_y = 0;
+    if (cell_y >= grid_rows) cell_y = grid_rows - 1;
+
+    *pixel_x = cell_x * font_width;
+    *pixel_y = cell_y * font_height;
+}

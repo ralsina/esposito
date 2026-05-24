@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <math.h>
+#include <ctype.h>
 
 static const os_symtab_entry_t symtab[] = {
     {"display_clear",           display_clear},
@@ -78,6 +79,11 @@ static const os_symtab_entry_t symtab[] = {
     {"text_mode_flush",         text_mode_flush},
     {"text_mode_set_font",      text_mode_set_font},
     {"text_mode_apply_configured_font", text_mode_apply_configured_font},
+    {"text_mode_save_snapshot", text_mode_save_snapshot},
+    {"text_mode_restore_snapshot", text_mode_restore_snapshot},
+    {"text_mode_free_snapshot", text_mode_free_snapshot},
+    {"text_mode_pixel_to_cell", text_mode_pixel_to_cell},
+    {"text_mode_cell_to_pixel", text_mode_cell_to_pixel},
     {"graphics_mode_init",        graphics_mode_init},
     {"graphics_mode_deinit",      graphics_mode_deinit},
     {"graphics_mode_is_active",   graphics_mode_is_active},
@@ -247,6 +253,9 @@ static const os_symtab_entry_t symtab[] = {
     {"sscanf",                  sscanf},
     {"vsscanf",                 vsscanf},
     {"vsnprintf",               vsnprintf},
+
+    // C library support for ctype functions (use correct type)
+    {"_ctype_",                 (void*)_ctype_},
 
     {NULL, NULL}
 };
