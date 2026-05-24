@@ -19,6 +19,9 @@ static int remainder_heading_level = 0;
 static int carry_spacer = 0;
 static int in_tag = 0;
 
+// Current parser state (for page caching)
+static md_parser_state_enum_t current_parser_state = MD_STATE_DEFAULT;
+
 static int is_space(char c) {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
@@ -458,10 +461,27 @@ static void render_block(rendered_line_t *lines, uint8_t *heading_levels, int *c
                 // There's more text that won't fit - rewind file to current word start
                 fseek(f, word_start_file_pos, SEEK_SET);
 
-                // Set state to indicate we're mid-paragraph
+                // Set state to indicate we're mid-element
                 has_remainder = 1;
-                remainder_para_type = (block->type == 1) ? 1 : 0;
-                remainder_heading_level = block->heading_level;
+                if (block->type == 1) {
+                    // Heading - set appropriate state
+                    switch (block->heading_level) {
+                        case 1: current_parser_state = MD_STATE_HEADING_1; break;
+                        case 2: current_parser_state = MD_STATE_HEADING_2; break;
+                        case 3: current_parser_state = MD_STATE_HEADING_3; break;
+                        case 4: current_parser_state = MD_STATE_HEADING_4; break;
+                        case 5: current_parser_state = MD_STATE_HEADING_5; break;
+                        case 6: current_parser_state = MD_STATE_HEADING_6; break;
+                        default: current_parser_state = MD_STATE_HEADING_1; break;
+                    }
+                    remainder_para_type = 1;
+                    remainder_heading_level = block->heading_level;
+                } else {
+                    // Paragraph
+                    current_parser_state = MD_STATE_PARAGRAPH;
+                    remainder_para_type = 0;
+                    remainder_heading_level = 0;
+                }
                 carry_spacer = 0;
                 return;
             }
@@ -541,37 +561,87 @@ void md_clear_remainder(void) {
     remainder_heading_level = 0;
     carry_spacer = 0;
     in_tag = 0;
-    // No need to clear para_remainder since we don't use it anymore
+    current_parser_state = MD_STATE_DEFAULT;
 }
 
 void md_get_parser_state(md_parser_state_t *state) {
     if (!state) return;
-    // Determine if we're in the middle of processing an element
-    state->in_paragraph = has_remainder && remainder_para_type == 0;
-    state->in_heading = has_remainder && remainder_para_type == 1;
-    state->heading_level = remainder_heading_level;
+
+    // Map current state to enum
+    if (has_remainder) {
+        if (remainder_para_type == 1) {
+            // Heading - map to appropriate heading level state
+            switch (remainder_heading_level) {
+                case 1: state->state = MD_STATE_HEADING_1; break;
+                case 2: state->state = MD_STATE_HEADING_2; break;
+                case 3: state->state = MD_STATE_HEADING_3; break;
+                case 4: state->state = MD_STATE_HEADING_4; break;
+                case 5: state->state = MD_STATE_HEADING_5; break;
+                case 6: state->state = MD_STATE_HEADING_6; break;
+                default: state->state = MD_STATE_HEADING_1; break;
+            }
+        } else {
+            // Paragraph
+            state->state = MD_STATE_PARAGRAPH;
+        }
+    } else {
+        state->state = MD_STATE_DEFAULT;
+    }
+
     state->carry_spacer = carry_spacer;
     state->in_tag = in_tag;
 }
 
 void md_set_parser_state(const md_parser_state_t *state) {
     if (!state) return;
-    // Restore the parsing context for continuing an element
-    if (state->in_paragraph) {
-        has_remainder = 1;
-        remainder_para_type = 0;  // Paragraph
-        remainder_heading_level = 0;
-    } else if (state->in_heading) {
-        has_remainder = 1;
-        remainder_para_type = 1;  // Heading
-        remainder_heading_level = state->heading_level;
-    } else {
-        has_remainder = 0;  // Starting fresh
-        remainder_para_type = 0;
-        remainder_heading_level = 0;
-    }
+
+    // Map enum back to internal variables
+    current_parser_state = state->state;
     carry_spacer = state->carry_spacer;
     in_tag = state->in_tag;
+
+    switch (state->state) {
+        case MD_STATE_DEFAULT:
+            has_remainder = 0;
+            remainder_para_type = 0;
+            remainder_heading_level = 0;
+            break;
+        case MD_STATE_PARAGRAPH:
+            has_remainder = 1;
+            remainder_para_type = 0;
+            remainder_heading_level = 0;
+            break;
+        case MD_STATE_HEADING_1:
+            has_remainder = 1;
+            remainder_para_type = 1;
+            remainder_heading_level = 1;
+            break;
+        case MD_STATE_HEADING_2:
+            has_remainder = 1;
+            remainder_para_type = 1;
+            remainder_heading_level = 2;
+            break;
+        case MD_STATE_HEADING_3:
+            has_remainder = 1;
+            remainder_para_type = 1;
+            remainder_heading_level = 3;
+            break;
+        case MD_STATE_HEADING_4:
+            has_remainder = 1;
+            remainder_para_type = 1;
+            remainder_heading_level = 4;
+            break;
+        case MD_STATE_HEADING_5:
+            has_remainder = 1;
+            remainder_para_type = 1;
+            remainder_heading_level = 5;
+            break;
+        case MD_STATE_HEADING_6:
+            has_remainder = 1;
+            remainder_para_type = 1;
+            remainder_heading_level = 6;
+            break;
+    }
 }
 
 // Get the file offset where the current remainder starts

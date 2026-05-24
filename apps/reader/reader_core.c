@@ -197,8 +197,8 @@ int reader_load_current_page(reader_state_t *state, int *bold_pending, int *unde
 
     // Restore parser state from cache if available
     md_parser_state_t *cached_state = page_cache_get_parser_state(&state->page_cache, cache_index);
-    if (cached_state && (cached_state->in_paragraph || cached_state->in_heading)) {
-        printf("LOAD_PAGE: Continuing %s\n", cached_state->in_paragraph ? "paragraph" : "heading");
+    if (cached_state && cached_state->state != MD_STATE_DEFAULT) {
+        printf("LOAD_PAGE: Continuing in state %d\n", cached_state->state);
         // Continue processing the element from the file position
         md_set_parser_state(cached_state);
         fseek(state->file, offset, SEEK_SET);
