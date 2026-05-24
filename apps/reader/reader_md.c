@@ -477,8 +477,8 @@ static void render_block(rendered_line_t *lines, uint8_t *heading_levels, int *c
                     remainder_para_type = 1;
                     remainder_heading_level = block->heading_level;
                 } else {
-                    // Paragraph
-                    current_parser_state = MD_STATE_PARAGRAPH;
+                    // Paragraph (default processing)
+                    current_parser_state = MD_STATE_DEFAULT;
                     remainder_para_type = 0;
                     remainder_heading_level = 0;
                 }
@@ -568,23 +568,19 @@ void md_get_parser_state(md_parser_state_t *state) {
     if (!state) return;
 
     // Map current state to enum
-    if (has_remainder) {
-        if (remainder_para_type == 1) {
-            // Heading - map to appropriate heading level state
-            switch (remainder_heading_level) {
-                case 1: state->state = MD_STATE_HEADING_1; break;
-                case 2: state->state = MD_STATE_HEADING_2; break;
-                case 3: state->state = MD_STATE_HEADING_3; break;
-                case 4: state->state = MD_STATE_HEADING_4; break;
-                case 5: state->state = MD_STATE_HEADING_5; break;
-                case 6: state->state = MD_STATE_HEADING_6; break;
-                default: state->state = MD_STATE_HEADING_1; break;
-            }
-        } else {
-            // Paragraph
-            state->state = MD_STATE_PARAGRAPH;
+    if (has_remainder && remainder_para_type == 1) {
+        // Heading - map to appropriate heading level state
+        switch (remainder_heading_level) {
+            case 1: state->state = MD_STATE_HEADING_1; break;
+            case 2: state->state = MD_STATE_HEADING_2; break;
+            case 3: state->state = MD_STATE_HEADING_3; break;
+            case 4: state->state = MD_STATE_HEADING_4; break;
+            case 5: state->state = MD_STATE_HEADING_5; break;
+            case 6: state->state = MD_STATE_HEADING_6; break;
+            default: state->state = MD_STATE_HEADING_1; break;
         }
     } else {
+        // Paragraph (default) or no remainder
         state->state = MD_STATE_DEFAULT;
     }
 
@@ -602,12 +598,8 @@ void md_set_parser_state(const md_parser_state_t *state) {
 
     switch (state->state) {
         case MD_STATE_DEFAULT:
+            // Default paragraph processing
             has_remainder = 0;
-            remainder_para_type = 0;
-            remainder_heading_level = 0;
-            break;
-        case MD_STATE_PARAGRAPH:
-            has_remainder = 1;
             remainder_para_type = 0;
             remainder_heading_level = 0;
             break;

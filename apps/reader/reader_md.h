@@ -28,8 +28,7 @@ long md_get_page_full_position(void);
 
 // Parser state enumeration for tracking element continuation
 typedef enum {
-    MD_STATE_DEFAULT,         // Default state, no special handling needed
-    MD_STATE_PARAGRAPH,       // In the middle of a paragraph
+    MD_STATE_DEFAULT,         // Default state = paragraph processing
     MD_STATE_HEADING_1,       // In the middle of a level 1 heading
     MD_STATE_HEADING_2,       // In the middle of a level 2 heading
     MD_STATE_HEADING_3,       // In the middle of a level 3 heading
