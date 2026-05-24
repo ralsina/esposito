@@ -382,8 +382,33 @@ static const char *append_wrapped_lines(rendered_line_t *lines, uint8_t *heading
     }
 
     if (*src) {
-        strncpy(remainder, src, remainder_size - 1);
-        remainder[remainder_size - 1] = '\0';
+        // Page is full and there's more text
+        // Instead of storing the text, set parser state to continue reading from file
+        // The file position is already at the right place to continue
+        has_remainder = 1;
+
+        // Set the appropriate state based on heading level
+        if (heading_level > 0) {
+            // It's a heading - set the appropriate heading state
+            switch (heading_level) {
+                case 1: current_parser_state = MD_STATE_HEADING_1; break;
+                case 2: current_parser_state = MD_STATE_HEADING_2; break;
+                case 3: current_parser_state = MD_STATE_HEADING_3; break;
+                case 4: current_parser_state = MD_STATE_HEADING_4; break;
+                case 5: current_parser_state = MD_STATE_HEADING_5; break;
+                case 6: current_parser_state = MD_STATE_HEADING_6; break;
+                default: current_parser_state = MD_STATE_HEADING_1; break;
+            }
+            remainder_para_type = 1;
+            remainder_heading_level = heading_level;
+        } else {
+            // It's a paragraph (default state)
+            current_parser_state = MD_STATE_DEFAULT;
+            remainder_para_type = 0;
+            remainder_heading_level = 0;
+        }
+
+        remainder[0] = '\0';  // Don't store text content
         return src;
     }
 
