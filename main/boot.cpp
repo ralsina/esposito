@@ -125,9 +125,6 @@ void boot_display_splash(void) {
     // Clear screen with black background
     text_mode_clear(TEXT_COLOR_BLACK);
 
-    // Add a delay to make sure display is ready
-    vTaskDelay(pdMS_TO_TICKS(200));
-
     // Draw a border
     for (int x = 0; x < TEXT_MODE_COLS; x++) {
         text_mode_print_at_color(x, 0, "*", TEXT_COLOR_CYAN);
@@ -147,21 +144,8 @@ void boot_display_splash(void) {
     // Draw status in yellow
     text_mode_print_at_color((TEXT_MODE_COLS - 16) / 2, 5, "System booting...", TEXT_COLOR_YELLOW);
 
-    // Draw some visual indicators
-    for (int i = 0; i < 20; i++) {
-        text_mode_printf_at_color(10 + i, 7, TEXT_COLOR_GREEN, "*");
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-
-    // Show hardware status
-    text_mode_print_at_color(2, 10, "Hardware:", TEXT_COLOR_WHITE);
-    text_mode_print_at_color(2, 11, "  Display: OK (ST7789)", TEXT_COLOR_GREEN);
-    text_mode_print_at_color(2, 12, "  Keyboard: Optional (BBQ20)", TEXT_COLOR_YELLOW);
-    text_mode_print_at_color(2, 13, "  SD Card: OK (FAT32)", TEXT_COLOR_GREEN);
-    text_mode_print_at_color(2, 14, "  Touch: OK (XPT2046)", TEXT_COLOR_GREEN);
-
-    // Instructions
-    text_mode_print_at_color(2, 17, "Press Ctrl+ESC for app launcher", TEXT_COLOR_YELLOW);
+    // Show immediate boot status (no delay loop)
+    text_mode_print_at_color(2, 7, "Booting...", TEXT_COLOR_GREEN);
 
     ESP_LOGI(TAG, "Splash screen displayed");
 }
