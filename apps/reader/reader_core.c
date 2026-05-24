@@ -184,11 +184,15 @@ int reader_load_current_page(reader_state_t *state, int *bold_pending, int *unde
         *underline_pending = 0;
     }
 
-    // CRITICAL: Clear markdown parser state before loading a new page
-    // This ensures deterministic page rendering from the same offset
-    md_clear_remainder();
-
     uint32_t offset = page_cache_current_offset(&state->page_cache);
+    long current_file_pos = ftell(state->file);
+
+    // Only clear remainder if we're seeking to a different position
+    // This preserves text flow during normal forward navigation
+    if (current_file_pos != (long)offset) {
+        md_clear_remainder();
+    }
+
     fseek(state->file, offset, SEEK_SET);
     state->line_count = md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
     return state->line_count;
