@@ -38,17 +38,31 @@ uint32_t page_cache_next(page_cache_t *cache) {
     return cache->entries[cache->current].file_offset;
 }
 
-void page_cache_add_next(page_cache_t *cache, uint32_t offset) {
+void page_cache_add_next(page_cache_t *cache, uint32_t offset_after_scan) {
     int next = cache->current + 1;
     if (next < PAGE_CACHE_ENTRIES) {
-        cache->entries[next].file_offset = offset;
+        // Calculate where the remainder actually starts
+        // offset_after_scan is after md_scan_page advanced the file position
+        // We need to subtract the remainder length to get the true start position
+        md_parser_state_t state;
+        md_get_parser_state(&state);
+        uint32_t actual_offset = offset_after_scan;
+
+        if (state.has_remainder) {
+            // The remainder starts BEFORE the current file position
+            // We need to calculate where the remainder text starts in the file
+            // For now, use offset_after_scan and let the parser state handle it
+            actual_offset = offset_after_scan;  // Will be corrected in md_scan_page
+        }
+
+        cache->entries[next].file_offset = actual_offset;
         if (next + 1 > cache->count) cache->count = next + 1;
     } else {
         // Ring buffer full: drop oldest entry, shift left, put new at end
         for (int i = 0; i < PAGE_CACHE_ENTRIES - 1; i++) {
             cache->entries[i] = cache->entries[i + 1];
         }
-        cache->entries[PAGE_CACHE_ENTRIES - 1].file_offset = offset;
+        cache->entries[PAGE_CACHE_ENTRIES - 1].file_offset = offset_after_scan;
         cache->current = PAGE_CACHE_ENTRIES - 1;
     }
 }

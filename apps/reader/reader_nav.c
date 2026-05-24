@@ -159,8 +159,13 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
     if (page_cache_can_next(&state->page_cache)) {
         page_cache_next(&state->page_cache);
     } else {
+        // Save file position BEFORE reading the page
+        // After reading, ftell() will be at the end, but we want to cache
+        // where the NEXT page should start (which is current position)
         uint32_t next_offset = ftell(state->file);
         page_cache_add_next(&state->page_cache, next_offset);
+
+        // Save parser state AFTER reading (so it captures any remainder)
         int new_index = state->page_cache.current;
         page_cache_set_parser_state(&state->page_cache, new_index);
         state->page_cache.entries[new_index].screen_width = state->screen_width;

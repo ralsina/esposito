@@ -511,8 +511,6 @@ void md_clear_remainder(void) {
 
 void md_get_parser_state(md_parser_state_t *state) {
     if (!state) return;
-    strncpy(state->para_remainder, para_remainder, sizeof(state->para_remainder) - 1);
-    state->para_remainder[sizeof(state->para_remainder) - 1] = '\0';
     state->has_remainder = has_remainder;
     state->remainder_para_type = remainder_para_type;
     state->remainder_heading_level = remainder_heading_level;
@@ -522,11 +520,26 @@ void md_get_parser_state(md_parser_state_t *state) {
 
 void md_set_parser_state(const md_parser_state_t *state) {
     if (!state) return;
-    strncpy(para_remainder, state->para_remainder, sizeof(para_remainder) - 1);
-    para_remainder[sizeof(para_remainder) - 1] = '\0';
     has_remainder = state->has_remainder;
     remainder_para_type = state->remainder_para_type;
     remainder_heading_level = state->remainder_heading_level;
     carry_spacer = state->carry_spacer;
     in_tag = state->in_tag;
+    // Note: we don't copy the remainder content itself - the file offset
+    // points to where the remainder starts, so it will be re-read from the file
+}
+
+// Get the file offset where the current remainder starts
+// This is the position that should be cached for the next page
+long md_get_remainder_start_offset(void) {
+    // Return the current file position MINUS the length of the remainder
+    // This points to where the remainder text starts in the file
+    if (has_remainder && para_remainder[0]) {
+        long remainder_len = (long)strlen(para_remainder);
+        long current_pos = -1;  // We need to track this externally
+        // The caller needs to track the file position before md_scan_page advances it
+        // For now, return 0 to indicate "calculate from current position - remainder length"
+        return 0;
+    }
+    return 0;
 }

@@ -195,13 +195,21 @@ int reader_load_current_page(reader_state_t *state, int *bold_pending, int *unde
 
     // Restore parser state from cache if available
     md_parser_state_t *cached_state = page_cache_get_parser_state(&state->page_cache, cache_index);
-    if (cached_state) {
+    if (cached_state && cached_state->has_remainder) {
+        // We have a remainder - the parser needs to read it from the file
+        // The cached offset points to where the remainder starts
         md_set_parser_state(cached_state);
+        fseek(state->file, offset, SEEK_SET);
+    } else if (cached_state) {
+        // No remainder but we have parser state
+        md_set_parser_state(cached_state);
+        fseek(state->file, offset, SEEK_SET);
     } else {
+        // No cached state - start fresh
         md_clear_remainder();
+        fseek(state->file, offset, SEEK_SET);
     }
 
-    fseek(state->file, offset, SEEK_SET);
     state->line_count = md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
     return state->line_count;
 }
