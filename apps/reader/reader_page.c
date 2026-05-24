@@ -3,6 +3,8 @@
 void page_cache_init(page_cache_t *cache) {
     cache->count = 0;
     cache->current = -1;
+    cache->screen_width = 0;
+    cache->content_rows = 0;
 }
 
 void page_cache_set_start(page_cache_t *cache, uint32_t offset) {
@@ -54,4 +56,12 @@ uint32_t page_cache_current_offset(page_cache_t *cache) {
 
 int page_cache_page_number(page_cache_t *cache) {
     return cache->current + 1;
+}
+
+bool page_cache_is_valid(page_cache_t *cache, int current_screen_width, int current_content_rows) {
+    // Cache is invalid if screen dimensions have changed
+    if (cache->screen_width != current_screen_width || cache->content_rows != current_content_rows) {
+        return false;
+    }
+    return cache->count > 0;
 }

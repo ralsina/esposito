@@ -10,6 +10,8 @@ typedef struct {
     uint32_t offsets[PAGE_CACHE_ENTRIES];
     int count;
     int current;
+    int screen_width;   // Track screen width when cache was built
+    int content_rows;   // Track content rows when cache was built
 } page_cache_t;
 
 void page_cache_init(page_cache_t *cache);
@@ -21,5 +23,6 @@ uint32_t page_cache_next(page_cache_t *cache);
 void page_cache_add_next(page_cache_t *cache, uint32_t offset);
 uint32_t page_cache_current_offset(page_cache_t *cache);
 int page_cache_page_number(page_cache_t *cache);
+bool page_cache_is_valid(page_cache_t *cache, int current_screen_width, int current_content_rows);
 
 #endif

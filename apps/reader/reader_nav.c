@@ -129,6 +129,10 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
         page_cache_set_start(&state->page_cache, offset);
     }
 
+    // Set screen dimensions in cache
+    state->page_cache.screen_width = state->screen_width;
+    state->page_cache.content_rows = state->content_rows;
+
     md_clear_remainder();
     state->page_number = actual_page;
     reader_load_current_page(state, bold_pending, underline_pending);
@@ -138,6 +142,16 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
 }
 
 void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underline_pending) {
+    // Check if cache is still valid (dimensions haven't changed)
+    if (!page_cache_is_valid(&state->page_cache, state->screen_width, state->content_rows)) {
+        // Cache invalid - rebuild from current position
+        uint32_t current_offset = ftell(state->file);
+        page_cache_init(&state->page_cache);
+        page_cache_set_start(&state->page_cache, current_offset);
+        state->page_cache.screen_width = state->screen_width;
+        state->page_cache.content_rows = state->content_rows;
+    }
+
     if (page_cache_can_next(&state->page_cache)) {
         page_cache_next(&state->page_cache);
     } else {
@@ -154,6 +168,23 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
 }
 
 void reader_nav_prev_page(reader_state_t *state, int *bold_pending, int *underline_pending) {
+    // Check if cache is still valid (dimensions haven't changed)
+    if (!page_cache_is_valid(&state->page_cache, state->screen_width, state->content_rows)) {
+        // Cache invalid - need to rebuild by going to specific page
+        if (state->page_number > 1) {
+            int cols = text_mode_get_cols();
+            int rows = text_mode_get_rows();
+            for (int row = 2; row < rows; row++) {
+                for (int col = 0; col < cols; col++) {
+                    text_mode_print_at_attr_bg(col, row, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+                }
+            }
+            text_mode_print_at_attr((cols - 10) / 2, rows / 2, "Loading...", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+            reader_nav_goto_page(state, state->page_number - 1, bold_pending, underline_pending);
+        }
+        return;
+    }
+
     if (page_cache_can_prev(&state->page_cache)) {
         page_cache_prev(&state->page_cache);
         state->page_number--;
@@ -347,6 +378,9 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
         if (page_contains_query(state, query)) {
             page_cache_init(&state->page_cache);
             page_cache_set_start(&state->page_cache, page_offset);
+            // Set screen dimensions in cache
+            state->page_cache.screen_width = state->screen_width;
+            state->page_cache.content_rows = state->content_rows;
             state->page_number = page;
             md_clear_remainder();
             reader_load_current_page(state, bold_pending, underline_pending);

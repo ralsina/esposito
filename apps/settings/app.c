@@ -308,6 +308,38 @@ static void set_status(const char *msg) {
 static void on_main_exit_click(ui_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
+
+    // Clean up widgets before exiting
+    if (ssid_input) {
+        ui_text_input_destroy(ssid_input);
+        ssid_input = NULL;
+    }
+    if (password_input) {
+        ui_text_input_destroy(password_input);
+        password_input = NULL;
+    }
+    if (timezone_input) {
+        ui_text_input_destroy(timezone_input);
+        timezone_input = NULL;
+    }
+    if (location_input) {
+        ui_text_input_destroy(location_input);
+        location_input = NULL;
+    }
+    if (font_family_list) {
+        ui_list_destroy(font_family_list);
+        font_family_list = NULL;
+    }
+    if (font_size_list) {
+        ui_list_destroy(font_size_list);
+        font_size_list = NULL;
+    }
+    if (main_exit_btn) {
+        ui_button_destroy(main_exit_btn);
+        main_exit_btn = NULL;
+    }
+
+    text_mode_clear(TEXT_COLOR_BLACK);
     os_load_app("launcher");
 }
 
@@ -386,8 +418,8 @@ static void rebuild_layout_widgets(void) {
     ui_list_set_selection(font_size_list, font_size_selected);
     ui_list_set_callbacks(font_size_list, on_font_size_selection_changed, on_font_size_item_selected, font_size_list);
 
-    // Create main screen exit button
-    main_exit_btn = ui_button_create(cols - 7, rows - 2, 5, 1, "Exit");
+    // Create main screen exit button (positioned above status bar at rows-2)
+    main_exit_btn = ui_button_create(cols - 7, rows - 3, 5, 1, "Exit");
     ui_button_set_callback(main_exit_btn, on_main_exit_click, NULL);
 }
 

@@ -119,6 +119,17 @@ static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t b
 }
 
 void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pending, int *underline_pending) {
+    // Update screen dimensions to detect cache invalidation
+    reader_state_t *mutable_state = (reader_state_t*)state;
+    mutable_state->screen_width = text_mode_get_cols() - MARGIN * 2;
+    int current_rows = text_mode_get_rows();
+    bool currently_portrait = display_get_height() >= display_get_width();
+    if (currently_portrait) {
+        mutable_state->content_rows = current_rows - 4;  // Account for top 2 rows and bottom 2 rows in portrait
+    } else {
+        mutable_state->content_rows = current_rows - 2;  // Account for top 2 rows in landscape
+    }
+
     ui_clear();
 
     int cols = text_mode_get_cols();
@@ -399,58 +410,58 @@ void reader_view_draw_toc(reader_state_t *state) {
 
     int button_row = rows - 3;
 
-    // Calculate button layout based on actual screen width
-    // We have 4 buttons that need to fit, so make them responsive
-    int button_count = 4;
-    int total_gap = 2 * (button_count - 1);  // 2 columns gap between each button
-    int available_width = cols - 4;  // 2 columns margin on each side
-    int button_width = (available_width - total_gap) / button_count;
+    // Fixed button layout - use specific widths that fit the text
+    // Button text widths: "UP"=2, "JUMP"=4, "DOWN"=4, "EXIT"=4
+    // Add 2 spaces padding on each side = +4 per button
+    // Total widths: UP=6, JUMP=8, DOWN=8, EXIT=8
+    // Single column gap between buttons
+    int up_width = 6;
+    int jump_width = 8;
+    int down_width = 8;
+    int back_width = 8;
+    int gap = 1;
 
-    // Ensure minimum button width
-    if (button_width < 8) button_width = 8;
-
-    // Center the button group on screen
-    int total_button_width = (button_width * button_count) + total_gap;
-    int start_x = (cols - total_button_width) / 2;
+    int total_width = up_width + gap + jump_width + gap + down_width + gap + back_width;
+    int start_x = (cols - total_width) / 2;
     if (start_x < 1) start_x = 1;
 
     // Calculate button positions
     int up_x = start_x;
-    int jump_x = up_x + button_width + 2;
-    int down_x = jump_x + button_width + 2;
-    int back_x = down_x + button_width + 2;
+    int jump_x = up_x + up_width + gap;
+    int down_x = jump_x + jump_width + gap;
+    int back_x = down_x + down_width + gap;
 
     // Create buttons if they don't exist
     if (!state->btn_up) {
         // Callbacks (defined in reader_events.c)
-        state->btn_up = ui_button_create(up_x, button_row, button_width, 3, "UP");
+        state->btn_up = ui_button_create(up_x, button_row, up_width, 3, "UP");
         ui_button_set_callback(state->btn_up, on_toc_up_click, state);
 
-        state->btn_open = ui_button_create(jump_x, button_row, button_width, 3, "JUMP");
+        state->btn_open = ui_button_create(jump_x, button_row, jump_width, 3, "JUMP");
         ui_button_set_callback(state->btn_open, on_toc_jump_click, state);
 
-        state->btn_down = ui_button_create(down_x, button_row, button_width, 3, "DOWN");
+        state->btn_down = ui_button_create(down_x, button_row, down_width, 3, "DOWN");
         ui_button_set_callback(state->btn_down, on_toc_down_click, state);
 
-        state->btn_exit = ui_button_create(back_x, button_row, button_width, 3, "EXIT");
+        state->btn_exit = ui_button_create(back_x, button_row, back_width, 3, "EXIT");
         ui_button_set_callback(state->btn_exit, on_toc_back_click, state);
     } else {
         // Update positions and sizes if screen size changed
         state->btn_up->x = up_x;
         state->btn_up->y = button_row;
-        state->btn_up->width = button_width;
+        state->btn_up->width = up_width;
 
         state->btn_open->x = jump_x;
         state->btn_open->y = button_row;
-        state->btn_open->width = button_width;
+        state->btn_open->width = jump_width;
 
         state->btn_down->x = down_x;
         state->btn_down->y = button_row;
-        state->btn_down->width = button_width;
+        state->btn_down->width = down_width;
 
         state->btn_exit->x = back_x;
         state->btn_exit->y = button_row;
-        state->btn_exit->width = button_width;
+        state->btn_exit->width = back_width;
     }
 
     // Draw buttons
@@ -549,52 +560,56 @@ void reader_view_draw_file_list(reader_state_t *state) {
 
     int button_row = rows - 3;
 
-    // Calculate button layout based on actual screen width (same as TOC buttons)
-    int button_count = 4;
-    int total_gap = 2 * (button_count - 1);
-    int available_width = cols - 4;
-    int button_width = (available_width - total_gap) / button_count;
-    if (button_width < 8) button_width = 8;
+    // Fixed button layout - use specific widths that fit the text
+    // Button text widths: "UP"=2, "OPEN"=4, "DOWN"=4, "EXIT"=4
+    // Add 2 spaces padding on each side = +4 per button
+    // Total widths: UP=6, OPEN=8, DOWN=8, EXIT=8
+    // Single column gap between buttons
+    int up_width = 6;
+    int open_width = 8;
+    int down_width = 8;
+    int exit_width = 8;
+    int gap = 1;
 
-    int total_button_width = (button_width * button_count) + total_gap;
-    int start_x = (cols - total_button_width) / 2;
+    int total_width = up_width + gap + open_width + gap + down_width + gap + exit_width;
+    int start_x = (cols - total_width) / 2;
     if (start_x < 1) start_x = 1;
 
     int up_x = start_x;
-    int open_x = up_x + button_width + 2;
-    int down_x = open_x + button_width + 2;
-    int exit_x = down_x + button_width + 2;
+    int open_x = up_x + up_width + gap;
+    int down_x = open_x + open_width + gap;
+    int exit_x = down_x + down_width + gap;
 
     // Create buttons if they don't exist
     if (!state->btn_up) {
-        state->btn_up = ui_button_create(up_x, button_row, button_width, 3, "UP");
+        state->btn_up = ui_button_create(up_x, button_row, up_width, 3, "UP");
         ui_button_set_callback(state->btn_up, on_file_list_up_click, state);
 
-        state->btn_open = ui_button_create(open_x, button_row, button_width, 3, "OPEN");
+        state->btn_open = ui_button_create(open_x, button_row, open_width, 3, "OPEN");
         ui_button_set_callback(state->btn_open, on_file_list_open_click, state);
 
-        state->btn_down = ui_button_create(down_x, button_row, button_width, 3, "DOWN");
+        state->btn_down = ui_button_create(down_x, button_row, down_width, 3, "DOWN");
         ui_button_set_callback(state->btn_down, on_file_list_down_click, state);
 
-        state->btn_exit = ui_button_create(exit_x, button_row, button_width, 3, "EXIT");
+        state->btn_exit = ui_button_create(exit_x, button_row, exit_width, 3, "EXIT");
         ui_button_set_callback(state->btn_exit, on_file_list_exit_click, state);
     } else {
         // Update positions and sizes if screen size changed
         state->btn_up->x = up_x;
         state->btn_up->y = button_row;
-        state->btn_up->width = button_width;
+        state->btn_up->width = up_width;
 
         state->btn_open->x = open_x;
         state->btn_open->y = button_row;
-        state->btn_open->width = button_width;
+        state->btn_open->width = open_width;
 
         state->btn_down->x = down_x;
         state->btn_down->y = button_row;
-        state->btn_down->width = button_width;
+        state->btn_down->width = down_width;
 
         state->btn_exit->x = exit_x;
         state->btn_exit->y = button_row;
-        state->btn_exit->width = button_width;
+        state->btn_exit->width = exit_width;
     }
 
     // Draw buttons
