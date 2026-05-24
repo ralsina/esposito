@@ -149,6 +149,7 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
     if (!page_cache_is_valid(&state->page_cache, state->screen_width, state->content_rows)) {
         // Cache invalid - rebuild from current position
         uint32_t current_offset = ftell(state->file);
+        printf("NAV_NEXT: Cache invalid, rebuilding from offset %u\n", current_offset);
         page_cache_init(&state->page_cache);
         page_cache_set_start(&state->page_cache, current_offset);
         page_cache_set_parser_state(&state->page_cache, 0);
@@ -157,23 +158,27 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
     }
 
     if (page_cache_can_next(&state->page_cache)) {
+        printf("NAV_NEXT: Using cached page %d\n", state->page_cache.current + 1);
         page_cache_next(&state->page_cache);
     } else {
-        // Save file position BEFORE reading the page
-        // After reading, ftell() will be at the end, but we want to cache
-        // where the NEXT page should start (which is current position)
-        uint32_t next_offset = ftell(state->file);
-        page_cache_add_next(&state->page_cache, next_offset);
+        // Cache the current file position - this is where the next page starts
+        // No adjustment needed - the parser will continue reading from this position
+        long current_pos = ftell(state->file);
+        printf("NAV_NEXT: Current file pos = %ld (next page starts here)\n", current_pos);
 
-        // Save parser state AFTER reading (so it captures any remainder)
+        page_cache_add_next(&state->page_cache, (uint32_t)current_pos);
+
+        // Save parser state - this captures "we're in the middle of a paragraph/heading"
         int new_index = state->page_cache.current;
         page_cache_set_parser_state(&state->page_cache, new_index);
         state->page_cache.entries[new_index].screen_width = state->screen_width;
         state->page_cache.entries[new_index].content_rows = state->content_rows;
+        printf("NAV_NEXT: Cached new page at offset %u, index %d\n", (uint32_t)current_pos, new_index);
         page_cache_next(&state->page_cache);
     }
 
     state->page_number++;
+    printf("NAV_NEXT: Loading page %d from offset %u\n", state->page_number, page_cache_current_offset(&state->page_cache));
     reader_load_current_page(state, bold_pending, underline_pending);
     reader_view_draw_reading_page(state, bold_pending, underline_pending);
     // Save progress after page change

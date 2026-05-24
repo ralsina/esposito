@@ -511,22 +511,35 @@ void md_clear_remainder(void) {
 
 void md_get_parser_state(md_parser_state_t *state) {
     if (!state) return;
-    state->has_remainder = has_remainder;
-    state->remainder_para_type = remainder_para_type;
-    state->remainder_heading_level = remainder_heading_level;
+    // Determine if we're in the middle of processing an element
+    state->in_paragraph = has_remainder && remainder_para_type == 0;
+    state->in_heading = has_remainder && remainder_para_type == 1;
+    state->heading_level = remainder_heading_level;
     state->carry_spacer = carry_spacer;
     state->in_tag = in_tag;
 }
 
 void md_set_parser_state(const md_parser_state_t *state) {
     if (!state) return;
-    has_remainder = state->has_remainder;
-    remainder_para_type = state->remainder_para_type;
-    remainder_heading_level = state->remainder_heading_level;
+    // Restore the parsing context for continuing an element
+    if (state->in_paragraph) {
+        has_remainder = 1;
+        remainder_para_type = 0;  // Paragraph
+        remainder_heading_level = 0;
+    } else if (state->in_heading) {
+        has_remainder = 1;
+        remainder_para_type = 1;  // Heading
+        remainder_heading_level = state->heading_level;
+    } else {
+        has_remainder = 0;  // Starting fresh
+        remainder_para_type = 0;
+        remainder_heading_level = 0;
+    }
     carry_spacer = state->carry_spacer;
     in_tag = state->in_tag;
-    // Note: we don't copy the remainder content itself - the file offset
-    // points to where the remainder starts, so it will be re-read from the file
+
+    // Clear the remainder content - we'll re-read it from the file
+    para_remainder[0] = '\0';
 }
 
 // Get the file offset where the current remainder starts

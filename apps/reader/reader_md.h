@@ -22,13 +22,13 @@ int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_widt
 void md_clear_remainder(void);
 
 // Minimal parser state for deterministic page caching
-// We cache where to start reading from (file offset at start of remainder)
-// and what parsing context to use (element type, heading level, etc.)
+// Instead of storing remainder content, we store the parsing CONTEXT
+// The parser will continue reading from the file position in this context
 typedef struct {
-    int has_remainder;        // Whether there was a remainder
-    int remainder_para_type;  // 0=normal, 1=heading
-    int remainder_heading_level; // If heading, what level
-    int carry_spacer;         // Spacer state
+    int in_paragraph;         // Currently processing a paragraph (continue it)
+    int in_heading;           // Currently processing a heading (continue it)
+    int heading_level;        // If in heading, what level
+    int carry_spacer;         // Spacer state between elements
     int in_tag;               // Tag processing state
 } md_parser_state_t;
 
