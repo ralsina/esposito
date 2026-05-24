@@ -158,14 +158,13 @@ void reader_events_enter_reading_mode(reader_state_t *state, int *bold_pending, 
     }
 
     // Only initialize page cache if it's empty or screen dimensions changed
-    if (state->page_cache.count == 0 ||
-        state->page_cache.screen_width != state->screen_width ||
-        state->page_cache.content_rows != state->content_rows) {
+    if (state->page_cache.count == 0) {
         uint32_t current_offset = ftell(state->file);
         page_cache_init(&state->page_cache);
         page_cache_set_start(&state->page_cache, current_offset);
-        state->page_cache.screen_width = state->screen_width;
-        state->page_cache.content_rows = state->content_rows;
+        page_cache_set_parser_state(&state->page_cache, 0);
+        state->page_cache.entries[0].screen_width = state->screen_width;
+        state->page_cache.entries[0].content_rows = state->content_rows;
     }
 
     load_current_page(state, bold_pending, underline_pending);

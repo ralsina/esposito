@@ -508,3 +508,25 @@ void md_clear_remainder(void) {
     carry_spacer = 0;
     in_tag = 0;
 }
+
+void md_get_parser_state(md_parser_state_t *state) {
+    if (!state) return;
+    strncpy(state->para_remainder, para_remainder, sizeof(state->para_remainder) - 1);
+    state->para_remainder[sizeof(state->para_remainder) - 1] = '\0';
+    state->has_remainder = has_remainder;
+    state->remainder_para_type = remainder_para_type;
+    state->remainder_heading_level = remainder_heading_level;
+    state->carry_spacer = carry_spacer;
+    state->in_tag = in_tag;
+}
+
+void md_set_parser_state(const md_parser_state_t *state) {
+    if (!state) return;
+    strncpy(para_remainder, state->para_remainder, sizeof(para_remainder) - 1);
+    para_remainder[sizeof(para_remainder) - 1] = '\0';
+    has_remainder = state->has_remainder;
+    remainder_para_type = state->remainder_para_type;
+    remainder_heading_level = state->remainder_heading_level;
+    carry_spacer = state->carry_spacer;
+    in_tag = state->in_tag;
+}

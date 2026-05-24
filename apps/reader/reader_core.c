@@ -150,6 +150,9 @@ int reader_open_file(reader_state_t *state, const char *path) {
     state->current_file[MAX_PATH - 1] = '\0';
     page_cache_init(&state->page_cache);
     page_cache_set_start(&state->page_cache, 0);
+    page_cache_set_parser_state(&state->page_cache, 0);
+    state->page_cache.entries[0].screen_width = 0;  // Will be set when entering reading mode
+    state->page_cache.entries[0].content_rows = 0;
     state->page_number = 1;
 
     char offset_key[320];
@@ -162,6 +165,9 @@ int reader_open_file(reader_state_t *state, const char *path) {
 
     if (saved_offset > 0) {
         page_cache_set_start(&state->page_cache, (uint32_t)saved_offset);
+        page_cache_set_parser_state(&state->page_cache, 0);
+        state->page_cache.entries[0].screen_width = 0;  // Will be set when entering reading mode
+        state->page_cache.entries[0].content_rows = 0;
     }
     if (saved_page > 0) {
         state->page_number = saved_page;
@@ -185,11 +191,13 @@ int reader_load_current_page(reader_state_t *state, int *bold_pending, int *unde
     }
 
     uint32_t offset = page_cache_current_offset(&state->page_cache);
-    long current_file_pos = ftell(state->file);
+    int cache_index = state->page_cache.current;
 
-    // Only clear remainder if we're seeking to a different position
-    // This preserves text flow during normal forward navigation
-    if (current_file_pos != (long)offset) {
+    // Restore parser state from cache if available
+    md_parser_state_t *cached_state = page_cache_get_parser_state(&state->page_cache, cache_index);
+    if (cached_state) {
+        md_set_parser_state(cached_state);
+    } else {
         md_clear_remainder();
     }
 

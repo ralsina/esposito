@@ -21,4 +21,17 @@ int md_scan_page_with_levels(FILE *f, rendered_line_t *lines, uint8_t *heading_l
 int md_scan_page(FILE *f, rendered_line_t *lines, int max_lines, int screen_width);
 void md_clear_remainder(void);
 
+// Parser state for deterministic page caching
+typedef struct {
+    char para_remainder[4096];
+    int has_remainder;
+    int remainder_para_type;
+    int remainder_heading_level;
+    int carry_spacer;
+    int in_tag;
+} md_parser_state_t;
+
+void md_get_parser_state(md_parser_state_t *state);
+void md_set_parser_state(const md_parser_state_t *state);
+
 #endif

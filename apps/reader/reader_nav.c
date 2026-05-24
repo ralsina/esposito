@@ -123,15 +123,18 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
         state->page_cache.current = store_count - 1;
         for (int index = 0; index < store_count; index++) {
             int src = (store_pos - store_count + index + PAGE_CACHE_ENTRIES) % PAGE_CACHE_ENTRIES;
-            state->page_cache.offsets[index] = page_starts[src];
+            state->page_cache.entries[index].file_offset = page_starts[src];
+            state->page_cache.entries[index].screen_width = state->screen_width;
+            state->page_cache.entries[index].content_rows = state->content_rows;
+            // Clear parser state for cached pages (we don't have the state)
+            memset(&state->page_cache.entries[index].parser_state, 0, sizeof(md_parser_state_t));
         }
     } else {
         page_cache_set_start(&state->page_cache, offset);
+        state->page_cache.entries[0].screen_width = state->screen_width;
+        state->page_cache.entries[0].content_rows = state->content_rows;
+        page_cache_set_parser_state(&state->page_cache, 0);
     }
-
-    // Set screen dimensions in cache
-    state->page_cache.screen_width = state->screen_width;
-    state->page_cache.content_rows = state->content_rows;
 
     md_clear_remainder();
     state->page_number = actual_page;
@@ -148,8 +151,9 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
         uint32_t current_offset = ftell(state->file);
         page_cache_init(&state->page_cache);
         page_cache_set_start(&state->page_cache, current_offset);
-        state->page_cache.screen_width = state->screen_width;
-        state->page_cache.content_rows = state->content_rows;
+        page_cache_set_parser_state(&state->page_cache, 0);
+        state->page_cache.entries[0].screen_width = state->screen_width;
+        state->page_cache.entries[0].content_rows = state->content_rows;
     }
 
     if (page_cache_can_next(&state->page_cache)) {
@@ -157,6 +161,10 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
     } else {
         uint32_t next_offset = ftell(state->file);
         page_cache_add_next(&state->page_cache, next_offset);
+        int new_index = state->page_cache.current;
+        page_cache_set_parser_state(&state->page_cache, new_index);
+        state->page_cache.entries[new_index].screen_width = state->screen_width;
+        state->page_cache.entries[new_index].content_rows = state->content_rows;
         page_cache_next(&state->page_cache);
     }
 
@@ -378,9 +386,9 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
         if (page_contains_query(state, query)) {
             page_cache_init(&state->page_cache);
             page_cache_set_start(&state->page_cache, page_offset);
-            // Set screen dimensions in cache
-            state->page_cache.screen_width = state->screen_width;
-            state->page_cache.content_rows = state->content_rows;
+            state->page_cache.entries[0].screen_width = state->screen_width;
+            state->page_cache.entries[0].content_rows = state->content_rows;
+            page_cache_set_parser_state(&state->page_cache, 0);
             state->page_number = page;
             md_clear_remainder();
             reader_load_current_page(state, bold_pending, underline_pending);
