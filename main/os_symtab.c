@@ -183,6 +183,7 @@ static const os_symtab_entry_t symtab[] = {
     {"config_unbind_app",       config_unbind_app},
     {"os_unload_app",           os_unload_app},
     {"fputc",                   fputc},
+    {"keyboard_is_available",   keyboard_is_available},
     {"time",                    time},
     {"app_manifest_read",              app_manifest_read},
     {"app_manifest_get_display_name",  app_manifest_get_display_name},

@@ -195,7 +195,7 @@ bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
     last_raw_x = raw_x;
     last_raw_y = raw_y;
 
-    ESP_LOGI(TAG, "Touch: raw_x=%d, raw_y=%d", raw_x, raw_y);
+    ESP_LOGV(TAG, "Touch: raw_x=%d, raw_y=%d", raw_x, raw_y);
 
     // Filter out invalid readings (but allow 0 for Y near top)
     if (raw_x < raw_x_min || raw_x > (raw_x_min + raw_x_range + 200) ||
@@ -243,7 +243,7 @@ bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
     *x = (uint16_t)screen_x;
     *y = (uint16_t)screen_y;
 
-    ESP_LOGI(TAG, "Touch: raw_x=%d, raw_y=%d, screen_x=%d, screen_y=%d (rotation=%d)",
+    ESP_LOGV(TAG, "Touch: raw_x=%d, raw_y=%d, screen_x=%d, screen_y=%d (rotation=%d)",
              raw_x, raw_y, *x, *y, rotation);
 
     return true;

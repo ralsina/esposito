@@ -6,6 +6,7 @@
 #include "text_mode.h"
 #include "ui.h"
 #include "os_core.h"
+#include "hardware.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,10 +20,10 @@ static char ascii_lower(char ch) {
 }
 
 static void reader_nav_search_forward(reader_state_t *state, const char *query, int *bold_pending, int *underline_pending);
-static void on_goto_confirm(ui_text_input_widget_t *widget, void *user_data);
-static void on_goto_cancel(ui_text_input_widget_t *widget, void *user_data);
-static void on_search_confirm(ui_text_input_widget_t *widget, void *user_data);
-static void on_search_cancel(ui_text_input_widget_t *widget, void *user_data);
+void on_goto_confirm(ui_text_input_widget_t *widget, void *user_data);
+void on_goto_cancel(ui_text_input_widget_t *widget, void *user_data);
+void on_search_confirm(ui_text_input_widget_t *widget, void *user_data);
+void on_search_cancel(ui_text_input_widget_t *widget, void *user_data);
 
 static int contains_substring_nocase(const char *text, const char *needle) {
     if (!needle || !needle[0]) {
@@ -180,7 +181,19 @@ void reader_nav_start_goto(reader_state_t *state) {
     state->mode = MODE_GOTO;
     state->goto_buf[0] = '\0';
 
-    // Create goto widget if it doesn't exist
+    // Check if keyboard is available
+    if (!keyboard_is_available()) {
+        // Use OSK for touch input
+        if (ui_osk_input_text("Go to Page:", state->goto_buf, sizeof(state->goto_buf), NULL, false)) {
+            // OSK was started successfully, will be handled in event loop
+        } else {
+            // Fallback to normal mode if OSK fails
+            state->mode = MODE_READING;
+        }
+        return;
+    }
+
+    // Create goto widget if it doesn't exist (physical keyboard available)
     if (!state->goto_widget) {
         int cols = text_mode_get_cols();
         int rows = text_mode_get_rows();
@@ -214,7 +227,7 @@ void reader_nav_handle_goto_key(reader_state_t *state, char key, int *bold_pendi
     // Callbacks handle mode switching and page navigation
 }
 
-static void on_goto_confirm(ui_text_input_widget_t *widget, void *user_data) {
+void on_goto_confirm(ui_text_input_widget_t *widget, void *user_data) {
     (void)widget;
     if (!user_data) {
         return;
@@ -230,7 +243,7 @@ static void on_goto_confirm(ui_text_input_widget_t *widget, void *user_data) {
     reader_nav_goto_page(state, (page > 1) ? page : 1, &bold_pending, &underline_pending);
 }
 
-static void on_goto_cancel(ui_text_input_widget_t *widget, void *user_data) {
+void on_goto_cancel(ui_text_input_widget_t *widget, void *user_data) {
     (void)widget;
     if (!user_data) {
         return;
@@ -244,7 +257,7 @@ static void on_goto_cancel(ui_text_input_widget_t *widget, void *user_data) {
     text_mode_flush();
 }
 
-static void on_search_confirm(ui_text_input_widget_t *widget, void *user_data) {
+void on_search_confirm(ui_text_input_widget_t *widget, void *user_data) {
     (void)widget;
     if (!user_data) {
         return;
@@ -256,7 +269,7 @@ static void on_search_confirm(ui_text_input_widget_t *widget, void *user_data) {
     reader_nav_search_forward(state, state->search_buf, &bold_pending, &underline_pending);
 }
 
-static void on_search_cancel(ui_text_input_widget_t *widget, void *user_data) {
+void on_search_cancel(ui_text_input_widget_t *widget, void *user_data) {
     (void)widget;
     if (!user_data) {
         return;
@@ -276,7 +289,19 @@ void reader_nav_start_search(reader_state_t *state) {
     // Clear previous search buffer
     state->search_buf[0] = '\0';
 
-    // Create search widget if it doesn't exist
+    // Check if keyboard is available
+    if (!keyboard_is_available()) {
+        // Use OSK for touch input
+        if (ui_osk_input_text("Search:", state->search_buf, sizeof(state->search_buf), NULL, false)) {
+            // OSK was started successfully, will be handled in event loop
+        } else {
+            // Fallback to normal mode if OSK fails
+            state->mode = MODE_READING;
+        }
+        return;
+    }
+
+    // Create search widget if it doesn't exist (physical keyboard available)
     if (!state->search_widget) {
         int cols = text_mode_get_cols();
         int rows = text_mode_get_rows();

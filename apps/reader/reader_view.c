@@ -197,21 +197,31 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
         int info_x = 1;
         text_mode_print_at_attr(info_x, bottom_row, page_info, TEXT_COLOR_CYAN, TEXT_ATTR_BORDER_TOP);
         
-        // Bottom row buttons - TOC and Back
-        int btn_width = 7;
-        int btn_gap = 1;
-        int total_btn_width = (btn_width * 2) + btn_gap;
-        
+        // Bottom row buttons - TOC, Find, Goto, Back
+        int btn_width = 5;
+        int btn_gap = 0;
+        int num_buttons = 4;
+        int total_btn_width = (btn_width * num_buttons) + (btn_gap * (num_buttons - 1));
+
+        // Position buttons from right to left
         int back_btn_x = cols - btn_width - 1;
-        int toc_btn_x = back_btn_x - btn_width - btn_gap;
-        
-        // Create/update reading mode header buttons at bottom
+        int goto_btn_x = back_btn_x - btn_width - btn_gap;
+        int find_btn_x = goto_btn_x - btn_width - btn_gap;
+        int toc_btn_x = find_btn_x - btn_width - btn_gap;
+
+        // Create/update reading mode buttons at bottom
         reader_state_t *mutable_state = (reader_state_t*)state;
         if (!mutable_state->btn_jump) {
             mutable_state->btn_jump = ui_button_create(toc_btn_x, bottom_row, btn_width, 1, "TOC");
             ui_button_set_callback(mutable_state->btn_jump, on_reading_toc_click, mutable_state);
 
-            mutable_state->btn_back = ui_button_create(back_btn_x, bottom_row, btn_width, 1, "<<<");
+            mutable_state->btn_find = ui_button_create(find_btn_x, bottom_row, btn_width, 1, "Find");
+            ui_button_set_callback(mutable_state->btn_find, on_reading_find_click, mutable_state);
+
+            mutable_state->btn_goto = ui_button_create(goto_btn_x, bottom_row, btn_width, 1, "Goto");
+            ui_button_set_callback(mutable_state->btn_goto, on_reading_goto_click, mutable_state);
+
+            mutable_state->btn_back = ui_button_create(back_btn_x, bottom_row, btn_width, 1, "Back");
             ui_button_set_callback(mutable_state->btn_back, on_reading_back_click, mutable_state);
         } else {
             // Update positions if screen size changed
@@ -219,13 +229,23 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
             mutable_state->btn_jump->y = bottom_row;
             mutable_state->btn_jump->width = btn_width;
 
+            mutable_state->btn_find->x = find_btn_x;
+            mutable_state->btn_find->y = bottom_row;
+            mutable_state->btn_find->width = btn_width;
+
+            mutable_state->btn_goto->x = goto_btn_x;
+            mutable_state->btn_goto->y = bottom_row;
+            mutable_state->btn_goto->width = btn_width;
+
             mutable_state->btn_back->x = back_btn_x;
             mutable_state->btn_back->y = bottom_row;
             mutable_state->btn_back->width = btn_width;
         }
 
-        // Draw header buttons at bottom
+        // Draw buttons at bottom
         ui_button_draw(state->btn_jump);
+        ui_button_draw(state->btn_find);
+        ui_button_draw(state->btn_goto);
         ui_button_draw(state->btn_back);
         
         // Draw content
@@ -246,12 +266,14 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
         text_mode_print_at_attr(1, 0, display_name, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
 
         // Calculate header button positions dynamically
-        int btn_width = 7;
-        int btn_gap = 1;
-        int total_btn_width = (btn_width * 2) + btn_gap;
+        int btn_width = 5;
+        int btn_gap = 0;
+        int num_buttons = 4;
 
         int back_btn_x = cols - btn_width - 1;
-        int toc_btn_x = back_btn_x - btn_width - btn_gap;
+        int goto_btn_x = back_btn_x - btn_width - btn_gap;
+        int find_btn_x = goto_btn_x - btn_width - btn_gap;
+        int toc_btn_x = find_btn_x - btn_width - btn_gap;
 
         int info_x = toc_btn_x - 1 - (int)strlen(page_info);
         if (info_x > 0) {
@@ -264,7 +286,13 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
             mutable_state->btn_jump = ui_button_create(toc_btn_x, 0, btn_width, 1, "TOC");
             ui_button_set_callback(mutable_state->btn_jump, on_reading_toc_click, mutable_state);
 
-            mutable_state->btn_back = ui_button_create(back_btn_x, 0, btn_width, 1, "<<<");
+            mutable_state->btn_find = ui_button_create(find_btn_x, 0, btn_width, 1, "Find");
+            ui_button_set_callback(mutable_state->btn_find, on_reading_find_click, mutable_state);
+
+            mutable_state->btn_goto = ui_button_create(goto_btn_x, 0, btn_width, 1, "Goto");
+            ui_button_set_callback(mutable_state->btn_goto, on_reading_goto_click, mutable_state);
+
+            mutable_state->btn_back = ui_button_create(back_btn_x, 0, btn_width, 1, "Back");
             ui_button_set_callback(mutable_state->btn_back, on_reading_back_click, mutable_state);
         } else {
             // Update positions if screen size changed
@@ -272,14 +300,23 @@ void reader_view_draw_reading_page(const reader_state_t *state, int *bold_pendin
             mutable_state->btn_jump->y = 0;
             mutable_state->btn_jump->width = btn_width;
 
+            mutable_state->btn_find->x = find_btn_x;
+            mutable_state->btn_find->y = 0;
+            mutable_state->btn_find->width = btn_width;
+
+            mutable_state->btn_goto->x = goto_btn_x;
+            mutable_state->btn_goto->y = 0;
+            mutable_state->btn_goto->width = btn_width;
+
             mutable_state->btn_back->x = back_btn_x;
             mutable_state->btn_back->y = 0;
             mutable_state->btn_back->width = btn_width;
-            mutable_state->btn_back->y = 0;
         }
 
         // Draw header buttons
         ui_button_draw(state->btn_jump);
+        ui_button_draw(state->btn_find);
+        ui_button_draw(state->btn_goto);
         ui_button_draw(state->btn_back);
 
         if (state->search_status[0]) {

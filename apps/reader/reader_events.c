@@ -86,6 +86,16 @@ void on_reading_back_click(ui_button_t *button, void *user_data) {
     exit_to_file_list(state);
 }
 
+void on_reading_find_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    reader_nav_start_search(state);
+}
+
+void on_reading_goto_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+    reader_nav_start_goto(state);
+}
+
 // TOC list widget callbacks
 void on_toc_list_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data) {
     (void)list;
@@ -238,6 +248,8 @@ static void handle_file_list_touch(reader_state_t *state, int x_col, int *bold_p
 static void handle_reading_touch(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending) {
     // Check buttons first - they will handle their own bounds checking
     if (state->btn_jump && ui_button_handle_touch(state->btn_jump, event)) return;
+    if (state->btn_find && ui_button_handle_touch(state->btn_find, event)) return;
+    if (state->btn_goto && ui_button_handle_touch(state->btn_goto, event)) return;
     if (state->btn_back && ui_button_handle_touch(state->btn_back, event)) return;
 
     // Page navigation touch zones
@@ -336,6 +348,36 @@ static char normalize_key_for_dispatch(const event_t *event) {
 }
 
 static void dispatch_keyboard(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending) {
+    // Check if OSK is active and handle its events first
+    if (ui_osk_is_active()) {
+        ui_osk_handle_event(NULL, (event_t*)event);
+
+        // Check if OSK just completed
+        if (!ui_osk_is_active()) {
+            ui_osk_result_t result = ui_osk_get_result();
+
+            if (result == UI_OSK_RESULT_CONFIRMED) {
+                // OSK completed successfully - handle the result based on current mode
+                if (state->mode == MODE_GOTO) {
+                    on_goto_confirm(NULL, state);
+                } else if (state->mode == MODE_SEARCH) {
+                    on_search_confirm(NULL, state);
+                }
+
+                // Ensure we return to reading mode after confirmation
+                state->mode = MODE_READING;
+                reader_view_draw_reading_page(state, bold_pending, underline_pending);
+                text_mode_flush();
+            } else {
+                // OSK was cancelled - return to reading mode
+                state->mode = MODE_READING;
+                reader_view_draw_reading_page(state, bold_pending, underline_pending);
+                text_mode_flush();
+            }
+        }
+        return;
+    }
+
     char key = normalize_key_for_dispatch(event);
 
     switch (state->mode) {
@@ -358,6 +400,36 @@ static void dispatch_keyboard(reader_state_t *state, const event_t *event, int *
 }
 
 static void dispatch_touch(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending, void (*launch_app_list)(void)) {
+    // Check if OSK is active and handle its touch events first
+    if (ui_osk_is_active()) {
+        ui_osk_handle_event(NULL, (event_t*)event);
+
+        // Check if OSK just completed
+        if (!ui_osk_is_active()) {
+            ui_osk_result_t result = ui_osk_get_result();
+
+            if (result == UI_OSK_RESULT_CONFIRMED) {
+                // OSK completed successfully - handle the result based on current mode
+                if (state->mode == MODE_GOTO) {
+                    on_goto_confirm(NULL, state);
+                } else if (state->mode == MODE_SEARCH) {
+                    on_search_confirm(NULL, state);
+                }
+
+                // Ensure we return to reading mode after confirmation
+                state->mode = MODE_READING;
+                reader_view_draw_reading_page(state, bold_pending, underline_pending);
+                text_mode_flush();
+            } else {
+                // OSK was cancelled - return to reading mode
+                state->mode = MODE_READING;
+                reader_view_draw_reading_page(state, bold_pending, underline_pending);
+                text_mode_flush();
+            }
+        }
+        return;
+    }
+
     if (state->mode == MODE_READING) {
         handle_reading_touch(state, event, bold_pending, underline_pending);
         return;

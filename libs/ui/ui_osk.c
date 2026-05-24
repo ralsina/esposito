@@ -560,12 +560,12 @@ static void create_keyboard_layout(osk_state_t *state) {
         update_button_label(state, i);
     }
 
-    os_log(TAG, "Total buttons created: %d", state->button_count);
+    // os_log(TAG, "Total buttons created: %d", state->button_count);
 
     // Draw all buttons to ensure they're visible
     for (int i = 0; i < state->button_count; i++) {
         if (state->buttons[i]) {
-            os_log(TAG, "Drawing button %d at x=%d, y=%d", i, state->buttons[i]->x, state->buttons[i]->y);
+            // os_log(TAG, "Drawing button %d at x=%d, y=%d", i, state->buttons[i]->x, state->buttons[i]->y);
             ui_button_draw(state->buttons[i]);
         }
     }

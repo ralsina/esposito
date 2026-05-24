@@ -73,6 +73,8 @@ typedef struct {
     ui_button_t *btn_down;
     ui_button_t *btn_exit;
     ui_button_t *btn_jump;
+    ui_button_t *btn_find;
+    ui_button_t *btn_goto;
     ui_button_t *btn_back;
 
     // List widgets
