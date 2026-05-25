@@ -79,3 +79,7 @@ shot_*.png
 # CAD backup files
 bbcase/*.FCBak
 bbcase/*.3mf
+
+site/.croupier
+site/.kvstore/
+site/output/
