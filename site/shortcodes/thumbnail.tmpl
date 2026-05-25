@@ -1,0 +1,14 @@
+{# Thumbnail shortcode - compatible with Nikola thumbnail directive
+  Usage: thumbnail /images/photo.jpg alt="Description" align="center"
+
+  Supported arguments:
+  - 0: image path (required)
+  - alt: alt text for image
+  - align: left, right, or center
+  - linktitle: tooltip for the link
+  - title: title attribute for img
+  - imgclass: CSS class for img tag
+#}
+<a href="{{ args[0] }}" class="image-reference"{% if args['linktitle'] %} title="{{ args['linktitle'] }}"{% endif %}>
+<img src="{{ args[0] | thumb_url }}"{% if args['alt'] %} alt="{{ args['alt'] }}"{% endif %}{% if args['title'] %} title="{{ args['title'] }}"{% endif %}{% if args['imgclass'] %} class="{{ args['imgclass'] }} align-{{ args['align'] }}"{% elif args['align'] %} class="align-{{ args['align'] }}"{% endif %}>
+</a>

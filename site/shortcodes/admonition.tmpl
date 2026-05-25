@@ -1,0 +1,14 @@
+{#- Admonition shortcode - create callout boxes for notes, warnings, etc.
+  Usage: admonition type="note" title="Custom Title"
+
+  Supported types: note, warning, tip, danger, info, success
+  Supported arguments:
+  - type (required) - Admonition type
+  - title (optional) - Custom title (defaults to type name with emoji)
+-#}
+{% if args['type'] and args['type'] != "" %} {% set type = args['type'] %} {% else %} {% set type = 'note' %} {% endif %} {% set title_map = {'note': '📝 Note', 'warning': '⚡ Warning', 'tip': '💡 Tip', 'danger': '🚨 Danger', 'info': '❔ Info', 'success': '✅ Success'} %} {% set display_title = title_map[type] %} {% if not display_title %} {% set display_title = type.capitalize %} {% endif %}<aside class="admonition admonition-{{type}}">
+<div class="admonition-title">{{display_title}}</div>
+<div class="admonition-content">
+{{inner}}
+</div>
+</aside>

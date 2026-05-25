@@ -1,0 +1,12 @@
+{#- Hero shortcode - create hero sections
+  Usage: hero section or hero div
+
+  Supported arguments:
+  - tag (optional, default: "section") - HTML tag to use
+  - id (optional) - CSS ID for the hero element
+-#}
+{% if args['tag'] %}{% set tag = args['tag'] %}{% elif args['0'] %}{% set tag = args['0'] %}{% else %}{% set tag = 'section' %}{% endif %}
+<{{tag}} class="hero"{% if args.id %} id="{{args.id}}"{% endif %}><div class="hero-content"><div class="hero-body">{{inner}}
+</div>
+</div>
+</{{tag}}>

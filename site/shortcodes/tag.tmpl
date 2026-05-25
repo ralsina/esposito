@@ -1,0 +1,11 @@
+{#- Tag shortcode - wrap content in any HTML tag
+  Usage: tag div or tag section class="my-class"
+
+  Supported arguments:
+  - tag (required as first arg) - HTML tag name
+  - class (optional) - CSS class
+  - id (optional) - CSS ID
+  - role (optional) - ARIA role
+-#}
+{%- if args['tag'] %}{% set tag = args['tag'] %}{% elif args['0'] %}{% set tag = args['0'] %}{% else %}{% set tag = 'div' %}{% endif -%}
+<{{tag}}{% if args.class %} class="{{args.class}}"{% endif %}{% if args.id %} id="{{args.id}}"{% endif %}{% if args.role %} role="{{args.role}}"{% endif %}>{{inner}}</{{tag}}>

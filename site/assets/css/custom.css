@@ -1,0 +1,116 @@
+/*You can add CSS for your site here.
+It loads after theme.css so you can override it.*/
+
+/* Hero section */
+.hero-section {
+    text-align: center;
+    padding: 4rem 0;
+    background-image:
+        linear-gradient(
+            rgba(from var(--b16-base00) r g b / 0.8),
+            rgba(from var(--b16-base00) r g b / 0.7),
+            rgba(from var(--b16-base0D) r g b / 0.3),
+            rgba(from var(--b16-base0D) r g b / 0.3)
+        ),
+        url("/esposito.jpg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    position: relative;
+    border-radius: 1em;
+    overflow: hidden;
+}
+
+.hero-section::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--base15-color);
+    opacity: 0.3;
+}
+
+.hero-section > * {
+    position: relative;
+    z-index: 1;
+}
+
+.hero-section h1 {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+}
+
+.hero-section p {
+    font-size: 1.25rem;
+    color: var(--pico-muted-color);
+    margin-bottom: 2rem;
+}
+
+.hero-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+/* Features section */
+.features-section {
+    padding: 3rem 0;
+}
+
+.features-section h2 {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+/* Card grid */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.card {
+    padding: 1.5rem;
+    border: 2px solid var(--b16-base0D);
+    border-radius: var(--pico-border-radius);
+    background: var(--pico-card-background-color);
+}
+
+.card h3 {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+    color: var(--b16-base0D);
+}
+
+.card p {
+    margin-bottom: 0;
+}
+
+/* CTA section */
+.cta-section {
+    text-align: center;
+    padding: 3rem 0;
+}
+
+.cta-section h2 {
+    margin-bottom: 1rem;
+}
+
+.cta-section p {
+    color: var(--pico-muted-color);
+    margin-bottom: 2rem;
+}
+
+.cta-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+div.warning {
+    background-color: var(--b16-base02);
+    border: 3px solid red;
+}

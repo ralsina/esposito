@@ -1,0 +1,98 @@
+# Configuration for Nicolino.
+
+# ============================================================================
+# TRANSLATABLE SETTINGS
+# ============================================================================
+# These fields can be overridden per language by creating a conf.LANG.yml file
+# For example: conf.es.yml with Spanish overrides for title, description, etc.
+# Only include the fields you want to override - others will use these defaults.
+
+# Site metadata
+title: "ESP-Osito"
+description: "A useful OS for the cheapest computer you can buy."
+url: "https://esposito.ralsina.me"
+footer: ""
+
+# Localization options
+date_output_format: "%Y-%m-%d %H:%M"
+locale: "en_US.UTF-8"
+
+# Taxonomies are ways to classify your content.
+# For example, by tags, or by author.
+taxonomies:
+  # Classify posts by tags
+  tags:
+    # A generic title for showing the tags
+    title: "🏷Tags"
+    # Title for a list of posts with a specific tag
+    term_title: "Posts tagged {{term.name}}"
+    # Where the files are located in content/ and on output/
+    location: "tags/"
+
+# ============================================================================
+# NON-TRANSLATABLE SETTINGS
+# ============================================================================
+
+# Color scheme from https://sixteen.ralsina.me/
+color_scheme: "default"
+
+# Font configuration
+# Fonts are loaded from Google Fonts automatically when source: google
+fonts:
+  - family: Quicksand
+    source: google
+    weights: [400, 600, 700]
+    role: sans-serif
+  - family: Sono
+    source: google
+    weights: [400]
+    role: monospace
+  - family: Comfortaa
+    source: google
+    weights: [400, 700]
+    role: display
+
+# Output options
+output: "output/"
+content: "content/"
+posts: "posts/"
+galleries: "galleries/"
+
+# Image sizes for output
+image_large: 1920
+image_thumb: 640
+
+# Default language
+language: "en"
+
+# What extensions you want associated with what pandoc format.
+# For more details: https://pandoc.org/MANUAL.html#option--from
+pandoc_formats:
+  .rst: rst
+  .txt: rst
+
+# How verbose should output be by default.
+# 0: fatal (same as -q flag)
+# 1: errors
+# 2: warnings
+# 3: info
+# 4: debug
+# 5: trace
+verbosity: 3
+
+# Templates for continuous import feature
+continuous_import_templates: "user_templates"
+
+# Features you want to enable are listed here
+features:
+  - assets
+  - posts
+  - pages
+  - pandoc
+  - taxonomies
+  - images
+  - galleries
+  - sitemap
+  - search
+  - folder_indexes
+  - base16

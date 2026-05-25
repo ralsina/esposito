@@ -1,0 +1,130 @@
+{# Gallery shortcode - embed gallery images from gallery.json as a carousel
+  Usage: gallery name="my-gallery" or gallery my-gallery
+
+  Supported arguments:
+  - name: Gallery folder name (required)
+  - css_class: CSS class for the container (default: "gallery-embed")
+#}
+{% set gallery_name = args['name'] %}
+{% if not gallery_name %}
+  {% set gallery_name = args['0'] %}
+{% endif %}
+{% if not gallery_name %}
+  {% set gallery_name = 'unknown' %}
+{% endif %}
+{% set gallery_class = 'gallery-embed' %}
+{% if args['css_class'] %}
+  {% set gallery_class = args['css_class'] %}
+{% endif %}
+{% set gallery_id = 'gallery-' ~ gallery_name ~ '-' ~ range(0, 100000) | random %}
+
+<!-- Swiper CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+
+<div class="{{ gallery_class }}" id="{{ gallery_id }}" data-gallery="/galleries/{{ gallery_name }}/gallery.json">
+  <noscript>
+    <p><a href="/galleries/{{ gallery_name }}/">View Gallery</a></p>
+  </noscript>
+</div>
+
+<script type="module">
+(async function() {
+  const container = document.getElementById('{{ gallery_id }}');
+  const url = container.dataset.gallery;
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.images || data.images.length === 0) {
+      container.innerHTML = '<p>No images in this gallery</p>';
+      return;
+    }
+
+    // Create swiper container
+    const swiperWrapper = document.createElement('div');
+    swiperWrapper.className = 'swiper gallery-swiper';
+
+    const swiperSlides = document.createElement('div');
+    swiperSlides.className = 'swiper-wrapper';
+
+    // Process images
+    for (const img of data.images) {
+      const slide = document.createElement('div');
+      slide.className = 'swiper-slide';
+
+      const link = document.createElement('a');
+      link.href = img.url;
+      link.setAttribute('data-pswp-width', '');
+      link.setAttribute('data-pswp-height', '');
+      link.className = 'gallery-slide-link';
+
+      const image = document.createElement('img');
+      image.src = img.thumb;
+      image.alt = img.filename;
+      image.loading = 'lazy';
+
+      link.appendChild(image);
+      slide.appendChild(link);
+      swiperSlides.appendChild(slide);
+    }
+
+    swiperWrapper.appendChild(swiperSlides);
+
+    // Add navigation buttons
+    const prevBtn = document.createElement('div');
+    prevBtn.className = 'swiper-button-prev';
+    const nextBtn = document.createElement('div');
+    nextBtn.className = 'swiper-button-next';
+
+    swiperWrapper.appendChild(prevBtn);
+    swiperWrapper.appendChild(nextBtn);
+    container.appendChild(swiperWrapper);
+
+    // Dynamically import Swiper
+    const SwiperModule = await import('https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.mjs');
+    const Swiper = SwiperModule.default;
+
+    const swiper = new Swiper(swiperWrapper, {
+      slidesPerView: 1,
+      spaceBetween: 10,
+      loop: true,
+      navigation: {
+        nextEl: nextBtn,
+        prevEl: prevBtn,
+      },
+      breakpoints: {
+       640: {
+        slidesPerView: 2,
+        spaceBetween: 15,
+      },
+      768: {
+        slidesPerView: 3,
+        spaceBetween: 20,
+      },
+      1024: {
+        slidesPerView: 4,
+        spaceBetween: 20,
+      },
+    },
+    });
+
+    // Dynamically import PhotoSwipe and initialize
+    const PhotoSwipeLightboxModule = await import('https://unpkg.com/photoswipe@5.4.4/dist/photoswipe-lightbox.esm.js');
+    const PhotoSwipeLightbox = PhotoSwipeLightboxModule.default || PhotoSwipeLightboxModule.PhotoSwipeLightbox;
+
+    const lightbox = new PhotoSwipeLightbox({
+      gallery: '#' + '{{ gallery_id }}',
+      children: 'a',
+      pswpModule: () => import('https://unpkg.com/photoswipe@5.4.4/dist/photoswipe.esm.js'),
+      bgOpacity: 0.9,
+      padding: { top: 50, bottom: 50, left: 50, right: 50 },
+    });
+    lightbox.init();
+
+  } catch (err) {
+    console.error('Gallery error:', err);
+    container.innerHTML = '<p>Error loading gallery. <a href="/galleries/{{ gallery_name }}/">View gallery page</a></p>';
+  }
+})();
+</script>

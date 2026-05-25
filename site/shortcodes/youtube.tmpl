@@ -1,0 +1,9 @@
+{# YouTube shortcode - embed YouTube videos
+  Usage: youtube id="dQw4w9WgXcQ" or youtube dQw4w9WgXcQ
+
+  Supported arguments:
+  - id: YouTube video ID (required)
+  - width: iframe width (default: 100%)
+  - height: iframe height (default: 315)
+#}
+<iframe width="{% if args['width'] %}{{ args['width'] }}{% else %}100%{% endif %}" height="{% if args['height'] %}{{ args['height'] }}{% else %}315{% endif %}" src="https://www.youtube.com/embed/{% if args['id'] %}{{ args['id'] }}{% else %}{{ args[0] }}{% endif %}" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
