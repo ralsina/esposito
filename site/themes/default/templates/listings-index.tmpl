@@ -1,0 +1,28 @@
+{#-
+  listings-index.tmpl - Code listings index template
+
+  NOTE: This template is deprecated. Use item_list.tmpl instead.
+
+  Renders a list of code files:
+  - Title
+  - Description
+  - Links to each listing
+
+  Variables:
+  - listings: Array of {title, link} tuples
+
+  Used by: (Deprecated) Listings feature - replaced by item_list.tmpl
+-#}
+<section class="listings-index">
+  <h1>Code Listings</h1>
+
+  <p>A collection of source code files with syntax highlighting:</p>
+
+  <ul class="listings-list">
+    {% for listing in listings %}
+    <li>
+      <a href="{{ listing.link }}">{{ listing.title }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>

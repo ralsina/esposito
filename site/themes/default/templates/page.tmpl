@@ -1,0 +1,166 @@
+{#-
+  page.tmpl - Main HTML page layout template
+
+  This is the base template for all pages in the site. It provides:
+  - Complete HTML document structure (DOCTYPE, html, head, body)
+  - Meta tags for SEO, favicons, canonical URLs
+  - CSS includes (Pico CSS, theme.css, custom.css, highlight.js)
+  - JavaScript includes (VenoBox, MiniSearch, hyperscript, highlight.js)
+  - Header with site title, description, and navigation
+  - Main content area where page-specific content is rendered
+  - Footer with site footer text
+
+  Used by: All features as the wrapping template for rendered content
+-#}
+<!DOCTYPE html>
+
+<html lang="en" data-theme="dark">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {% if noindex %}
+  <meta name="robots" content="noindex" />{% endif %}
+  <title>{{ site_title }}{% if title and title|length > 0 %}: {{ title }}{% endif %}</title>
+  <meta name="description" content="{{ site_description }}" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="canonical" href="{{ canonical_url }}" />
+  {% if main_feed %}
+  <link rel="alternate" type="application/rss+xml" href="{{ main_feed.link }}" title="{{ main_feed.title }}" />
+  {% else %}
+  <link rel="alternate" type="application/rss+xml" href="/rss.xml" title="RSS Feed" />
+  {% endif %}
+  {% if extra_feed %}
+  <link rel="alternate" type="application/rss+xml" href="{{ extra_feed.link }}" title="{{ extra_feed.title }}" />
+  {% endif %}
+  <!-- Pico CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css" />
+  <!-- PhotoSwipe -->
+  <link rel="stylesheet" href="https://unpkg.com/photoswipe@5.4.4/dist/photoswipe.css" />
+  <script src="https://unpkg.com/hyperscript.org@0.9.9"></script>
+  <script src="https://cdn.jsdelivr.net/npm/minisearch@6.1.0/dist/umd/index.min.js"></script>
+  {% if not no_highlightjs %}
+  <script src="https://unpkg.com/@highlightjs/cdn-assets@11.9.0/highlight.min.js"></script>
+  <script src="https://unpkg.com/@highlightjs/cdn-assets@11.9.0/languages/django.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlightjs-copy@1.0.3/dist/highlightjs-copy.min.css" />
+  <script src="https://unpkg.com/highlightjs-copy@1.0.3/dist/highlightjs-copy.min.js"></script>
+  {% endif %}
+  <!-- Theme styles -->
+  <link rel="stylesheet" href="/css/theme.css" />
+  <!-- Base16 color scheme (light/dark themes) -->
+  <link rel="stylesheet" href="/css/style.css" />
+  <!-- Custom style (loaded last for user overrides) -->
+  <link rel="stylesheet" href="/css/custom.css" />
+  {% if listings_css %}
+  <link rel="stylesheet" href="/css/listings.css" />
+  {% endif %}
+</head>
+
+<body>
+  <!-- Header -->
+  <header class="container">
+    <nav>
+      <ul>
+        <li>
+          <h1><a href="{{site_url}}">{{ site_title }}</a></h1>
+          <p>» {{ site_description }}</p>
+        </li>
+      </ul>
+      <ul>
+        <li>
+          <input type="search" id="search" class="search-input" placeholder="Search..." />
+        </li>
+        {% if language_links and language_links|length > 0 %}
+        <li>
+          <details style="margin: 0;">
+            <summary role="button" aria-haspopup="listbox" class="language-switcher">🌐</summary>
+            <ul>
+              {% for link in language_links %}
+              <li><a href="{{link.link}}">{{link.lang}} - {{link.title}}</a></li>
+              {% endfor %}
+            </ul>
+          </details>
+        </li>
+        {% endif %}
+        <li>
+          <button id="theme_toggle" aria-label="Toggle theme" class="primary">
+            <svg id="sun_icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none; vertical-align: middle;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            <svg id="moon_icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block; vertical-align: middle;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+          <script>
+            (function() {
+              const html = document.documentElement;
+              const toggle = document.getElementById('theme_toggle');
+              const sunIcon = document.getElementById('sun_icon');
+              const moonIcon = document.getElementById('moon_icon');
+
+              function setTheme() {
+                const isLight = localStorage.getItem('isLight') === 'true';
+                html.setAttribute('data-theme', isLight ? 'light' : 'dark');
+                if (isLight) {
+                  sunIcon.style.display = 'none';
+                  moonIcon.style.display = 'block';
+                } else {
+                  sunIcon.style.display = 'block';
+                  moonIcon.style.display = 'none';
+                }
+              }
+
+              setTheme();
+
+              toggle.addEventListener('click', function() {
+                const isLight = html.getAttribute('data-theme') === 'light';
+                localStorage.setItem('isLight', isLight ? 'false' : 'true');
+                setTheme();
+              });
+            })();
+          </script>
+        </li>
+        {% for item in site_nav_items %}
+        <li>{{item}}</li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </header>
+  <div id="search_results"></div>
+  <!-- /Header -->
+
+  <!-- Main -->
+  <main class="container">
+    {{ content }}
+  </main>
+  <!-- /Main -->
+
+  <!-- Footer -->
+  <footer class="container">
+    <small>{{ site_footer }}</small>
+  </footer>
+  <!-- /Footer -->
+
+  <!-- Theme switcher -->
+  <!-- <script src="/js/theme-switcher.js"></script> -->
+  <!-- PhotoSwipe -->
+  <script type="module">
+    import PhotoSwipeLightbox from 'https://unpkg.com/photoswipe@5.4.4/dist/photoswipe-lightbox.esm.js';
+    import PhotoSwipe from 'https://unpkg.com/photoswipe@5.4.4/dist/photoswipe.esm.js';
+
+    const lightbox = new PhotoSwipeLightbox({
+      gallery: '.gallery',
+      children: 'a',
+      pswpModule: PhotoSwipe,
+      bgOpacity: 0.9,
+      padding: { top: 50, bottom: 50, left: 50, right: 50 },
+    });
+    lightbox.init();
+  </script>
+  <script>
+    {% if not no_highlightjs %}
+    hljs.highlightAll();
+    hljs.addPlugin(new CopyButtonPlugin());
+    {% endif %}
+  </script>
+  <script src="/search.js"></script>
+</body>
+
+</html>

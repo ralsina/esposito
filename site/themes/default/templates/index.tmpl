@@ -1,0 +1,29 @@
+{#-
+  index.tmpl - Blog index/homepage template
+
+  Renders a list of blog posts with:
+  - Post title with link
+  - Post date
+  - Post summary
+  - Link to archive for older posts (if has_more is true)
+
+  Variables:
+  - posts: Array of post objects with link, title, date, summary
+  - has_more: Boolean indicating if there are more posts in the archive
+
+  Used by: Markdown.render_index for generating index pages
+-#}
+{% for post in posts %}
+<section>
+    <h2><a href="{{post.link}}">{{post.title}}</a></h2>
+    date: {{post.date}}
+    <hr>
+    {{post.summary}}
+</section>
+{% endfor %}
+
+{% if has_more %}
+<p class="older-posts-link">
+    📅 To see older posts, check the <a href="/archive/">archive</a>.
+</p>
+{% endif %}

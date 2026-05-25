@@ -1,0 +1,23 @@
+{#-
+  language_switcher.tmpl - Language switcher component
+
+  Displays links to alternate language versions of the current page.
+
+  Variables:
+  - language_links: Array of {lang: String, link: String, title: String}
+    Each item represents an alternate language version of the page
+
+  Used by: page.tmpl in the header navigation
+-#}
+{% if language_links and language_links|length > 0 %}
+<li>
+  <details>
+    <summary role="button" aria-haspopup="listbox">🌐 Language</summary>
+    <ul>
+      {% for link in language_links %}
+      <li><a href="{{link.link}}">{{link.lang}} - {{link.title}}</a></li>
+      {% endfor %}
+    </ul>
+  </details>
+</li>
+{% endif %}

@@ -1,0 +1,63 @@
+{#-
+  item_list.tmpl - Generic item list template
+
+  Renders a simple list of items with:
+  - Optional description paragraph
+  - Bulleted list of item links
+
+  Variables:
+  - title: List title (not rendered here, passed from caller)
+  - description: Optional description text
+  - items: Array of {link, title} tuples
+
+  Used by: Galleries index, Listings index, and other feature indexes
+-#}
+<section class="item-list-index">
+
+  {% if description %}
+  <p>{{ description }}</p>
+  {% endif %}
+
+  {% if items %}
+  <ul class="item-list">
+    {% for item in items %}
+    <li>
+      <a href="{{ item.link }}">{{ item.title }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No items found.</p>
+  {% endif %}
+</section>
+
+<style>
+.item-list-index {
+  margin: 2rem 0;
+}
+
+.item-list-index p {
+  margin-bottom: 1.5rem;
+  color: var(--b16-base04);
+}
+
+.item-list {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+}
+
+.item-list li {
+  margin: 0.5rem 0;
+}
+
+.item-list a {
+  text-decoration: none;
+  color: var(--b16-base0D);
+  font-size: 1.1em;
+}
+
+.item-list a:hover {
+  text-decoration: underline;
+}
+</style>

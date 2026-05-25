@@ -1,0 +1,45 @@
+{#-
+  title.tmpl - Page title with breadcrumbs and taxonomy links
+
+  Renders:
+  - Breadcrumb navigation (Home >> Section >> Subsection >> Page)
+    * Breadcrumbs collapse on hover to save space
+    * Last breadcrumb (current page) stays visible
+  - Fallback to simple title link if no breadcrumbs
+  - Taxonomy links (tags, categories, etc.) if present
+
+  Variables:
+  - breadcrumbs: Array of {name, link} tuples for navigation
+  - link: URL for the page title (used when no breadcrumbs)
+  - title: Page title text
+  - taxonomies: Hash of taxonomy terms (tags, categories, etc.)
+
+  Used by: post.tmpl, gallery.tmpl, folder_index feature, and manually in code
+-#}
+<h1 class="primary">
+  {% if breadcrumbs|length > 0 %}
+  <nav aria-label="breadcrumb" class="breadcrumb">
+    {% for item in breadcrumbs %}
+      {% if not loop.first %}<span class="breadcrumb-sep {% if loop.last %}breadcrumb-sep-last{% else %}breadcrumb-collapsed{% endif %}"> » </span>{% endif %}
+      <a href="{{ item.link }}" class="{% if not loop.last %}breadcrumb-collapsed{% endif %}">{{ item.name }}</a>
+    {% endfor %}
+  </nav>
+  {% else %}
+  <a href="{{link}}">{{title}}</a>
+  {% endif %}
+</h1>
+
+{% if taxonomies | length > 1 %}
+<nav>
+  <ul>
+    {% for k,v in taxonomies %}
+    <li>
+      {{k | link }} :
+      {% for term in v %}
+      {{term | link}}
+      {% endfor%}
+    </li>
+    {% endfor %}
+  </ul>
+</nav>
+{% endif %}

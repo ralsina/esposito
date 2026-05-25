@@ -1,0 +1,74 @@
+{#-
+  post.tmpl - Blog post/article content template
+
+  Renders a blog post with:
+  - Title with breadcrumbs (via title.tmpl include)
+  - Post metadata (date, updated date, external link)
+  - Taxonomy links (tags, categories)
+  - Table of contents (if present)
+  - Main post HTML content
+  - Related posts section (if present)
+
+  Variables:
+  - breadcrumbs, title, link: Passed to title.tmpl
+  - date: Post publication date
+  - metadata.updated: Last updated date (optional)
+  - metadata.link: External source link (optional)
+  - taxonomies: Post taxonomies (tags, categories, etc.)
+  - toc: Table of contents HTML (optional)
+  - html: Main post content HTML
+  - related_posts: Array of related post links (optional)
+
+  Used by: Markdown::File for rendering blog posts
+-#}
+{% if title and title|length > 0 %}
+{% include "templates/title.tmpl" %}
+{% endif %}
+
+{% if date %}
+<div class="post-meta">
+  <span class="post-date">Posted: {{date}}</span>
+  {% if metadata.updated and show_updated %}
+    <span class="post-updated">(Updated: {{metadata.updated}})</span>
+  {% endif %}
+  {% if metadata.link %}
+    <span class="post-external-link">
+      ⇒ <a href="{{metadata.link}}" target="_blank" rel="noopener">External Link</a>
+    </span>
+  {% endif %}
+  {% if taxonomies | length > 0 %}
+    {% for taxonomy, terms in taxonomies %}
+      {% if terms | length > 0 %}
+        <span class="post-taxonomies">
+          <a href="{{ taxonomy.link }}">{{ taxonomy.name }}</a>:
+          {% for term in terms %}
+            {{term | link}}{% if not loop.last %}, {% endif %}
+          {% endfor %}
+        </span>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+</div>
+{% endif %}
+
+{% if toc | length > 0 %}
+<details closed class="table-of-contents">
+  <summary class="contents-heading secondary" role="link">Contents</summary>
+  {{toc}}
+</details>
+{% endif %}
+
+{{html}}
+
+{% if related_posts and related_posts | length > 0 %}
+<section class="related-posts">
+  <h2>Related Posts</h2>
+  <ul>
+  {% for related in related_posts %}
+    <li>
+      <a href="{{ related.link }}">{{ related.title }}</a>
+    </li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}

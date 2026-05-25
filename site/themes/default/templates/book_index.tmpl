@@ -1,0 +1,58 @@
+{#- book_index.tmpl - Template for book landing/index page -#}
+{#- This template is wrapped by page.tmpl, so it only defines the content -#}
+
+<div class="book-layout">
+  <!-- Sidebar TOC -->
+  <aside class="book-sidebar">
+    <div class="book-sidebar-header">
+      <div class="book-title">
+        <a href="/books/{{ book.name }}/">{{ book.title }}</a>
+      </div>
+      <button class="book-sidebar-toggle" aria-label="Toggle sidebar" onclick="toggleBookSidebar()">
+        <span>«</span>
+      </button>
+    </div>
+    <nav class="book-toc">
+      {{ toc_html|safe }}
+    </nav>
+  </aside>
+
+  <!-- Main content -->
+  <main class="book-content">
+    <div class="book-index-content">
+      <h1>{{ book.title }}</h1>
+      {% if book.description %}
+      <p class="book-description">{{ book.description }}</p>
+      {% endif %}
+
+      <div class="book-full-toc-mobile">
+        <h2>Table of Contents</h2>
+        {{ toc_html|safe }}
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Navigation buttons -->
+<nav class="chapter-nav">
+  {% if first_chapter %}
+  <a href="{{ first_chapter.link }}" class="nav-next">
+    {{ first_chapter.title }} →
+  </a>
+  {% endif %}
+</nav>
+
+<script>
+function toggleBookSidebar() {
+  const sidebar = document.querySelector('.book-sidebar');
+  const toggle = document.querySelector('.book-sidebar-toggle span');
+
+  if (sidebar.classList.contains('collapsed')) {
+    sidebar.classList.remove('collapsed');
+    toggle.textContent = '«';
+  } else {
+    sidebar.classList.add('collapsed');
+    toggle.textContent = '»';
+  }
+}
+</script>

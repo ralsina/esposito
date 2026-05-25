@@ -1,0 +1,25 @@
+{#-
+  listing.tmpl - Source code listing template
+
+  Renders a syntax-highlighted code file with:
+  - Title
+  - Formatted code with syntax highlighting
+  - Collapsible raw source view
+
+  Variables:
+  - title: Listing title (filename)
+  - code: Syntax-highlighted HTML code
+  - raw_content: Escaped raw source code
+
+  Used by: Listings feature for individual code file pages
+-#}
+<section class="listing">
+  <div class="listing-code">
+    {{ code|safe }}
+  </div>
+
+  <details class="listing-raw">
+    <summary role="button">View Raw Source</summary>
+    <pre><code>{{ raw_content }}</code></pre>
+  </details>
+</section>

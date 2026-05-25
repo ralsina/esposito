@@ -1,0 +1,39 @@
+{#-
+  archive.tmpl - Blog archive template
+
+  Renders a chronological archive of posts organized by year/month:
+  - Collapsible years (current year expanded by default)
+  - Months within each year
+  - Post list within each month
+
+  Variables:
+  - years: Array of year objects with year, months array
+  - latest_year: The year number of the most recent year
+
+  Used by: Archive feature for /archive/index.html
+-#}
+<section class="archive">
+  <h1>Archive</h1>
+
+  {% for year in years %}
+  <details {% if year.year == latest_year %}open{% endif %}>
+    <summary role="button">{{ year.year }}</summary>
+
+    <div class="archive-months">
+      {% for month in year.months %}
+      <div class="archive-month">
+        <h3>{{ month.name }}</h3>
+        <ul>
+          {% for post in month.posts %}
+          <li>
+            <a href="{{ post.link }}">{{ post.title }}</a>
+            <small>{{ post.date }}</small>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endfor %}
+</section>

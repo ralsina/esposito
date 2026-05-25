@@ -1,0 +1,25 @@
+{#-
+  gallery.tmpl - Image gallery template
+
+  Renders an image gallery with:
+  - Title with breadcrumbs (via title.tmpl include)
+  - Gallery introduction HTML content
+  - Responsive grid of thumbnail images with PhotoSwipe lightbox
+
+  Variables:
+  - breadcrumbs, title, link: Passed to title.tmpl
+  - html: Gallery introduction/description HTML
+  - image_list: Array of image paths
+
+  Used by: Gallery class for rendering gallery pages
+-#}
+{% include "templates/title.tmpl" %}
+
+{{html}}
+<div class="pswp-gallery gallery">
+{% for image in image_list %}
+  <a href="{{image}}" data-pswp-width="" data-pswp-height="" target="_blank">
+    <img src="{{image | thumb_url}}" alt="" loading="lazy" />
+  </a>
+{% endfor %}
+</div>

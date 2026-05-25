@@ -1,0 +1,58 @@
+{#-
+  folder_index.tmpl - Folder index template (deprecated)
+
+  NOTE: This template is deprecated. Folder indexes now use
+  item_list.tmpl for consistent styling across the site.
+
+  Variables:
+  - title: Folder name
+  - posts: Array of posts in this folder
+
+  Used by: (Deprecated) Folder indexes - replaced by item_list.tmpl
+-#}
+{% include "templates/title.tmpl" %}
+
+<h2>{{ title }}</h2>
+
+<div class="folder-contents">
+  {% if posts and posts | length > 0 %}
+    <h3>Posts</h3>
+    <ul class="file-list posts-list">
+      {% for post in posts %}
+        <li>
+          <a href="{{ post.link }}">{{ post.title }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>This folder is empty.</p>
+  {% endif %}
+</div>
+
+<style>
+.file-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.file-list li {
+  margin: 0.5rem 0;
+}
+
+.file-list a {
+  text-decoration: none;
+  color: var(--b16-base0D);
+  font-size: 1.1em;
+}
+
+.file-list a:hover {
+  text-decoration: underline;
+}
+
+.folder-contents h3 {
+  margin-top: 1.5rem;
+  font-size: 1.2em;
+  color: var(--b16-base03);
+}
+</style>

@@ -1,0 +1,53 @@
+{#- book_chapter.tmpl - Template for rendering individual book chapters -#}
+{#- This template is wrapped by page.tmpl, so it only defines the content -#}
+
+<div class="book-layout">
+  <!-- Sidebar TOC -->
+  <aside class="book-sidebar collapsed">
+    <div class="book-sidebar-header">
+      <div class="book-title">
+        <a href="/books/{{ book.name }}/">{{ book.title }}</a>
+      </div>
+      <button class="book-sidebar-toggle" aria-label="Toggle sidebar" onclick="toggleBookSidebar()">
+        <span>»</span>
+      </button>
+    </div>
+    <nav class="book-toc">
+      {{ toc_html|safe }}
+    </nav>
+  </aside>
+
+  <!-- Main content -->
+  <main class="book-content">
+    {{ chapter.content|safe }}
+  </main>
+</div>
+
+<script>
+function toggleBookSidebar() {
+  const sidebar = document.querySelector('.book-sidebar');
+  const toggle = document.querySelector('.book-sidebar-toggle span');
+
+  if (sidebar.classList.contains('collapsed')) {
+    sidebar.classList.remove('collapsed');
+    toggle.textContent = '«';
+  } else {
+    sidebar.classList.add('collapsed');
+    toggle.textContent = '»';
+  }
+}
+</script>
+
+<!-- Navigation buttons -->
+<nav class="chapter-nav">
+  {% if navigation.prev and navigation.prev.title %}
+  <a href="{{ navigation.prev.link }}" class="nav-prev">
+    ← {{ navigation.prev.title }}
+  </a>
+  {% endif %}
+  {% if navigation.next and navigation.next.title %}
+  <a href="{{ navigation.next.link }}" class="nav-next">
+    {{ navigation.next.title }} →
+  </a>
+  {% endif %}
+</nav>
