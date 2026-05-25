@@ -28,6 +28,8 @@ typedef struct {
     long current_pos;        // Current file position
     token_t current_token;    // Most recently read token
     bool has_token;          // Whether current_token is valid
+    int pushback;            // Pushback character (-1 if none)
+    long next_page_start;    // Position where next page should start
 } tokenizer_t;
 
 // Initialize tokenizer

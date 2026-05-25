@@ -1,8 +1,7 @@
 #include "reader_toc.h"
 
 #include "app_config.h"
-#include "reader_md.h"
-#include "reader_page.h"
+#include "reader_renderer.h"
 #include "text_mode.h"
 
 #include <stdio.h>
@@ -135,7 +134,9 @@ static void strip_markers(const char *src, char *dst, size_t dst_size) {
             src += 2;
             continue;
         }
-        if ((unsigned char)*src == (unsigned char)MD_FORMAT_TOGGLE) {
+        if ((unsigned char)*src == (unsigned char)MD_FORMAT_TOGGLE ||
+            (unsigned char)*src == (unsigned char)MD_FORMAT_BOLD ||
+            (unsigned char)*src == (unsigned char)MD_FORMAT_UNDERLINE) {
             src++;
             continue;
         }
@@ -167,7 +168,6 @@ static void scan_and_build(reader_state_t *state) {
 
     draw_scan_progress(state->current_file, 0, total_size, 1, 0, 1);
 
-    md_clear_remainder();
     fseek(state->file, 0, SEEK_SET);
 
     int screen_width = state->screen_width > 0 ? state->screen_width : 36;
@@ -179,7 +179,6 @@ static void scan_and_build(reader_state_t *state) {
         // Keep reader usable even if TOC scan cannot allocate scratch memory.
         if (scan_lines) free(scan_lines);
         if (scan_levels) free(scan_levels);
-        md_clear_remainder();
         fseek(state->file, saved_pos, SEEK_SET);
         return;
     }
@@ -188,8 +187,12 @@ static void scan_and_build(reader_state_t *state) {
 
     while (state->toc_count < MAX_TOC_ENTRIES) {
         uint32_t page_start = (uint32_t)ftell(state->file);
-        int count = md_scan_page_with_levels(state->file, scan_lines, scan_levels, content_rows, screen_width);
-        if (count == 0) break;
+
+        page_renderer_t renderer;
+        renderer_init(&renderer, state->file, scan_lines, scan_levels, content_rows, screen_width);
+        renderer.tokenizer.current_pos = page_start;
+        if (!renderer_process_page(&renderer)) break;
+        int count = renderer.line_count;
 
         // Detect headings across the full page, not only at top.
         int in_heading_block = 0;
@@ -227,16 +230,20 @@ static void scan_and_build(reader_state_t *state) {
         }
         draw_scan_progress(state->current_file, scanned, total_size, page, state->toc_count, 0);
 
+        // Advance to next page
+        long next_pos = renderer_get_position(&renderer);
+        if (next_pos <= page_start) break;
+        fseek(state->file, next_pos, SEEK_SET);
+
         page++;
     }
 
     state->total_pages = page - 1;
     draw_scan_progress(state->current_file, total_size, total_size, state->total_pages, state->toc_count, 1);
 
-    // Restore file position and md state
+    // Restore file position
     free(scan_levels);
     free(scan_lines);
-    md_clear_remainder();
     fseek(state->file, saved_pos, SEEK_SET);
 }
 

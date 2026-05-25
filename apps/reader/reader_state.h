@@ -1,8 +1,7 @@
 #ifndef READER_STATE_H
 #define READER_STATE_H
 
-#include "reader_page.h"
-#include "reader_md.h"
+#include "reader_renderer.h"
 #include "ui.h"
 #include <stdio.h>
 

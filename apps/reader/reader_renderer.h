@@ -2,7 +2,7 @@
 #define READER_RENDERER_H
 
 #include "reader_token.h"
-#include "reader_md.h"
+#include "reader_types.h"
 #include <stdio.h>
 #include <stdbool.h>
 
@@ -26,6 +26,8 @@ typedef struct {
 } page_cache_entry_t;
 
 // Page cache
+#define PAGE_CACHE_ENTRIES 16
+
 typedef struct {
     page_cache_entry_t entries[16];
     int count;
@@ -44,6 +46,7 @@ typedef struct {
     int line_count;
     bool in_paragraph;          // Currently building a paragraph
     bool page_full;             // Page has been filled
+    bool needs_blank_line;      // Paragraph break pending, skip next blank line
 } page_renderer_t;
 
 // Initialize renderer

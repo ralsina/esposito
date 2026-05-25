@@ -1,7 +1,6 @@
 #include "reader_view.h"
 
 #include "reader_events.h"
-#include "reader_md.h"
 #include "text_mode.h"
 #include "ui.h"
 #include "hardware.h"
@@ -86,10 +85,24 @@ static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t b
     }
 
     while (*text) {
-        if (text[0] == '*' && text[1] == '*') {
-            attr = (attr & TEXT_ATTR_BOLD) ? base_attr : (base_attr | TEXT_ATTR_BOLD);
-            text += 2;
-            bold_active = (attr & TEXT_ATTR_BOLD) ? 1 : 0;
+        if (*text == MD_FORMAT_UNDERLINE) {
+            if (attr & TEXT_ATTR_UNDERLINE) {
+                attr &= ~TEXT_ATTR_UNDERLINE;
+            } else {
+                attr |= TEXT_ATTR_UNDERLINE;
+            }
+            text++;
+            continue;
+        }
+        if (*text == MD_FORMAT_BOLD) {
+            if (attr & TEXT_ATTR_BOLD) {
+                attr &= ~TEXT_ATTR_BOLD;
+                bold_active = 0;
+            } else {
+                attr |= TEXT_ATTR_BOLD;
+                bold_active = 1;
+            }
+            text++;
             continue;
         }
         if (*text == MD_FORMAT_TOGGLE) {

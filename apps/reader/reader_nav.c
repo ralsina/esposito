@@ -1,7 +1,6 @@
 #include "reader_nav.h"
 
 #include "reader_core.h"
-#include "reader_md.h"
 #include "reader_view.h"
 #include "text_mode.h"
 #include "ui.h"
@@ -54,33 +53,53 @@ static int page_contains_query(const reader_state_t *state, const char *query) {
     return 0;
 }
 
+// Scan one page from current file position using the token renderer.
+// Returns number of content lines rendered, and sets next_pos_out to
+// the file offset where the next page starts.
+static int scan_one_page(FILE *file, rendered_line_t *lines, int max_lines, int screen_width, long *next_pos_out) {
+    page_renderer_t renderer;
+    renderer_init(&renderer, file, lines, NULL, max_lines, screen_width);
+    renderer.tokenizer.current_pos = ftell(file);
+    if (!renderer_process_page(&renderer)) {
+        return 0;
+    }
+    if (next_pos_out) {
+        *next_pos_out = renderer_get_position(&renderer);
+    }
+    return renderer.line_count;
+}
+
 static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pending, int *underline_pending) {
     if (target < 1) {
         return;
     }
 
-    md_clear_remainder();
     fseek(state->file, 0, SEEK_SET);
 
     uint32_t page_starts[PAGE_CACHE_ENTRIES];
     int store_count = 0;
-    int store_pos = 0;
 
     int last_page = 0;
-    int page = 1;
+    int page;
     for (page = 1; page < target; page++) {
-        uint32_t start = ftell(state->file);
-        int line_count = md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
+        long start = ftell(state->file);
+        long next_pos;
+        int line_count = scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &next_pos);
         if (line_count == 0) {
             break;
         }
 
         last_page = page;
-        page_starts[store_pos] = start;
-        store_pos = (store_pos + 1) % PAGE_CACHE_ENTRIES;
         if (store_count < PAGE_CACHE_ENTRIES) {
-            store_count++;
+            page_starts[store_count++] = (uint32_t)start;
+        } else {
+            // Buffer full — shift left (drop oldest), append newest
+            memmove(page_starts, page_starts + 1, (PAGE_CACHE_ENTRIES - 1) * sizeof(uint32_t));
+            page_starts[PAGE_CACHE_ENTRIES - 1] = (uint32_t)start;
         }
+
+        if (next_pos <= start) break;
+        fseek(state->file, next_pos, SEEK_SET);
     }
 
     uint32_t offset = 0;
@@ -91,52 +110,51 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
         actual_page = 1;
         fseek(state->file, 0, SEEK_SET);
     } else if (page < target) {
-        int idx = (store_pos - 1 + PAGE_CACHE_ENTRIES) % PAGE_CACHE_ENTRIES;
-        offset = page_starts[idx];
+        offset = page_starts[store_count > 0 ? store_count - 1 : 0];
         actual_page = last_page;
         fseek(state->file, offset, SEEK_SET);
     } else {
         long probe_pos = ftell(state->file);
-        md_clear_remainder();
-        int probe_count = md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
+        long next_pos;
+        int probe_count = scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &next_pos);
         if (probe_count == 0) {
-            int idx = (store_pos - 1 + PAGE_CACHE_ENTRIES) % PAGE_CACHE_ENTRIES;
-            offset = page_starts[idx];
+            offset = page_starts[store_count > 0 ? store_count - 1 : 0];
             actual_page = last_page;
             fseek(state->file, offset, SEEK_SET);
         } else {
             offset = (uint32_t)probe_pos;
             actual_page = target;
             fseek(state->file, probe_pos, SEEK_SET);
-
-            page_starts[store_pos] = offset;
-            store_pos = (store_pos + 1) % PAGE_CACHE_ENTRIES;
             if (store_count < PAGE_CACHE_ENTRIES) {
-                store_count++;
+                page_starts[store_count++] = offset;
+            } else {
+                // Buffer full — shift left (drop oldest), add target at end
+                memmove(page_starts, page_starts + 1, (PAGE_CACHE_ENTRIES - 1) * sizeof(uint32_t));
+                page_starts[PAGE_CACHE_ENTRIES - 1] = offset;
             }
         }
     }
 
     page_cache_init(&state->page_cache);
-    if (store_count > 0) {
-        state->page_cache.count = store_count;
-        state->page_cache.current = store_count - 1;
-        for (int index = 0; index < store_count; index++) {
-            int src = (store_pos - store_count + index + PAGE_CACHE_ENTRIES) % PAGE_CACHE_ENTRIES;
-            state->page_cache.entries[index].file_offset = page_starts[src];
+    int cache_entries = store_count > PAGE_CACHE_ENTRIES ? PAGE_CACHE_ENTRIES : store_count;
+    if (cache_entries > 0) {
+        state->page_cache.count = cache_entries;
+        state->page_cache.current = cache_entries - 1;
+        for (int index = 0; index < cache_entries; index++) {
+            state->page_cache.entries[index].file_pos = page_starts[index];
             state->page_cache.entries[index].screen_width = state->screen_width;
             state->page_cache.entries[index].content_rows = state->content_rows;
-            // Clear parser state for cached pages (we don't have the state)
-            memset(&state->page_cache.entries[index].parser_state, 0, sizeof(md_parser_state_t));
+            state->page_cache.entries[index].state = RENDER_STATE_DEFAULT;
         }
     } else {
-        page_cache_set_start(&state->page_cache, offset);
+        state->page_cache.entries[0].file_pos = offset;
+        state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
+        state->page_cache.count = 1;
+        state->page_cache.current = 0;
         state->page_cache.entries[0].screen_width = state->screen_width;
         state->page_cache.entries[0].content_rows = state->content_rows;
-        page_cache_set_parser_state(&state->page_cache, 0);
     }
 
-    md_clear_remainder();
     state->page_number = actual_page;
     reader_load_current_page(state, bold_pending, underline_pending);
     reader_view_draw_reading_page(state, bold_pending, underline_pending);
@@ -151,8 +169,10 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
         uint32_t current_offset = ftell(state->file);
         printf("NAV_NEXT: Cache invalid, rebuilding from offset %u\n", current_offset);
         page_cache_init(&state->page_cache);
-        page_cache_set_start(&state->page_cache, current_offset);
-        page_cache_set_parser_state(&state->page_cache, 0);
+        state->page_cache.entries[0].file_pos = current_offset;
+        state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
+        state->page_cache.count = 1;
+        state->page_cache.current = 0;
         state->page_cache.entries[0].screen_width = state->screen_width;
         state->page_cache.entries[0].content_rows = state->content_rows;
     }
@@ -161,24 +181,16 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
         printf("NAV_NEXT: Using cached page %d\n", state->page_cache.current + 1);
         page_cache_next(&state->page_cache);
     } else {
-        // Cache the current file position - this is where the next page starts
-        // No adjustment needed - the parser will continue reading from this position
-        long current_pos = ftell(state->file);
-        printf("NAV_NEXT: Current file pos = %ld (next page starts here)\n", current_pos);
-
-        page_cache_add_next(&state->page_cache, (uint32_t)current_pos);
+        // No cached next page. Render the current page to compute the next
+        // page position (reader_load_current_page with the ring buffer fix
+        // will store it properly).
+        printf("NAV_NEXT: No cached next page, computing by rendering current page\n");
+        reader_load_current_page(state, bold_pending, underline_pending);
         page_cache_next(&state->page_cache);
-
-        // Save parser state for the NEW current page (after moving forward)
-        int new_index = state->page_cache.current;
-        page_cache_set_parser_state(&state->page_cache, new_index);
-        state->page_cache.entries[new_index].screen_width = state->screen_width;
-        state->page_cache.entries[new_index].content_rows = state->content_rows;
-        printf("NAV_NEXT: Cached new page at offset %u, index %d\n", (uint32_t)current_pos, new_index);
     }
 
     state->page_number++;
-    printf("NAV_NEXT: Loading page %d from offset %u\n", state->page_number, page_cache_current_offset(&state->page_cache));
+    printf("NAV_NEXT: Loading page %d from offset %ld\n", state->page_number, state->page_cache.entries[state->page_cache.current].file_pos);
     reader_load_current_page(state, bold_pending, underline_pending);
     reader_view_draw_reading_page(state, bold_pending, underline_pending);
     // Save progress after page change
@@ -375,19 +387,23 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
         return;
     }
 
-    uint32_t start_offset = page_cache_current_offset(&state->page_cache);
+    uint32_t start_offset = state->page_cache.entries[state->page_cache.current].file_pos;
     int start_page = state->page_number;
 
-    md_clear_remainder();
     // Start from the NEXT page to avoid finding the same result again
     fseek(state->file, start_offset, SEEK_SET);
     // Skip the current page by advancing past it
-    md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
+    long skip_next;
+    scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &skip_next);
+    if (skip_next > 0) {
+        fseek(state->file, skip_next, SEEK_SET);
+    }
 
     int page = start_page + 1;  // Start from next page
     while (1) {
         uint32_t page_offset = (uint32_t)ftell(state->file);
-        int line_count = md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
+        long next_pos;
+        int line_count = scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &next_pos);
         if (line_count == 0) {
             break;
         }
@@ -395,22 +411,24 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
         state->line_count = line_count;
         if (page_contains_query(state, query)) {
             page_cache_init(&state->page_cache);
-            page_cache_set_start(&state->page_cache, page_offset);
+            state->page_cache.entries[0].file_pos = page_offset;
+            state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
+            state->page_cache.count = 1;
+            state->page_cache.current = 0;
             state->page_cache.entries[0].screen_width = state->screen_width;
             state->page_cache.entries[0].content_rows = state->content_rows;
-            page_cache_set_parser_state(&state->page_cache, 0);
             state->page_number = page;
-            md_clear_remainder();
             reader_load_current_page(state, bold_pending, underline_pending);
             snprintf(state->search_status, sizeof(state->search_status), "Found \"%s\" on page %d", query, page);
             reader_view_draw_reading_page(state, bold_pending, underline_pending);
             return;
         }
 
+        if (next_pos <= page_offset) break;
+        fseek(state->file, next_pos, SEEK_SET);
         page++;
     }
 
-    md_clear_remainder();
     fseek(state->file, start_offset, SEEK_SET);
     state->page_number = start_page;
     reader_load_current_page(state, bold_pending, underline_pending);

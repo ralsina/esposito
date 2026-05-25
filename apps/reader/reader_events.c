@@ -2,7 +2,6 @@
 
 #include "app_config.h"
 #include "reader_core.h"
-#include "reader_md.h"
 #include "reader_nav.h"
 #include "reader_toc.h"
 #include "reader_view.h"
@@ -139,7 +138,6 @@ void on_file_list_item_selected(ui_list_widget_t *list, int item_index, void *us
 }
 
 int reader_events_open_book(reader_state_t *state, const char *path, int *bold_pending, int *underline_pending) {
-    md_clear_remainder();
     *bold_pending = 0;
     *underline_pending = 0;
     return reader_open_file(state, path);
@@ -161,8 +159,10 @@ void reader_events_enter_reading_mode(reader_state_t *state, int *bold_pending, 
     if (state->page_cache.count == 0) {
         uint32_t current_offset = ftell(state->file);
         page_cache_init(&state->page_cache);
-        page_cache_set_start(&state->page_cache, current_offset);
-        page_cache_set_parser_state(&state->page_cache, 0);
+        state->page_cache.entries[0].file_pos = current_offset;
+        state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
+        state->page_cache.count = 1;
+        state->page_cache.current = 0;
         state->page_cache.entries[0].screen_width = state->screen_width;
         state->page_cache.entries[0].content_rows = state->content_rows;
     }
@@ -305,13 +305,16 @@ static void toc_jump_to_selected(reader_state_t *state, int *bold_pending, int *
 
     const toc_entry_t *entry = &state->toc[state->toc_selected];
     state->mode = MODE_READING;
-    md_clear_remainder();
     fseek(state->file, entry->file_offset, SEEK_SET);
     page_cache_init(&state->page_cache);
-    page_cache_set_start(&state->page_cache, entry->file_offset);
+    state->page_cache.entries[0].file_pos = entry->file_offset;
+    state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
+    state->page_cache.count = 1;
+    state->page_cache.current = 0;
     state->page_number = entry->page_number;
     reader_load_current_page(state, bold_pending, underline_pending);
     reader_view_draw_reading_page(state, bold_pending, underline_pending);
+    reader_save_current_book_progress(state);
     text_mode_flush();
 }
 

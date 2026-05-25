@@ -1,7 +1,6 @@
 #include "reader_core.h"
 
 #include "app_config.h"
-#include "reader_md.h"
 #include "reader_toc.h"
 
 #include <dirent.h>
@@ -46,7 +45,7 @@ void reader_save_current_book_progress(reader_state_t *state) {
     reader_build_book_key(offset_key, sizeof(offset_key), KEY_BOOK_OFFSET_PREFIX, state->current_file);
     reader_build_book_key(page_key, sizeof(page_key), KEY_BOOK_PAGE_PREFIX, state->current_file);
 
-    config_set_int(offset_key, (int)page_cache_current_offset(&state->page_cache));
+    config_set_int(offset_key, (int)state->page_cache.entries[state->page_cache.current].file_pos);
     config_set_int(page_key, state->page_number);
     config_set_string(KEY_LAST_FILE, state->current_file);
 }
@@ -149,10 +148,12 @@ int reader_open_file(reader_state_t *state, const char *path) {
     strncpy(state->current_file, path, MAX_PATH - 1);
     state->current_file[MAX_PATH - 1] = '\0';
     page_cache_init(&state->page_cache);
-    page_cache_set_start(&state->page_cache, 0);
-    page_cache_set_parser_state(&state->page_cache, 0);
+    state->page_cache.entries[0].file_pos = 0;
+    state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
     state->page_cache.entries[0].screen_width = 0;  // Will be set when entering reading mode
     state->page_cache.entries[0].content_rows = 0;
+    state->page_cache.count = 1;
+    state->page_cache.current = 0;
     state->page_number = 1;
 
     char offset_key[320];
@@ -164,8 +165,8 @@ int reader_open_file(reader_state_t *state, const char *path) {
     int saved_page = config_get_int(page_key, 0);
 
     if (saved_offset > 0) {
-        page_cache_set_start(&state->page_cache, (uint32_t)saved_offset);
-        page_cache_set_parser_state(&state->page_cache, 0);
+        state->page_cache.entries[0].file_pos = (uint32_t)saved_offset;
+        state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
         state->page_cache.entries[0].screen_width = 0;  // Will be set when entering reading mode
         state->page_cache.entries[0].content_rows = 0;
     }
@@ -190,27 +191,80 @@ int reader_load_current_page(reader_state_t *state, int *bold_pending, int *unde
         *underline_pending = 0;
     }
 
-    uint32_t offset = page_cache_current_offset(&state->page_cache);
+    uint32_t offset = state->page_cache.entries[state->page_cache.current].file_pos;
     int cache_index = state->page_cache.current;
 
     printf("LOAD_PAGE: Page %d, seeking to offset %u (cache index %d)\n", state->page_number, offset, cache_index);
 
-    // Restore parser state from cache if available
-    md_parser_state_t *cached_state = page_cache_get_parser_state(&state->page_cache, cache_index);
-    if (cached_state && cached_state->state != MD_STATE_DEFAULT) {
-        printf("LOAD_PAGE: Continuing in state %d\n", cached_state->state);
-        // Continue processing the element from the file position
-        md_set_parser_state(cached_state);
-        fseek(state->file, offset, SEEK_SET);
+    // Use the new renderer-based page loading
+    page_renderer_t renderer;
+    render_state_t cached_state = RENDER_STATE_DEFAULT;
+    uint8_t heading_levels[MAX_RENDERED_LINES];  // Temporary array for heading levels
+
+    if (cache_index >= 0 && cache_index < state->page_cache.count) {
+        cached_state = state->page_cache.entries[cache_index].state;
+        printf("LOAD_PAGE: Continuing in state %d\n", cached_state);
     } else {
         printf("LOAD_PAGE: Starting fresh\n");
-        // Start fresh - no element continuation
-        md_clear_remainder();
-        fseek(state->file, offset, SEEK_SET);
     }
 
+    fseek(state->file, offset, SEEK_SET);
+    renderer_init(&renderer, state->file, state->lines, heading_levels, state->content_rows, state->screen_width);
+    renderer.state = cached_state;
+    renderer.tokenizer.current_pos = offset;
+
     printf("LOAD_PAGE: File position after seek: %ld\n", ftell(state->file));
-    state->line_count = md_scan_page(state->file, state->lines, state->content_rows, state->screen_width);
-    printf("LOAD_PAGE: Got %d lines, file position now: %ld\n", state->line_count, ftell(state->file));
+    renderer_process_page(&renderer);
+    state->line_count = renderer.line_count;
+
+    // Use the saved next page position from the renderer, not ftell()
+    long actual_position = renderer_get_position(&renderer);
+    printf("LOAD_PAGE: Got %d lines, renderer says next page starts at: %ld (ftell says: %ld)\n",
+           state->line_count, actual_position, ftell(state->file));
+
+    // Sanity check: position should never be less than the starting position
+    long start_position = state->page_cache.entries[state->page_cache.current].file_pos;
+    if (actual_position < start_position) {
+        printf("LOAD_PAGE: ERROR! Position went backwards from %ld to %ld\n",
+               start_position, actual_position);
+        actual_position = start_position; // Don't go backwards
+    }
+
+    // Fix current cache entry dimensions (may be stale from book open)
+    state->page_cache.entries[state->page_cache.current].screen_width = state->screen_width;
+    state->page_cache.entries[state->page_cache.current].content_rows = state->content_rows;
+
+    // Update the NEXT cache entry with the correct position (for forward navigation)
+    if (state->page_cache.current + 1 < PAGE_CACHE_ENTRIES) {
+        // Normal case: store at the next slot
+        state->page_cache.entries[state->page_cache.current + 1].file_pos = actual_position;
+        state->page_cache.entries[state->page_cache.current + 1].state = RENDER_STATE_DEFAULT;
+        state->page_cache.entries[state->page_cache.current + 1].screen_width = state->screen_width;
+        state->page_cache.entries[state->page_cache.current + 1].content_rows = state->content_rows;
+        if (state->page_cache.current + 1 >= state->page_cache.count) {
+            state->page_cache.count = state->page_cache.current + 2;
+        }
+        printf("LOAD_PAGE: Set NEXT cache entry %d to position %ld\n",
+               state->page_cache.current + 1, actual_position);
+    } else {
+        // Ring buffer full: shift entries[1..15] → entries[0..14]
+        // to make room for the next page position at entries[15]
+        for (int i = 0; i < PAGE_CACHE_ENTRIES - 1; i++) {
+            state->page_cache.entries[i] = state->page_cache.entries[i + 1];
+        }
+        state->page_cache.entries[PAGE_CACHE_ENTRIES - 1].file_pos = actual_position;
+        state->page_cache.entries[PAGE_CACHE_ENTRIES - 1].state = RENDER_STATE_DEFAULT;
+        state->page_cache.entries[PAGE_CACHE_ENTRIES - 1].screen_width = state->screen_width;
+        state->page_cache.entries[PAGE_CACHE_ENTRIES - 1].content_rows = state->content_rows;
+        // Adjust current to keep pointing at the same rendered page
+        // (it shifted one position left)
+        state->page_cache.current--;
+        if (state->page_cache.count < PAGE_CACHE_ENTRIES) {
+            state->page_cache.count = PAGE_CACHE_ENTRIES;
+        }
+        printf("LOAD_PAGE: Ring buffer shifted, next page at %ld, current now %d\n",
+               actual_position, state->page_cache.current);
+    }
+
     return state->line_count;
 }
