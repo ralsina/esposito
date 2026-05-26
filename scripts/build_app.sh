@@ -179,16 +179,6 @@ $COMPILER \
     "${APP_SOURCES[@]}" "${LIB_SOURCES[@]}" "${EXTRA_OBJS[@]}" \
     -lgcc
 
-# Strip non-essential sections (debug, xtensa property tables)
-${TOOLCHAIN_PREFIX}-objcopy \
-    --strip-debug \
-    --remove-section=.xt.prop \
-    --remove-section=.rela.xt.prop \
-    --remove-section=.xt.lit \
-    --remove-section=.rela.xt.lit \
-    --remove-section=.xtensa.info \
-    "$OUTPUT_DIR/${APP_NAME}.elf" 2>/dev/null || true
-
 echo "  Done: $OUTPUT_DIR/${APP_NAME}.elf"
 echo ""
 echo "To use, copy to SD card:"
