@@ -83,3 +83,6 @@ bbcase/*.3mf
 site/.croupier
 site/.kvstore/
 site/output/
+site/assets/books
+.antigravitycli/
+F2.md

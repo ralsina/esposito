@@ -23,6 +23,7 @@ void on_reading_toc_click(ui_button_t *button, void *user_data);
 void on_reading_back_click(ui_button_t *button, void *user_data);
 void on_reading_find_click(ui_button_t *button, void *user_data);
 void on_reading_goto_click(ui_button_t *button, void *user_data);
+void on_cancel_click(ui_button_t *button, void *user_data);
 
 // List widget callbacks
 void on_toc_list_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data);

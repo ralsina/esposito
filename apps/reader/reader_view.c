@@ -496,16 +496,82 @@ void reader_view_update_toc_selection(const reader_state_t *state, int previous_
     ui_list_draw(state->toc_list);
 }
 
-void reader_view_draw_receiving(const reader_state_t *state) {
-    ui_clear();
-    ui_window(2, 2, 60, 10, "Receiving File");
-
+void reader_view_draw_receiving(reader_state_t *state) {
     int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+
+    ui_clear();
+
+    // Free existing cancel button before redrawing
+    if (state->btn_cancel) {
+        free(state->btn_cancel);
+        state->btn_cancel = NULL;
+    }
+
+    int win_w = cols - 4;
+    if (win_w < 20) win_w = 20;
+    if (win_w > 60) win_w = 60;
+    int win_h = 9;
+    int win_x = (cols - win_w) / 2;
+    int win_y = (rows - win_h) / 2;
     int center_x = cols / 2;
 
-    text_mode_print_at_attr(center_x - 14, 5, "Waiting for file transfer...", TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
-    text_mode_print_at_attr(center_x - 12, 7, "Use WebSerial to send a .md file", TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
-    text_mode_print_at_attr(center_x - 6, 9, "ESC to cancel", TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+    const char *title = state->receiving_filename[0] ? state->receiving_filename : "Receiving File";
+    ui_window(win_x, win_y, win_w, win_h, title);
+
+    if (state->receiving_filename[0]) {
+        text_mode_print_at_attr(center_x - 6, win_y + 2, "Downloading...", TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
+    } else {
+        text_mode_print_at_attr(center_x - 14, win_y + 2, "Receiving file via serial...", TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
+    }
+
+    // Progress bar area
+    int bar_width = win_w - 4;
+    if (bar_width > 50) bar_width = 50;
+    int bar_x = (cols - bar_width) / 2;
+    int bar_y = win_y + 4;
+
+    for (int x = 0; x < bar_width; x++) {
+        text_mode_print_at_color(bar_x + x, bar_y, "_", TEXT_COLOR_CYAN);
+    }
+
+    // Cancel button
+    int btn_w = 10;
+    int btn_x = (cols - btn_w) / 2;
+    int btn_y = win_y + 6;
+    state->btn_cancel = ui_button_create(btn_x, btn_y, btn_w, 3, "CANCEL");
+    ui_button_set_callback(state->btn_cancel, on_cancel_click, state);
+    ui_button_draw(state->btn_cancel);
+}
+
+void reader_view_update_progress(const reader_state_t *state, size_t received, size_t total) {
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+
+    int win_w = cols - 4;
+    if (win_w < 20) win_w = 20;
+    if (win_w > 60) win_w = 60;
+    int bar_width = win_w - 4;
+    if (bar_width > 50) bar_width = 50;
+    int bar_x = (cols - bar_width) / 2;
+    int bar_y = (rows - 9) / 2 + 4;
+
+    int filled = 0;
+    if (total > 0) {
+        filled = (int)((size_t)received * bar_width / total);
+    }
+    if (filled > bar_width) filled = bar_width;
+
+    for (int x = 0; x < bar_width; x++) {
+        text_mode_print_at_color(bar_x + x, bar_y, x < filled ? "=" : "-", x < filled ? TEXT_COLOR_GREEN : TEXT_COLOR_CYAN);
+    }
+
+    char info[48];
+    int pct = total > 0 ? (int)(received * 100 / total) : 0;
+    snprintf(info, sizeof(info), "%d%%  (%d/%d KB)", pct, (int)(received / 1024), (int)(total / 1024));
+    text_mode_print_at_attr(bar_x, bar_y - 1, info, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+
+    text_mode_flush();
 }
 
 void reader_view_clear_widgets(reader_state_t *state) {
@@ -537,6 +603,10 @@ void reader_view_clear_widgets(reader_state_t *state) {
     if (state->btn_back) {
         free(state->btn_back);
         state->btn_back = NULL;
+    }
+    if (state->btn_cancel) {
+        free(state->btn_cancel);
+        state->btn_cancel = NULL;
     }
 
     // Destroy list widgets

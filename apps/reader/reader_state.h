@@ -77,6 +77,7 @@ typedef struct {
     ui_button_t *btn_find;
     ui_button_t *btn_goto;
     ui_button_t *btn_back;
+    ui_button_t *btn_cancel;
 
     // List widgets
     ui_list_widget_t *toc_list;
@@ -92,6 +93,12 @@ typedef struct {
 
     // Function pointer to launch app list (for exit button)
     void (*launch_app_list)(void);
+
+    // Ignore this many keyboard/touch events after download (drains phantom events)
+    int ignore_events;
+
+    // Filename being received via serial
+    char receiving_filename[64];
 } reader_state_t;
 
 #endif

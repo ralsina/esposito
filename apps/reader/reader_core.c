@@ -102,14 +102,58 @@ void reader_scan_md_files(reader_state_t *state) {
             continue;
         }
 
-        strncpy(state->file_names[state->file_count], entry->d_name, 63);
-        state->file_names[state->file_count][63] = '\0';
+        // Store full path
         snprintf(state->file_paths[state->file_count], MAX_PATH, "/sdcard/books/%s", entry->d_name);
+
+        // Store display name without .md extension
+        size_t name_len = len - 3;
+        if (name_len > 63) name_len = 63;
+        memcpy(state->file_names[state->file_count], entry->d_name, name_len);
+        state->file_names[state->file_count][name_len] = '\0';
+
         state->file_ptrs[state->file_count] = state->file_names[state->file_count];
         state->file_count++;
     }
 
     closedir(dir);
+
+    // Sort alphabetically (case-insensitive)
+    if (state->file_count > 1) {
+        // Bubble sort file_names, file_paths, and file_ptrs together
+        for (int i = 0; i < state->file_count - 1; i++) {
+            for (int j = 0; j < state->file_count - 1 - i; j++) {
+                // Compare lowercase versions for case-insensitive sort
+                const char *a = state->file_names[j];
+                const char *b = state->file_names[j + 1];
+                char ca, cb;
+                int cmp = 0;
+                while (1) {
+                    ca = *a >= 'A' && *a <= 'Z' ? *a + 32 : *a;
+                    cb = *b >= 'A' && *b <= 'Z' ? *b + 32 : *b;
+                    if (ca != cb || ca == '\0') {
+                        cmp = ca - cb;
+                        break;
+                    }
+                    a++; b++;
+                }
+                if (cmp > 0) {
+                    // Swap file_names
+                    char temp[64];
+                    memcpy(temp, state->file_names[j], 64);
+                    memcpy(state->file_names[j], state->file_names[j + 1], 64);
+                    memcpy(state->file_names[j + 1], temp, 64);
+                    // Swap file_paths
+                    char temp_path[MAX_PATH];
+                    memcpy(temp_path, state->file_paths[j], MAX_PATH);
+                    memcpy(state->file_paths[j], state->file_paths[j + 1], MAX_PATH);
+                    memcpy(state->file_paths[j + 1], temp_path, MAX_PATH);
+                    // Swap file_ptrs
+                    state->file_ptrs[j] = state->file_names[j];
+                    state->file_ptrs[j + 1] = state->file_names[j + 1];
+                }
+            }
+        }
+    }
 }
 
 int reader_find_file_index_by_path(const reader_state_t *state, const char *path) {

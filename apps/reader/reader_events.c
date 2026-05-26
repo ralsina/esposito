@@ -33,6 +33,7 @@ static void exit_to_file_list(reader_state_t *state);
 
 // Receiving mode forward declarations
 static bool on_get_file_start(const char *filename, size_t size, char *out_filepath);
+static void on_get_progress(size_t received, size_t total, uint16_t seq, const char *status);
 static void on_get_complete(serial_rx_state_t state, const char *filename, const char *error_msg);
 static void cancel_receiving(reader_state_t *state);
 static reader_state_t *receiving_state = NULL;
@@ -69,7 +70,7 @@ void on_file_list_get_click(ui_button_t *button, void *user_data) {
 
     serial_rx_config_t config = {
         .on_file_start = on_get_file_start,
-        .on_progress = NULL,
+        .on_progress = on_get_progress,
         .on_complete = on_get_complete,
     };
     serial_rx_init(&config);
@@ -79,9 +80,26 @@ void on_file_list_get_click(ui_button_t *button, void *user_data) {
     text_mode_flush();
 }
 
+static void on_get_progress(size_t received, size_t total, uint16_t seq, const char *status) {
+    (void)seq;
+    (void)status;
+    reader_state_t *rs = receiving_state;
+    if (!rs) return;
+    // Update every 8 packets to avoid slowing down the transfer
+    if (seq % 8 != 0 && received < total) return;
+    reader_view_update_progress(rs, received, total);
+}
+
 static bool on_get_file_start(const char *filename, size_t size, char *out_filepath) {
     snprintf(out_filepath, 256, "/sdcard/downloads/%s", filename);
     mkdir("/sdcard/downloads", 0777);
+    reader_state_t *rs = receiving_state;
+    if (rs && filename) {
+        strncpy(rs->receiving_filename, filename, sizeof(rs->receiving_filename) - 1);
+        rs->receiving_filename[sizeof(rs->receiving_filename) - 1] = '\0';
+        reader_view_draw_receiving(rs);
+        text_mode_flush();
+    }
     return true;
 }
 
@@ -116,15 +134,23 @@ static void on_get_complete(serial_rx_state_t state, const char *filename, const
     serial_log_output_set_enabled(true);
     receiving_state = NULL;
 
+    rs->ignore_events = 1;
     rs->mode = MODE_FILE_LIST;
     reader_view_draw_file_list(rs);
     text_mode_flush();
+}
+
+void on_cancel_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    reader_state_t *state = (reader_state_t*)user_data;
+    cancel_receiving(state);
 }
 
 static void cancel_receiving(reader_state_t *state) {
     serial_rx_reset();
     serial_log_output_set_enabled(true);
     receiving_state = NULL;
+    state->ignore_events = 1;
     state->mode = MODE_FILE_LIST;
     reader_view_draw_file_list(state);
     text_mode_flush();
@@ -479,6 +505,11 @@ static void dispatch_keyboard(reader_state_t *state, const event_t *event, int *
         return;
     }
 
+    if (state->ignore_events > 0) {
+        state->ignore_events--;
+        return;
+    }
+
     char key = normalize_key_for_dispatch(event);
 
     switch (state->mode) {
@@ -530,6 +561,13 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
                 reader_view_draw_reading_page(state, bold_pending, underline_pending);
                 text_mode_flush();
             }
+        }
+        return;
+    }
+
+    if (state->mode == MODE_RECEIVING) {
+        if (state->btn_cancel && ui_button_handle_touch(state->btn_cancel, event)) {
+            return;
         }
         return;
     }
