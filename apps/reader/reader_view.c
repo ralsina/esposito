@@ -496,11 +496,27 @@ void reader_view_update_toc_selection(const reader_state_t *state, int previous_
     ui_list_draw(state->toc_list);
 }
 
+void reader_view_draw_receiving(const reader_state_t *state) {
+    ui_clear();
+    ui_window(2, 2, 60, 10, "Receiving File");
+
+    int cols = text_mode_get_cols();
+    int center_x = cols / 2;
+
+    text_mode_print_at_attr(center_x - 14, 5, "Waiting for file transfer...", TEXT_COLOR_YELLOW, TEXT_ATTR_BOLD);
+    text_mode_print_at_attr(center_x - 12, 7, "Use WebSerial to send a .md file", TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr(center_x - 6, 9, "ESC to cancel", TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+}
+
 void reader_view_clear_widgets(reader_state_t *state) {
     // Destroy all button widgets
     if (state->btn_up) {
         free(state->btn_up);
         state->btn_up = NULL;
+    }
+    if (state->btn_get) {
+        free(state->btn_get);
+        state->btn_get = NULL;
     }
     if (state->btn_open) {
         free(state->btn_open);
@@ -574,35 +590,41 @@ void reader_view_draw_file_list(reader_state_t *state) {
     int button_row = rows - 3;
 
     // Fixed button layout - use specific widths that fit the text
-    // Button text widths: "UP"=2, "OPEN"=4, "DOWN"=4, "EXIT"=4
+    // Order: UP, DOWN, OPEN, GET, EXIT
+    // Button text widths: "UP"=2, "DOWN"=4, "OPEN"=4, "GET"=3, "EXIT"=4
     // Add 2 spaces padding on each side = +4 per button
-    // Total widths: UP=6, OPEN=8, DOWN=8, EXIT=8
+    // Total widths: UP=6, DOWN=8, OPEN=8, GET=7, EXIT=8
     // Single column gap between buttons
     int up_width = 6;
-    int open_width = 8;
     int down_width = 8;
+    int open_width = 8;
+    int get_width = 7;
     int exit_width = 8;
     int gap = 1;
 
-    int total_width = up_width + gap + open_width + gap + down_width + gap + exit_width;
+    int total_width = up_width + gap + down_width + gap + open_width + gap + get_width + gap + exit_width;
     int start_x = (cols - total_width) / 2;
     if (start_x < 1) start_x = 1;
 
     int up_x = start_x;
-    int open_x = up_x + up_width + gap;
-    int down_x = open_x + open_width + gap;
-    int exit_x = down_x + down_width + gap;
+    int down_x = up_x + up_width + gap;
+    int open_x = down_x + down_width + gap;
+    int get_x = open_x + open_width + gap;
+    int exit_x = get_x + get_width + gap;
 
     // Create buttons if they don't exist
     if (!state->btn_up) {
         state->btn_up = ui_button_create(up_x, button_row, up_width, 3, "UP");
         ui_button_set_callback(state->btn_up, on_file_list_up_click, state);
 
+        state->btn_down = ui_button_create(down_x, button_row, down_width, 3, "DOWN");
+        ui_button_set_callback(state->btn_down, on_file_list_down_click, state);
+
         state->btn_open = ui_button_create(open_x, button_row, open_width, 3, "OPEN");
         ui_button_set_callback(state->btn_open, on_file_list_open_click, state);
 
-        state->btn_down = ui_button_create(down_x, button_row, down_width, 3, "DOWN");
-        ui_button_set_callback(state->btn_down, on_file_list_down_click, state);
+        state->btn_get = ui_button_create(get_x, button_row, get_width, 3, "GET");
+        ui_button_set_callback(state->btn_get, on_file_list_get_click, state);
 
         state->btn_exit = ui_button_create(exit_x, button_row, exit_width, 3, "EXIT");
         ui_button_set_callback(state->btn_exit, on_file_list_exit_click, state);
@@ -612,13 +634,17 @@ void reader_view_draw_file_list(reader_state_t *state) {
         state->btn_up->y = button_row;
         state->btn_up->width = up_width;
 
+        state->btn_down->x = down_x;
+        state->btn_down->y = button_row;
+        state->btn_down->width = down_width;
+
         state->btn_open->x = open_x;
         state->btn_open->y = button_row;
         state->btn_open->width = open_width;
 
-        state->btn_down->x = down_x;
-        state->btn_down->y = button_row;
-        state->btn_down->width = down_width;
+        state->btn_get->x = get_x;
+        state->btn_get->y = button_row;
+        state->btn_get->width = get_width;
 
         state->btn_exit->x = exit_x;
         state->btn_exit->y = button_row;
@@ -627,7 +653,8 @@ void reader_view_draw_file_list(reader_state_t *state) {
 
     // Draw buttons
     ui_button_draw(state->btn_up);
-    ui_button_draw(state->btn_open);
     ui_button_draw(state->btn_down);
+    ui_button_draw(state->btn_open);
+    ui_button_draw(state->btn_get);
     ui_button_draw(state->btn_exit);
 }

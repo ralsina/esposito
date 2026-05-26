@@ -131,9 +131,6 @@ for lib in "${LIBS[@]}"; do
 done
 echo "Output: $OUTPUT_DIR/${APP_NAME}.elf"
 
-# Compile and link all source files together
-echo "  Compiling..."
-
 # Use g++ if we have any C++ files, otherwise use gcc
 if [ "$HAS_CPP" = true ]; then
     COMPILER="${TOOLCHAIN_PREFIX}-g++"
@@ -141,9 +138,35 @@ else
     COMPILER="${TOOLCHAIN_PREFIX}-gcc"
 fi
 
+# Generate manifest section from manifest.cfg
+MANIFEST_GEN_O=""
+MANIFEST_CFG="${APP_DIR}/manifest.cfg"
+if [ -f "$MANIFEST_CFG" ]; then
+    echo "  Generating manifest section..."
+    MANIFEST_GEN_C="${OUTPUT_DIR}/${APP_NAME}_manifest_gen.c"
+    MANIFEST_GEN_O="${OUTPUT_DIR}/${APP_NAME}_manifest_gen.o"
+    {
+        printf '#include <stdint.h>\n'
+        printf '__attribute__((section(".manifest"), used))\n'
+        printf 'const uint8_t app_manifest[] = {\n'
+        xxd -i < "$MANIFEST_CFG"
+        printf '};\n'
+    } > "$MANIFEST_GEN_C"
+    $COMPILER -c "$MANIFEST_GEN_C" -o "$MANIFEST_GEN_O" $INCLUDE_FLAGS
+fi
+
+# Collect extra object files (e.g. manifest)
+EXTRA_OBJS=()
+if [ -n "$MANIFEST_GEN_O" ]; then
+    EXTRA_OBJS+=("$MANIFEST_GEN_O")
+fi
+
+echo "  Compiling..."
+
 $COMPILER \
     -nostdlib -nostartfiles \
     -ffreestanding \
+    -Os \
     -mlongcalls \
     -fsingle-precision-constant \
     -Wno-double-promotion \
@@ -153,7 +176,18 @@ $COMPILER \
     -T "$OS_SYMBOLS_LD" \
     $INCLUDE_FLAGS \
     -o "$OUTPUT_DIR/${APP_NAME}.elf" \
-    "${APP_SOURCES[@]}" "${LIB_SOURCES[@]}"
+    "${APP_SOURCES[@]}" "${LIB_SOURCES[@]}" "${EXTRA_OBJS[@]}" \
+    -lgcc
+
+# Strip non-essential sections (debug, xtensa property tables)
+${TOOLCHAIN_PREFIX}-objcopy \
+    --strip-debug \
+    --remove-section=.xt.prop \
+    --remove-section=.rela.xt.prop \
+    --remove-section=.xt.lit \
+    --remove-section=.rela.xt.lit \
+    --remove-section=.xtensa.info \
+    "$OUTPUT_DIR/${APP_NAME}.elf" 2>/dev/null || true
 
 echo "  Done: $OUTPUT_DIR/${APP_NAME}.elf"
 echo ""

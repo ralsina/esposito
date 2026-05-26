@@ -36,7 +36,7 @@ static uint8_t screensaver_restore_kbd_backlight = 255;
 static esp_pm_config_t screensaver_saved_pm_config;
 static bool screensaver_saved_pm_config_valid = false;
 
-static void os_log_global_heap_stats(const char *label) {
+void os_log_global_heap_stats(const char *label) {
     size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     size_t largest_8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

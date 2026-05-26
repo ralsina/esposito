@@ -21,6 +21,7 @@ typedef enum {
     MODE_GOTO,
     MODE_SEARCH,
     MODE_TOC,
+    MODE_RECEIVING,
 } reader_mode_t;
 
 typedef struct {
@@ -68,6 +69,7 @@ typedef struct {
 
     // Button widgets (managed by UI library)
     ui_button_t *btn_up;
+    ui_button_t *btn_get;
     ui_button_t *btn_open;
     ui_button_t *btn_down;
     ui_button_t *btn_exit;

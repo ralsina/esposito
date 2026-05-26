@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Transfer files to Esposito device running the Serial RX app over WebSerial.">
+    <title>Esposito WebSerial Uploader</title>
+    <!-- Google Fonts: Outfit and Sono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sono:wght@400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #0d0f14;
+            --card-bg: rgba(22, 28, 41, 0.7);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.4);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.4);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.4);
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem 1rem;
+            background-image: radial-gradient(circle at top right, rgba(29, 78, 216, 0.15), transparent 400px),
+                              radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.08), transparent 400px);
+        }
+
+        header {
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2rem;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            transition: border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Top control bar: Connection state */
+        .connection-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: var(--danger);
+            box-shadow: 0 0 10px var(--danger-glow);
+            transition: all 0.3s ease;
+        }
+
+        .dot.connected {
+            background-color: var(--success);
+            box-shadow: 0 0 10px var(--success-glow);
+        }
+
+        .dot.transferring {
+            background-color: var(--warning);
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+            animation: pulse 1.5s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            100% { transform: scale(1.1); opacity: 1; }
+        }
+
+        button {
+            font-family: inherit;
+            font-weight: 600;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #2563eb);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background-color: var(--danger);
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+
+        /* Drag and Drop Zone */
+        .dropzone {
+            border: 2px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 3rem 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .dropzone.dragover {
+            border-color: var(--primary);
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+
+        .dropzone svg {
+            width: 48px;
+            height: 48px;
+            color: var(--text-secondary);
+            transition: color 0.3s ease;
+        }
+
+        .dropzone:hover svg {
+            color: var(--primary);
+        }
+
+        .dropzone input {
+            display: none;
+        }
+
+        /* Progress Card */
+        .progress-section {
+            display: none;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 12px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            border-radius: 6px;
+            transition: width 0.1s ease;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .stat-card {
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.25rem;
+        }
+
+        /* Log Terminal Console */
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        .console {
+            background-color: #090b0f;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Sono', monospace;
+            font-size: 0.85rem;
+            color: #a7f3d0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .log-entry {
+            line-height: 1.4;
+        }
+
+        .log-entry.info { color: #a7f3d0; }
+        .log-entry.warn { color: var(--warning); }
+        .log-entry.error { color: #fca5a5; }
+        .log-entry.success { color: #34d399; }
+
+        footer {
+            margin-top: auto;
+            padding-top: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        footer a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Esposito Serial Uploader</h1>
+        <p>Transfer files to your Cheap Yellow Display OS over WebSerial</p>
+    </header>
+
+    <div class="container">
+        <!-- Connection Card -->
+        <div class="card connection-bar">
+            <div class="status-indicator">
+                <div id="statusDot" class="dot"></div>
+                <span id="statusText">Disconnected</span>
+            </div>
+            <button id="btnConnect" class="btn-primary">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                Connect Device
+            </button>
+        </div>
+
+        <!-- Uploader Dropzone Card -->
+        <div class="card" id="uploadCard" style="display: none;">
+            <div class="dropzone" id="dropzone">
+                <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
+                <div>
+                    <h3 style="margin-bottom: 0.25rem;">Select or Drag File</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">Any file size, transfers in 128-byte packet chunks</p>
+                </div>
+                <input type="file" id="fileInput">
+            </div>
+
+            <!-- Progress Info -->
+            <div class="progress-section" id="progressSection" style="margin-top: 1.5rem;">
+                <div class="progress-meta">
+                    <span id="lblFilename" style="font-weight: 600;">file.bin</span>
+                    <span id="lblPercent">0%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="progressBar" class="progress-bar"></div>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div id="valSpeed" class="stat-value">0 KB/s</div>
+                        <div class="stat-label">Speed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="valETA" class="stat-value">0s</div>
+                        <div class="stat-label">ETA</div>
+                    </div>
+                    <div class="stat-card">
+                        <div id="valSent" class="stat-value">0 KB</div>
+                        <div class="stat-label">Sent</div>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+                    <button id="btnCancel" class="btn-danger" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Abort</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal Console Card -->
+        <div class="card">
+            <div class="console-header">
+                <span>Transfer Log Console</span>
+                <button id="btnClearLog" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary);">Clear</button>
+            </div>
+            <div class="console" id="console">
+                <div class="log-entry info">Console ready. Click Connect to select your ESP32's COM/tty port.</div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Esposito OS project is open source. Back to <a href="index.html">Homepage</a></p>
+    </footer>
+
+    <script>
+        // DOM Elements
+        const btnConnect = document.getElementById('btnConnect');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const uploadCard = document.getElementById('uploadCard');
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const progressSection = document.getElementById('progressSection');
+        const progressBar = document.getElementById('progressBar');
+        const lblFilename = document.getElementById('lblFilename');
+        const lblPercent = document.getElementById('lblPercent');
+        const valSpeed = document.getElementById('valSpeed');
+        const valETA = document.getElementById('valETA');
+        const valSent = document.getElementById('valSent');
+        const btnCancel = document.getElementById('btnCancel');
+        const consoleEl = document.getElementById('console');
+        const btnClearLog = document.getElementById('btnClearLog');
+
+        // State Variables
+        let port = null;
+        let keepReading = true;
+        let transferActive = false;
+        let shouldAbort = false;
+        
+        // Protocol Packet Constants
+        const SYNC1 = 0xAA;
+        const SYNC2 = 0x55;
+        const PACKET_START = 0x01;
+        const PACKET_DATA = 0x02;
+        const PACKET_END = 0x03;
+        const PACKET_ABORT = 0x04;
+        
+        const RESP_ACK = 0x10;
+        const RESP_NAK = 0x11;
+        const RESP_ERROR = 0x12;
+
+        const CHUNK_SIZE = 512; // Raw file data per packet (increased from 128)
+
+        // Log to console UI
+        function log(msg, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const time = new Date().toLocaleTimeString();
+            entry.textContent = `[${time}] ${msg}`;
+            consoleEl.appendChild(entry);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        btnClearLog.onclick = () => {
+            consoleEl.innerHTML = '';
+        };
+
+        // CRC-16-CCITT implementation
+        function computeCRC16(data) {
+            let crc = 0xFFFF;
+            for (let i = 0; i < data.length; i++) {
+                crc ^= (data[i] << 8);
+                for (let j = 0; j < 8; j++) {
+                    if (crc & 0x8000) {
+                        crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+                    } else {
+                        crc = (crc << 1) & 0xFFFF;
+                    }
+                }
+            }
+            return crc;
+        }
+
+        // Connection Management
+        btnConnect.onclick = async () => {
+            if (port) {
+                await disconnect();
+                return;
+            }
+            
+            try {
+                if (!("serial" in navigator)) {
+                    log("WebSerial API is not supported in this browser. Please try Chrome, Edge, or Opera.", "error");
+                    alert("WebSerial not supported");
+                    return;
+                }
+                
+                port = await navigator.serial.requestPort();
+log("Opening serial port at 115200 baud...");
+await port.open({ baudRate: 115200 });
+                
+                statusDot.className = 'dot connected';
+                statusText.textContent = 'Connected';
+                btnConnect.textContent = 'Disconnect';
+                btnConnect.className = 'btn-danger';
+                uploadCard.style.display = 'block';
+                log("Connected successfully!", "success");
+                
+                keepReading = true;
+            } catch (err) {
+                log(`Connection failed: ${err.message}`, "error");
+                port = null;
+            }
+        };
+
+        async function disconnect() {
+            log("Disconnecting...");
+            keepReading = false;
+            if (port) {
+                try {
+                    await port.close();
+                } catch(e){}
+                port = null;
+            }
+            reader = null;
+            
+            statusDot.className = 'dot';
+            statusText.textContent = 'Disconnected';
+            btnConnect.textContent = 'Connect Device';
+            btnConnect.className = 'btn-primary';
+            uploadCard.style.display = 'none';
+            progressSection.style.display = 'none';
+            log("Disconnected successfully.", "info");
+        }
+
+        // Buffer for reading serial responses
+        let rxBuffer = new Uint8Array(0);
+
+        // Extract one response from the buffer. Returns {type, seq} or null.
+        function extractResponse() {
+            while (rxBuffer.length >= 9) {
+                let syncIdx = -1;
+                for (let i = 0; i < rxBuffer.length - 1; i++) {
+                    if (rxBuffer[i] === SYNC1 && rxBuffer[i+1] === SYNC2) {
+                        syncIdx = i;
+                        break;
+                    }
+                }
+                if (syncIdx === -1) {
+                    rxBuffer = rxBuffer.slice(rxBuffer.length - 1);
+                    break;
+                }
+                if (syncIdx > 0) {
+                    rxBuffer = rxBuffer.slice(syncIdx);
+                    continue;
+                }
+                if (rxBuffer.length < 9) break;
+
+                const type = rxBuffer[2];
+                const len = (rxBuffer[3] << 8) | rxBuffer[4];
+                const seq = (rxBuffer[5] << 8) | rxBuffer[6];
+                const crc = (rxBuffer[7] << 8) | rxBuffer[8];
+                const payload = rxBuffer.slice(5, 7);
+                const computedCrc = computeCRC16(payload);
+
+                if (computedCrc === crc) {
+                    rxBuffer = rxBuffer.slice(9);
+                    return { type, seq };
+                } else {
+                    rxBuffer = rxBuffer.slice(2);
+                }
+            }
+            return null;
+        }
+
+        // Read from serial port until a valid response is received or timeout
+        async function readResponse(timeoutMs) {
+            const deadline = Date.now() + timeoutMs;
+            while (Date.now() < deadline) {
+                const cached = extractResponse();
+                if (cached) return cached;
+
+                const remaining = deadline - Date.now();
+                if (remaining <= 0) break;
+
+                const localReader = port.readable.getReader();
+                try {
+                    const result = await Promise.race([
+                        localReader.read(),
+                        new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error("Timeout")), remaining)
+                        )
+                    ]);
+                    if (result.done) throw new Error("Stream closed");
+                    if (result.value) {
+                        const newBuf = new Uint8Array(rxBuffer.length + result.value.length);
+                        newBuf.set(rxBuffer, 0);
+                        newBuf.set(result.value, rxBuffer.length);
+                        rxBuffer = newBuf;
+
+                        const resp = extractResponse();
+                        if (resp) return resp;
+                    }
+                } finally {
+                    localReader.releaseLock();
+                }
+            }
+            throw new Error("Timeout waiting for device response");
+        }
+
+        // Send a framed packet and wait for response
+        async function sendAndWait(type, payload, timeoutMs) {
+            const localWriter = port.writable.getWriter();
+            try {
+                const pkt = buildPacket(type, payload);
+                await localWriter.write(pkt);
+            } finally {
+                localWriter.releaseLock();
+            }
+            return await readResponse(timeoutMs);
+        }
+
+        function buildPacket(type, payload) {
+            const len = payload.length;
+            const crc = computeCRC16(payload);
+            const pkt = new Uint8Array(7 + len);
+            pkt[0] = SYNC1;
+            pkt[1] = SYNC2;
+            pkt[2] = type;
+            pkt[3] = (len >> 8) & 0xFF;
+            pkt[4] = len & 0xFF;
+            pkt.set(payload, 5);
+            pkt[5 + len] = (crc >> 8) & 0xFF;
+            pkt[5 + len + 1] = crc & 0xFF;
+            return pkt;
+        }
+
+
+
+        // Handshake and File transmission
+        async function transferFile(file) {
+            if (transferActive) return;
+            transferActive = true;
+            shouldAbort = false;
+            
+            statusDot.className = 'dot transferring';
+            statusText.textContent = 'Transferring...';
+            progressSection.style.display = 'block';
+            lblFilename.textContent = file.name;
+            lblPercent.textContent = "0%";
+            progressBar.style.width = "0%";
+            
+            log(`Starting transfer for file: ${file.name} (${file.size} bytes)...`, "info");
+            
+            // Build START packet payload:
+            // 4 bytes size + null terminated filename
+            const filenameBytes = new TextEncoder().encode(file.name);
+            const startPayload = new Uint8Array(4 + filenameBytes.length + 1);
+            startPayload[0] = (file.size >> 24) & 0xFF;
+            startPayload[1] = (file.size >> 16) & 0xFF;
+            startPayload[2] = (file.size >> 8) & 0xFF;
+            startPayload[3] = file.size & 0xFF;
+            startPayload.set(filenameBytes, 4);
+            startPayload[4 + filenameBytes.length] = 0; // null terminator
+            
+            // Send START packet
+            let success = false;
+            for (let retry = 0; retry < 5; retry++) {
+                try {
+                    log(`Sending START packet (attempt ${retry + 1})...`);
+                    rxBuffer = new Uint8Array(0);
+                    const resp = await sendAndWait(PACKET_START, startPayload, 1500);
+                    if (resp.type === RESP_ACK) {
+                        log("Device accepted transfer.", "success");
+                        success = true;
+                        break;
+                    } else {
+                        log(`Device returned error/nak code: 0x${resp.type.toString(16)}`, "warn");
+                    }
+                } catch (err) {
+                    log(`START packet failed: ${err.message}`, "warn");
+                }
+            }
+            
+            if (!success) {
+                log("Failed to initialize transfer with device.", "error");
+                completeTransfer(false);
+                return;
+            }
+            
+            // Read file data
+            const buffer = await file.arrayBuffer();
+            const fileData = new Uint8Array(buffer);
+            
+            let offset = 0;
+            let seq = 0;
+            const startTime = Date.now();
+            
+            while (offset < fileData.length) {
+                if (shouldAbort) {
+                    log("Transfer aborted by user.", "warn");
+                    try { await sendAndWait(PACKET_ABORT, new Uint8Array(0), 500); } catch(e) {}
+                    completeTransfer(false);
+                    return;
+                }
+                
+                const end = Math.min(offset + CHUNK_SIZE, fileData.length);
+                const chunk = fileData.slice(offset, end);
+                
+                // DATA packet payload: 2 bytes seq + raw chunk bytes
+                const payload = new Uint8Array(2 + chunk.length);
+                payload[0] = (seq >> 8) & 0xFF;
+                payload[1] = seq & 0xFF;
+                payload.set(chunk, 2);
+
+                let chunkAcked = false;
+                for (let retry = 0; retry < 5; retry++) {
+                    try {
+                        log(`Sending chunk ${seq} (${chunk.length} bytes, offset ${offset})...`, "info");
+                        const resp = await sendAndWait(PACKET_DATA, payload, 3000);
+                        if (resp.type === RESP_ACK && resp.seq === seq) {
+                            log(`Chunk ${seq} ACKed ✓`, "success");
+                            chunkAcked = true;
+                            break;
+                        } else if (resp.type === RESP_NAK) {
+                            log(`NAK received for seq ${seq}. Retrying...`, "warn");
+                        } else if (resp.type !== RESP_ACK) {
+                            log(`Unexpected response type: ${resp.type} for seq ${seq}`, "error");
+                        }
+                    } catch (err) {
+                        log(`Data packet seq ${seq} failed: ${err.message}. Retrying...`, "warn");
+                    }
+                }
+                
+                if (!chunkAcked) {
+                    log(`Failed to send data block ${seq} after 5 retries. Aborting.`, "error");
+                    completeTransfer(false);
+                    return;
+                }
+                
+                offset += chunk.length;
+                seq++;
+                
+                // Update Progress UI
+                const pct = Math.floor((offset / fileData.length) * 100);
+                progressBar.style.width = `${pct}%`;
+                lblPercent.textContent = `${pct}%`;
+                
+                const elapsedSec = (Date.now() - startTime) / 1000;
+                const speedBps = elapsedSec > 0 ? (offset / elapsedSec) : 0;
+                const speedKbps = speedBps / 1024;
+                valSpeed.textContent = `${speedKbps.toFixed(1)} KB/s`;
+                valSent.textContent = `${(offset / 1024).toFixed(1)} KB`;
+                
+                const remainingBytes = fileData.length - offset;
+                const eta = speedBps > 0 ? Math.ceil(remainingBytes / speedBps) : 0;
+                valETA.textContent = `${eta}s`;
+            }
+            
+            // Send END packet
+            success = false;
+            for (let retry = 0; retry < 5; retry++) {
+                try {
+                    log("Sending END packet...");
+                    const resp = await sendAndWait(PACKET_END, new Uint8Array(0), 1500);
+                    if (resp.type === RESP_ACK) {
+                        success = true;
+                        break;
+                    }
+                } catch (err) {
+                    log(`END packet failed: ${err.message}`, "warn");
+                }
+            }
+            
+            if (success) {
+                log("Transfer completed successfully!", "success");
+                completeTransfer(true);
+            } else {
+                log("Device did not acknowledge transfer completion.", "error");
+                completeTransfer(false);
+            }
+        }
+
+        function completeTransfer(isSuccess) {
+            transferActive = false;
+            statusDot.className = 'dot connected';
+            statusText.textContent = 'Connected';
+            progressSection.style.display = 'none';
+            if (isSuccess) {
+                log("File transfer finished.", "success");
+                progressBar.style.backgroundColor = 'var(--success)';
+            } else {
+                log("File transfer failed.", "error");
+                progressBar.style.backgroundColor = 'var(--danger)';
+            }
+        }
+
+        // Cancel Button Action
+        btnCancel.onclick = () => {
+            if (transferActive) {
+                shouldAbort = true;
+            }
+        };
+
+        // File picker and dropzone wiring
+        dropzone.onclick = () => {
+            if (transferActive) return;
+            fileInput.click();
+        };
+
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                transferFile(file);
+            }
+        };
+
+        dropzone.ondragover = (e) => {
+            e.preventDefault();
+            if (transferActive) return;
+            dropzone.className = "dropzone dragover";
+        };
+
+        dropzone.ondragleave = () => {
+            dropzone.className = "dropzone";
+        };
+
+        dropzone.ondrop = (e) => {
+            e.preventDefault();
+            dropzone.className = "dropzone";
+            if (transferActive) return;
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                transferFile(file);
+            }
+        };
+    </script>
+</body>
+</html>

@@ -142,6 +142,7 @@ static const os_symtab_entry_t symtab[] = {
     {"terminal_mode_normalize_key", terminal_mode_normalize_key},
     {"serial_init",             serial_init},
     {"serial_deinit",           serial_deinit},
+    {"serial_read",             serial_read},
     {"serial_write",            serial_write},
     {"serial_log_output_set_enabled", serial_log_output_set_enabled},
     {"serial_log_output_is_enabled", serial_log_output_is_enabled},
@@ -163,6 +164,7 @@ static const os_symtab_entry_t symtab[] = {
     {"fseek",                   fseek},
     {"ftell",                   ftell},
     {"fgets",                   fgets},
+    {"fflush",                  fflush},
     {"rename",                  rename},
     {"remove",                  remove},
     {"config_open_read",        config_open_read},
@@ -255,7 +257,7 @@ static const os_symtab_entry_t symtab[] = {
     {"vsscanf",                 vsscanf},
     {"vsnprintf",               vsnprintf},
 
-    // C library support for ctype functions (use correct type)
+    // C library support for ctype functions
     {"_ctype_",                 (void*)_ctype_},
 
     {NULL, NULL}

@@ -5,6 +5,8 @@
 #include "reader_core.h"
 #include "reader_events.h"
 #include "reader_startup.h"
+#include "serial_rx.h"
+#include "hardware.h"
 extern void app_launcher_start(void);
 #include <string.h>
 
@@ -13,7 +15,7 @@ static int bold_pending = 0;
 static int underline_pending = 0;
 
 void app_init(app_context_t *ctx) {
-    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH | EVENT_SERIAL;
     ctx->timer_interval_ms = 0;
 
     memset(&state, 0, sizeof(state));
@@ -26,6 +28,12 @@ void app_init(app_context_t *ctx) {
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
+    if (event->type == EVENT_SERIAL) {
+        if (state.mode == MODE_RECEIVING) {
+            serial_rx_process_bytes(event->serial.data, event->serial.len);
+        }
+        return;
+    }
     reader_events_handle_event(&state, event, &bold_pending, &underline_pending, app_launcher_start);
 }
 

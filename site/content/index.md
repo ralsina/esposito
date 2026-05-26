@@ -51,14 +51,19 @@ your phone. But ... it is hundreds of times faster than a Palm Pilot. And on pal
 pilot apps started instantly. And the device turned on/off in under a second. Have
 you seen how long your *good* pocket computer takes to TURN OFF?
 
+So, let's take something cheap and make it *good*.
+
 # Simple
 
-I wrote ESPOsito to bring that speed, that snap, into the 21st second. It *should* boot 
+I wrote ESPOsito to bring that speed, that snap, into the 21st century. It *should* boot 
 in under a second and show you the same app you were using before, in the same state.
 It should turn off instantly. Hell, you should be able to turn it off by CUTTING POWER.
 
 Apps load into memory then are COMPLETELY replaced when another app starts. No multitasking.
 Just do your thing in your app. Try not to crash because it reboots.
+
+You can write a useful app in some hundred lines of C. The API is still in flux, but it
+is enough for now.
 
 ## Apps
 

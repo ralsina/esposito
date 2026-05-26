@@ -8,8 +8,10 @@
 #include "text_mode.h"
 #include "ui_button.h"
 #include "hardware.h"
+#include "serial_rx.h"  // For file transfer
 
 #include <string.h>
+#include <sys/stat.h>
 
 #define TOUCH_PAGE_SPLIT_X 160
 #define READING_TOC_BUTTON_WIDTH 5
@@ -28,6 +30,12 @@ static void open_selected_book(reader_state_t *state, int *bold_pending, int *un
 static void exit_to_app_list(int *bold_pending, int *underline_pending, void (*launch_app_list)(void));
 static void enter_toc_mode(reader_state_t *state);
 static void exit_to_file_list(reader_state_t *state);
+
+// Receiving mode forward declarations
+static bool on_get_file_start(const char *filename, size_t size, char *out_filepath);
+static void on_get_complete(serial_rx_state_t state, const char *filename, const char *error_msg);
+static void cancel_receiving(reader_state_t *state);
+static reader_state_t *receiving_state = NULL;
 
 // Button widget callbacks
 void on_file_list_up_click(ui_button_t *button, void *user_data) {
@@ -49,6 +57,77 @@ void on_file_list_down_click(ui_button_t *button, void *user_data) {
 void on_file_list_exit_click(ui_button_t *button, void *user_data) {
     // This needs special handling - we'll set a flag and handle it in the main loop
     // For now, do nothing - the file list exit is handled via ESC key
+}
+
+void on_file_list_get_click(ui_button_t *button, void *user_data) {
+    reader_state_t *state = (reader_state_t*)user_data;
+
+    serial_log_output_set_enabled(false);
+    serial_init(115200, 8, 'N', 1);
+
+    receiving_state = state;
+
+    serial_rx_config_t config = {
+        .on_file_start = on_get_file_start,
+        .on_progress = NULL,
+        .on_complete = on_get_complete,
+    };
+    serial_rx_init(&config);
+
+    state->mode = MODE_RECEIVING;
+    reader_view_draw_receiving(state);
+    text_mode_flush();
+}
+
+static bool on_get_file_start(const char *filename, size_t size, char *out_filepath) {
+    snprintf(out_filepath, 256, "/sdcard/downloads/%s", filename);
+    mkdir("/sdcard/downloads", 0777);
+    return true;
+}
+
+static void on_get_complete(serial_rx_state_t state, const char *filename, const char *error_msg) {
+    reader_state_t *rs = receiving_state;
+    if (!rs) return;
+
+    if (state == SERIAL_RX_STATE_SUCCESS) {
+        const char *fp = serial_rx_get_filepath();
+        if (fp && fp[0]) {
+            size_t len = strlen(fp);
+            if (len >= 3 && strcmp(fp + len - 3, ".md") == 0) {
+                char book_path[256];
+                snprintf(book_path, sizeof(book_path), "/sdcard/books/%s", filename);
+                mkdir("/sdcard/books", 0777);
+                if (rename(fp, book_path) == 0) {
+                    reader_scan_md_files(rs);
+                    int idx = reader_find_file_index_by_path(rs, book_path);
+                    if (idx >= 0) {
+                        rs->file_selected = idx;
+                    }
+                } else {
+                    reader_scan_md_files(rs);
+                }
+            } else {
+                reader_scan_md_files(rs);
+            }
+        }
+    }
+
+    serial_rx_reset();
+    serial_log_output_set_enabled(true);
+    receiving_state = NULL;
+
+    rs->mode = MODE_FILE_LIST;
+    reader_view_draw_file_list(rs);
+    text_mode_flush();
+}
+
+static void cancel_receiving(reader_state_t *state) {
+    serial_rx_reset();
+    serial_log_output_set_enabled(true);
+    receiving_state = NULL;
+    state->mode = MODE_FILE_LIST;
+    reader_view_draw_file_list(state);
+    text_mode_flush();
 }
 
 void on_toc_up_click(ui_button_t *button, void *user_data) {
@@ -128,11 +207,11 @@ void on_file_list_selection_changed(ui_list_widget_t *list, int new_selection, v
 
 void on_file_list_item_selected(ui_list_widget_t *list, int item_index, void *user_data) {
     (void)list;
-    (void)item_index;
     reader_state_t *state = (reader_state_t*)user_data;
-    if (!state) {
+    if (!state || item_index < 0 || item_index >= state->file_count) {
         return;
     }
+    state->file_selected = item_index;
     int bold_pending = 0, underline_pending = 0;
     open_selected_book(state, &bold_pending, &underline_pending);
 }
@@ -318,6 +397,14 @@ static void toc_jump_to_selected(reader_state_t *state, int *bold_pending, int *
     text_mode_flush();
 }
 
+static void handle_receiving_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
+    (void)bold_pending;
+    (void)underline_pending;
+    if (key == 27) {
+        cancel_receiving(state);
+    }
+}
+
 static void handle_toc_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
     if (key == 27) {
         toc_return_to_reading(state, bold_pending, underline_pending);
@@ -410,6 +497,9 @@ static void dispatch_keyboard(reader_state_t *state, const event_t *event, int *
         case MODE_READING:
             handle_reading_key(state, key, bold_pending, underline_pending);
             break;
+        case MODE_RECEIVING:
+            handle_receiving_key(state, key, bold_pending, underline_pending);
+            break;
     }
 }
 
@@ -478,8 +568,9 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
 
             // Check other buttons
             if (state->btn_up && ui_button_handle_touch(state->btn_up, event)) return;
-            if (state->btn_open && ui_button_handle_touch(state->btn_open, event)) return;
             if (state->btn_down && ui_button_handle_touch(state->btn_down, event)) return;
+            if (state->btn_open && ui_button_handle_touch(state->btn_open, event)) return;
+            if (state->btn_get && ui_button_handle_touch(state->btn_get, event)) return;
         }
 
         // Try list widget for file list mode (only if buttons didn't handle it)

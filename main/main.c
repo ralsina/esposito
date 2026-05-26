@@ -33,6 +33,7 @@ void app_main(void)
     }
 
     ESP_LOGI(TAG, "Starting main event loop...");
+    os_log_global_heap_stats("boot");
 
     // Main event loop
     os_event_loop();

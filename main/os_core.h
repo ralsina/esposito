@@ -100,6 +100,7 @@ extern "C" {
 #endif
 
 void os_log(const char *tag, const char *fmt, ...);
+void os_log_global_heap_stats(const char *label);
 bool os_init_filesystem(void);
 void os_event_loop(void);
 bool os_load_app(const char *app_name);

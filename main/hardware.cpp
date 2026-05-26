@@ -745,7 +745,7 @@ static uart_stop_bits_t serial_stop_bits_map(int stop_bits) {
 }
 
 bool serial_init(int baud, int data_bits, char parity, int stop_bits) {
-    esp_err_t ret = uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
+    esp_err_t ret = uart_driver_install(UART_NUM_0, 1024, 0, 0, NULL, 0);
     if (ret == ESP_ERR_INVALID_STATE) {
         // Driver already installed, still fine
     } else if (ret != ESP_OK) {

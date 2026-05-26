@@ -15,5 +15,7 @@ SECTIONS
   .debug_loc : { *(.debug_loc) }
   .debug_ranges : { *(.debug_ranges) }
 
+  .manifest : ALIGN(4) { KEEP(*(.manifest)) }
+
   /DISCARD/ : { *(.comment) *(.note*) *(.gnu*) }
 }
