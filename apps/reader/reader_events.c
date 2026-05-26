@@ -302,8 +302,22 @@ static void open_selected_book(reader_state_t *state, int *bold_pending, int *un
 }
 
 static void exit_to_file_list(reader_state_t *state) {
+    char prev_file[MAX_PATH];
+    strncpy(prev_file, state->current_file, MAX_PATH);
+    prev_file[MAX_PATH - 1] = '\0';
     reader_close_current_file(state);
-    reader_events_show_file_list(state);
+    reader_scan_md_files(state);
+    state->file_selected = 0;
+    if (prev_file[0]) {
+        for (int i = 0; i < state->file_count; i++) {
+            if (strcmp(state->file_paths[i], prev_file) == 0) {
+                state->file_selected = i;
+                break;
+            }
+        }
+    }
+    state->mode = MODE_FILE_LIST;
+    reader_view_draw_file_list(state);
 }
 
 static void handle_file_list_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
