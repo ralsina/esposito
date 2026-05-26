@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Gutenberg Books</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <style>
+        body {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+            font-family: 'Quicksand', sans-serif;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Quicksand', sans-serif;
+            margin: 0;
+        }
+
+        header p {
+            margin: 0.25rem 0 0 0;
+        }
+
+        .book-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 0.5rem 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .book-card {
+            border: 1px solid var(--muted-border-color);
+            border-radius: 8px;
+            padding: 0.75rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            margin: 0;
+        }
+
+        .book-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .book-cover {
+            width: 100%;
+            height: 200px;
+            object-fit: contain;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            background: var(--card-background-color);
+        }
+
+        .book-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            line-height: 1.3;
+        }
+
+        .download-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 1.2rem;
+        }
+
+        .download-btn:hover {
+            background: var(--primary-hover);
+            transform: scale(1.1);
+        }
+
+        .download-btn:active {
+            transform: scale(0.95);
+        }
+
+        .device-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--del-color);
+        }
+
+        .status-dot.connected {
+            background-color: var(--ins-color);
+        }
+
+        .status-dot.transferring {
+            background-color: var(--mark-color);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .download-progress {
+            display: none;
+            margin-top: 1rem;
+        }
+
+        .download-bar {
+            width: 100%;
+            height: 8px;
+            background-color: var(--muted-border-color);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .download-fill {
+            height: 100%;
+            background-color: var(--primary);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        header nav {
+            display: flex;
+            align-items: center;
+        }
+
+        .stats {
+            color: var(--muted-color);
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .error {
+            background-color: var(--del-background-color);
+            color: var(--del-color);
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+            align-items: center;
+        }
+
+        .search-box input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .search-box button {
+            white-space: nowrap;
+            max-width: 200px;
+        }
+
+        .search-box .device-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0;
+            white-space: nowrap;
+        }
+
+        .stats {
+            color: var(--muted-color);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div>
+            <h1>Top 100 Free Books</h1>
+            <p><a href="https://www.gutenberg.org/browse/scores/top" target="_blank" rel="noopener">From Project Gutenberg</a></p>
+        </div>
+    </header>
+
+    <div class="search-box">
+        <input type="search" id="search" placeholder="Search books by title or author..." aria-label="Search books">
+        <button id="connectBtn" class="secondary outline">🔌 Connect Device</button>
+        <div class="device-status" style="margin-bottom: 0;">
+            <div id="statusDot" class="status-dot"></div>
+        </div>
+    </div>
+
+    <div id="connection-hint" style="display: none; background: var(--primary-background); border-left: 4px solid var(--primary); padding: 1rem; margin: 1rem 0; border-radius: 4px;">
+        <strong>📱 Instructions:</strong> Open the reader app on your device, go to the book list and click "GET", then click the download icon on the book you want to transfer.
+    </div>
+
+    <div id="books-container" class="book-grid">
+
+    <div id="books-container" class="book-grid">
+
+    <script>
+        let allBooks = [];
+
+        async function loadBooks() {
+            const container = document.getElementById('books-container');
+
+            try {
+                const response = await fetch('books/metadata.json');
+                if (!response.ok) {
+                    throw new Error(`Failed to load metadata: ${response.status}`);
+                }
+
+                allBooks = await response.json();
+                displayBooks(allBooks);
+
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="error" role="alert">
+                        <strong>Error loading books:</strong> ${error.message}
+                        <br><br>
+                        <small>Make sure metadata.json exists and you're running this on a web server.</small>
+                    </div>
+                `;
+            }
+        }
+
+        function displayBooks(books) {
+            const container = document.getElementById('books-container');
+
+            if (books.length === 0) {
+                container.innerHTML = `
+                    <div class="loading">
+                        <p>No books found matching your search.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = books.map(book => `
+                <article class="book-card">
+                    <button onclick="downloadBook('${escapeHtml(book.markdown_file)}', '${escapeHtml(book.title)}')"
+                            class="download-btn"
+                            title="Download to Device">
+                        📥
+                    </button>
+                    <img
+                        src="${book.cover_url}"
+                        alt="Cover of ${book.title}"
+                        class="book-cover"
+                        onerror="this.style.display='none'"
+                    >
+                    <h2 class="book-title">${escapeHtml(book.title)}</h2>
+                    <p class="book-author">by ${escapeHtml(book.author || 'Unknown')}</p>
+                    <div class="download-progress" id="progress-${escapeHtml(book.markdown_file).replace(/[^a-zA-Z0-9]/g, '-')}">
+                        <div class="download-bar">
+                            <div class="download-fill" id="fill-${escapeHtml(book.markdown_file).replace(/[^a-zA-Z0-9]/g, '-')}"></div>
+                        </div>
+                        <small id="status-${escapeHtml(book.markdown_file).replace(/[^a-zA-Z0-9]/g, '-')}"></small>
+                    </div>
+                </article>
+            `).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Search functionality
+        document.getElementById('search').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase().trim();
+
+            if (!searchTerm) {
+                displayBooks(allBooks);
+                return;
+            }
+
+            const filteredBooks = allBooks.filter(book => {
+                const title = (book.title || '').toLowerCase();
+                const author = (book.author || '').toLowerCase();
+                return title.includes(searchTerm) || author.includes(searchTerm);
+            });
+
+            displayBooks(filteredBooks);
+        });
+
+        // WebSerial functionality
+        let port = null;
+        const SYNC1 = 0xAA;
+        const SYNC2 = 0x55;
+        const PACKET_START = 0x01;
+        const PACKET_DATA = 0x02;
+        const PACKET_END = 0x03;
+        const PACKET_ABORT = 0x04;
+        const RESP_ACK = 0x10;
+        const RESP_NAK = 0x11;
+        const CHUNK_SIZE = 512;
+
+        let rxBuffer = new Uint8Array(0);
+
+        function computeCRC16(data) {
+            let crc = 0xFFFF;
+            for (let i = 0; i < data.length; i++) {
+                crc ^= (data[i] << 8);
+                for (let j = 0; j < 8; j++) {
+                    if (crc & 0x8000) {
+                        crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+                    } else {
+                        crc = (crc << 1) & 0xFFFF;
+                    }
+                }
+            }
+            return crc;
+        }
+
+        function buildPacket(type, payload) {
+            const len = payload.length;
+            const crc = computeCRC16(payload);
+            const pkt = new Uint8Array(7 + len);
+            pkt[0] = SYNC1;
+            pkt[1] = SYNC2;
+            pkt[2] = type;
+            pkt[3] = (len >> 8) & 0xFF;
+            pkt[4] = len & 0xFF;
+            pkt.set(payload, 5);
+            pkt[5 + len] = (crc >> 8) & 0xFF;
+            pkt[5 + len + 1] = crc & 0xFF;
+            return pkt;
+        }
+
+        function extractResponse() {
+            while (rxBuffer.length >= 9) {
+                let syncIdx = -1;
+                for (let i = 0; i < rxBuffer.length - 1; i++) {
+                    if (rxBuffer[i] === SYNC1 && rxBuffer[i+1] === SYNC2) {
+                        syncIdx = i;
+                        break;
+                    }
+                }
+                if (syncIdx === -1) {
+                    rxBuffer = rxBuffer.slice(rxBuffer.length - 1);
+                    break;
+                }
+                if (syncIdx > 0) {
+                    rxBuffer = rxBuffer.slice(syncIdx);
+                    continue;
+                }
+                if (rxBuffer.length < 9) break;
+
+                const type = rxBuffer[2];
+                const payload = rxBuffer.slice(5, 7);
+                const crc = (rxBuffer[7] << 8) | rxBuffer[8];
+                const computedCrc = computeCRC16(payload);
+
+                if (computedCrc === crc) {
+                    const seq = (rxBuffer[5] << 8) | rxBuffer[6];
+                    rxBuffer = rxBuffer.slice(9);
+                    return { type, seq };
+                } else {
+                    rxBuffer = rxBuffer.slice(2);
+                }
+            }
+            return null;
+        }
+
+        async function readResponse(timeoutMs) {
+            if (!port || !port.readable) {
+                throw new Error("Device not connected or connection lost");
+            }
+
+            const deadline = Date.now() + timeoutMs;
+            while (Date.now() < deadline) {
+                const cached = extractResponse();
+                if (cached) return cached;
+
+                const remaining = deadline - Date.now();
+                if (remaining <= 0) break;
+
+                let localReader;
+                try {
+                    localReader = port.readable.getReader();
+                } catch (err) {
+                    throw new Error("Cannot access device - connection may be lost");
+                }
+
+                try {
+                    const result = await Promise.race([
+                        localReader.read(),
+                        new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error("Timeout")), remaining)
+                        )
+                    ]);
+                    if (result.done) throw new Error("Stream closed");
+                    if (result.value) {
+                        const newBuf = new Uint8Array(rxBuffer.length + result.value.length);
+                        newBuf.set(rxBuffer, 0);
+                        newBuf.set(result.value, rxBuffer.length);
+                        rxBuffer = newBuf;
+
+                        const resp = extractResponse();
+                        if (resp) return resp;
+                    }
+                } catch (err) {
+                    if (err.message === "Timeout") {
+                        // Continue to next iteration
+                        continue;
+                    }
+                    throw err;
+                } finally {
+                    if (localReader) localReader.releaseLock();
+                }
+            }
+            throw new Error("Timeout waiting for device response");
+        }
+
+        async function sendAndWait(type, payload, timeoutMs) {
+            if (!port || !port.writable) {
+                throw new Error("Device not connected or connection lost");
+            }
+
+            let localWriter;
+            try {
+                localWriter = port.writable.getWriter();
+            } catch (err) {
+                throw new Error("Cannot access device - connection may be lost");
+            }
+
+            try {
+                const pkt = buildPacket(type, payload);
+                await localWriter.write(pkt);
+            } finally {
+                if (localWriter) localWriter.releaseLock();
+            }
+            return await readResponse(timeoutMs);
+        }
+
+        // Device connection
+        document.getElementById('connectBtn').onclick = async () => {
+            if (port) {
+                await disconnectDevice();
+                return;
+            }
+
+            try {
+                if (!("serial" in navigator)) {
+                    alert("WebSerial API is not supported in this browser. Please try Chrome, Edge, or Opera.");
+                    return;
+                }
+
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+
+                document.getElementById('statusDot').className = 'status-dot connected';
+                document.getElementById('connectBtn').textContent = '🔌 Disconnect';
+                document.getElementById('connection-hint').style.display = 'block';
+
+            } catch (err) {
+                alert(`Connection failed: ${err.message}`);
+                port = null;
+            }
+        };
+
+        async function disconnectDevice() {
+            if (port) {
+                try {
+                    await port.close();
+                } catch(e) {}
+                port = null;
+            }
+
+            document.getElementById('statusDot').className = 'status-dot';
+            document.getElementById('connectBtn').textContent = '🔌 Connect Device';
+            document.getElementById('connection-hint').style.display = 'none';
+        }
+
+        async function downloadBook(filename, title) {
+            if (!port || !port.readable || !port.writable) {
+                alert('Please connect your device first using the "Connect Device" button.');
+                return;
+            }
+
+            const safeId = filename.replace(/[^a-zA-Z0-9]/g, '-');
+            const progressDiv = document.getElementById(`progress-${safeId}`);
+            const fillDiv = document.getElementById(`fill-${safeId}`);
+            const statusDiv = document.getElementById(`status-${safeId}`);
+
+            try {
+                progressDiv.style.display = 'block';
+                statusDiv.textContent = 'Downloading...';
+                fillDiv.style.width = '0%';
+
+                // Fetch the markdown file
+                const response = await fetch(`books/${filename}`);
+                if (!response.ok) throw new Error(`Failed to fetch book: ${response.status}`);
+
+                const fileData = new Uint8Array(await response.arrayBuffer());
+                document.getElementById('statusDot').className = 'status-dot transferring';
+
+                // Build START packet
+                const filenameBytes = new TextEncoder().encode(filename);
+                const startPayload = new Uint8Array(4 + filenameBytes.length + 1);
+                startPayload[0] = (fileData.length >> 24) & 0xFF;
+                startPayload[1] = (fileData.length >> 16) & 0xFF;
+                startPayload[2] = (fileData.length >> 8) & 0xFF;
+                startPayload[3] = fileData.length & 0xFF;
+                startPayload.set(filenameBytes, 4);
+                startPayload[4 + filenameBytes.length] = 0;
+
+                // Send START packet
+                rxBuffer = new Uint8Array(0);
+                let success = false;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        let resp = await sendAndWait(PACKET_START, startPayload, 2000);
+                        if (resp.type === RESP_ACK) {
+                            success = true;
+                            break;
+                        }
+                    } catch (err) {
+                        if (attempt === 2) throw err;
+                        // Wait a bit before retry
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
+
+                if (!success) {
+                    throw new Error('Device rejected transfer after multiple attempts');
+                }
+
+                // Send file data
+                let offset = 0;
+                let seq = 0;
+
+                while (offset < fileData.length) {
+                    const end = Math.min(offset + CHUNK_SIZE, fileData.length);
+                    const chunk = fileData.slice(offset, end);
+
+                    const payload = new Uint8Array(2 + chunk.length);
+                    payload[0] = (seq >> 8) & 0xFF;
+                    payload[1] = seq & 0xFF;
+                    payload.set(chunk, 2);
+
+                    let chunkSuccess = false;
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                        try {
+                            resp = await sendAndWait(PACKET_DATA, payload, 4000);
+                            if (resp.type === RESP_ACK && resp.seq === seq) {
+                                chunkSuccess = true;
+                                break;
+                            }
+                        } catch (err) {
+                            if (attempt === 2) throw err;
+                            // Wait a bit before retry
+                            await new Promise(resolve => setTimeout(resolve, 300));
+                        }
+                    }
+
+                    if (!chunkSuccess) {
+                        throw new Error(`Failed to send chunk ${seq} after multiple attempts`);
+                    }
+
+                    offset += chunk.length;
+                    seq++;
+
+                    const pct = Math.floor((offset / fileData.length) * 100);
+                    fillDiv.style.width = `${pct}%`;
+                    statusDiv.textContent = `Transferring: ${pct}%`;
+                }
+
+                // Send END packet
+                success = false;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        resp = await sendAndWait(PACKET_END, new Uint8Array(0), 2000);
+                        if (resp.type === RESP_ACK) {
+                            success = true;
+                            break;
+                        }
+                    } catch (err) {
+                        if (attempt === 2) throw err;
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
+
+                if (!success) {
+                    throw new Error('Device did not acknowledge transfer completion');
+                }
+
+                statusDiv.textContent = '✓ Transfer complete!';
+                fillDiv.style.backgroundColor = 'var(--ins-color)';
+
+                document.getElementById('statusDot').className = 'status-dot connected';
+
+                setTimeout(() => {
+                    progressDiv.style.display = 'none';
+                }, 3000);
+
+            } catch (err) {
+                statusDiv.textContent = `✗ Error: ${err.message}`;
+                fillDiv.style.backgroundColor = 'var(--del-color)';
+                document.getElementById('statusDot').className = 'status-dot connected';
+            }
+        }
+
+        // Load books when page loads
+        document.addEventListener('DOMContentLoaded', loadBooks);
+    </script>
+</body>
+</html>

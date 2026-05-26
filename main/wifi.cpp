@@ -13,6 +13,7 @@
 static const char *TAG = "wifi";
 
 static bool wifi_initialized = false;
+static bool wifi_scanning = false;
 static bool wifi_connected = false;
 static bool ntp_initialized = false;
 static bool time_synchronized = false;
@@ -67,11 +68,15 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                 int32_t event_id, void *event_data) {
     if (event_base == WIFI_EVENT) {
         if (event_id == WIFI_EVENT_STA_START) {
-            esp_wifi_connect();
+            if (!wifi_scanning) {
+                esp_wifi_connect();
+            }
         } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
             wifi_connected = false;
             ESP_LOGI(TAG, "WiFi disconnected");
-            esp_wifi_connect();
+            if (!wifi_scanning) {
+                esp_wifi_connect();
+            }
         }
     } else if (event_base == IP_EVENT) {
         if (event_id == IP_EVENT_STA_GOT_IP) {
@@ -154,12 +159,34 @@ const char *wifi_get_ip(void) {
 int wifi_scan(void) {
     if (!wifi_initialized) return 0;
 
+    wifi_scanning = true;
+
+    esp_wifi_stop();
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    esp_err_t ret = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Set STA mode failed: %s", esp_err_to_name(ret));
+        wifi_scanning = false;
+        return 0;
+    }
+
+    ret = esp_wifi_start();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi start failed: %s", esp_err_to_name(ret));
+        wifi_scanning = false;
+        return 0;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
     wifi_scan_config_t scan_config;
     memset(&scan_config, 0, sizeof(scan_config));
 
-    esp_err_t ret = esp_wifi_scan_start(&scan_config, true);
+    ret = esp_wifi_scan_start(&scan_config, true);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Scan failed: %s", esp_err_to_name(ret));
+        wifi_scanning = false;
         return 0;
     }
 
@@ -167,11 +194,13 @@ int wifi_scan(void) {
     ret = esp_wifi_scan_get_ap_records(&number, scan_results);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Get scan results failed: %s", esp_err_to_name(ret));
+        wifi_scanning = false;
         return 0;
     }
 
     scan_count = number;
     ESP_LOGI(TAG, "Scan found %d networks", scan_count);
+    wifi_scanning = false;
     return scan_count;
 }
 

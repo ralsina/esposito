@@ -78,6 +78,14 @@ as an ebook reader. For books of any size. In markdown:
 {{% card %}}
 {{% figure src="reader2.png" caption="In action" link="https://github.com/ralsina/esposito/tree/main/apps/reader" %}}
 {{% /card %}}
+
+{{% card %}}
+{{% figure src="reader-download.png" caption="Downloading from the bookshop!" link="https://github.com/ralsina/esposito/tree/main/apps/reader" %}}
+{{% /card %}}
+
+{{% card %}}
+Yes, **there is a Free [Bookshop](/books.html)** with 100 titles (I am not Bezos, dude.)
+{{% /card %}}
 {{% /tag %}}
 
 It can have as many apps installed as you want and will fit in your SD card. They start in milliseconds, they restore their

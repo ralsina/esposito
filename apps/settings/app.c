@@ -33,6 +33,10 @@ static char status_msg[128] = {0};
 static int msg_timer = 0;
 static int scan_count = 0;
 static int scan_selected = 0;
+static char scan_labels[20][48];
+static const char *scan_items[20];
+static ui_list_widget_t *scan_list;
+static ui_button_t *scan_back_btn;
 static ui_text_input_widget_t *ssid_input;
 static ui_text_input_widget_t *password_input;
 static ui_text_input_widget_t *timezone_input;
@@ -133,6 +137,10 @@ static void on_font_family_item_selected(ui_list_widget_t *list, int item_index,
 static void on_font_size_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data);
 static void on_font_size_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
 static void on_main_exit_click(ui_button_t *button, void *user_data);
+static void on_scan_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
+static void on_scan_back_click(ui_button_t *button, void *user_data);
+static void build_scan_list_items(void);
+static void create_scan_list(void);
 static void render(void);
 
 #define SETTINGS_KEY_TIMEZONE "time/timezone"
@@ -648,25 +656,32 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
 
 static void execute_main_action(settings_action_t action) {
     switch (action) {
-        case ACTION_SCAN:
-            state = STATE_MESSAGE;
-            set_status("Scanning for networks...");
-            render();
+        case ACTION_SCAN: {
+            wifi_init();
             scan_count = wifi_scan();
-            state = STATE_SCAN_RESULTS;
             scan_selected = 0;
+            build_scan_list_items();
+            create_scan_list();
+            state = STATE_SCAN_RESULTS;
             msg_timer = 0;
             status_msg[0] = '\0';
             render();
             break;
+        }
         case ACTION_ENTER_SSID:
             state = STATE_ENTER_SSID;
             input_ssid[0] = '\0';
+            if (!keyboard_is_available()) {
+                ui_osk_input_text("Enter SSID", input_ssid, sizeof(input_ssid), NULL, false);
+            }
             render();
             break;
         case ACTION_ENTER_PASSWORD:
             state = STATE_ENTER_PASSWORD;
             input_password[0] = '\0';
+            if (!keyboard_is_available()) {
+                ui_osk_input_text("Enter Password", input_password, sizeof(input_password), NULL, true);
+            }
             render();
             break;
         case ACTION_SAVE_CONNECT:
@@ -688,10 +703,16 @@ static void execute_main_action(settings_action_t action) {
             break;
         case ACTION_SET_TIMEZONE:
             state = STATE_ENTER_TIMEZONE;
+            if (!keyboard_is_available()) {
+                ui_osk_input_text("Set Timezone", input_timezone, sizeof(input_timezone), input_timezone, false);
+            }
             render();
             break;
         case ACTION_SET_LOCATION:
             state = STATE_ENTER_LOCATION;
+            if (!keyboard_is_available()) {
+                ui_osk_input_text("Set Location", input_location, sizeof(input_location), input_location, false);
+            }
             render();
             break;
         case ACTION_SET_FONT_FAMILY:
@@ -873,37 +894,16 @@ static void draw_main(void) {
 static void draw_scan_results(void) {
     ui_clear();
 
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
-    int y = 0;
-    ui_label_attr((cols - 19) / 2, y++, "Available Networks", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
-    ui_separator(y++);
-
     if (scan_count <= 0) {
-        ui_label_attr(3, y, "No networks found", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
-    } else {
-        y++;
-        if (scan_selected >= scan_count) scan_selected = 0;
-
-        for (int i = 0; i < scan_count && i < rows - 6; i++) {
-            const char *ssid = wifi_scan_get_ssid(i);
-            int rssi = wifi_scan_get_rssi(i);
-            int quality = (rssi + 100) * 100 / 70;
-            if (quality < 0) quality = 0;
-            if (quality > 100) quality = 100;
-
-            uint8_t color = TEXT_COLOR_GREEN;
-            if (quality < 40) color = TEXT_COLOR_RED;
-            else if (quality < 70) color = TEXT_COLOR_YELLOW;
-
-            char marker = (i == scan_selected) ? '>' : ' ';
-            char line[48];
-            snprintf(line, sizeof(line), "%c %-24s %3d dBm", marker, ssid, rssi);
-            ui_label(3, y + i, line, color);
-        }
+        int cols = text_mode_get_cols();
+        ui_label_attr((cols - 19) / 2, 4, "No networks found", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+    } else if (scan_list) {
+        ui_list_draw(scan_list);
     }
 
-    ui_status_bar(rows - 3, "W/S Navigate  Enter Select", "ESC Back");
+    if (scan_back_btn) {
+        ui_button_draw(scan_back_btn);
+    }
 }
 
 static void draw_message(void) {
@@ -933,20 +933,28 @@ static void render(void) {
             draw_scan_results();
             break;
         case STATE_ENTER_SSID:
-            ui_text_input_set_buffer(ssid_input, input_ssid, sizeof(input_ssid));
-            ui_text_input_draw(ssid_input);
+            if (!ui_osk_is_active()) {
+                ui_text_input_set_buffer(ssid_input, input_ssid, sizeof(input_ssid));
+                ui_text_input_draw(ssid_input);
+            }
             break;
         case STATE_ENTER_PASSWORD:
-            ui_text_input_set_buffer(password_input, input_password, sizeof(input_password));
-            ui_text_input_draw(password_input);
+            if (!ui_osk_is_active()) {
+                ui_text_input_set_buffer(password_input, input_password, sizeof(input_password));
+                ui_text_input_draw(password_input);
+            }
             break;
         case STATE_ENTER_TIMEZONE:
-            ui_text_input_set_buffer(timezone_input, input_timezone, sizeof(input_timezone));
-            ui_text_input_draw(timezone_input);
+            if (!ui_osk_is_active()) {
+                ui_text_input_set_buffer(timezone_input, input_timezone, sizeof(input_timezone));
+                ui_text_input_draw(timezone_input);
+            }
             break;
         case STATE_ENTER_LOCATION:
-            ui_text_input_set_buffer(location_input, input_location, sizeof(input_location));
-            ui_text_input_draw(location_input);
+            if (!ui_osk_is_active()) {
+                ui_text_input_set_buffer(location_input, input_location, sizeof(input_location));
+                ui_text_input_draw(location_input);
+            }
             break;
         case STATE_FONT_SELECTION:
             ui_clear();
@@ -971,7 +979,7 @@ void app_init(app_context_t *ctx) {
         return;
     }
 
-    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH | EVENT_TIMER;
     ctx->timer_interval_ms = 100;
 
     state = STATE_MAIN;
@@ -1061,6 +1069,14 @@ void app_close(app_context_t *ctx) {
         ui_button_destroy(main_exit_btn);
         main_exit_btn = NULL;
     }
+    if (scan_list) {
+        ui_list_destroy(scan_list);
+        scan_list = NULL;
+    }
+    if (scan_back_btn) {
+        ui_button_destroy(scan_back_btn);
+        scan_back_btn = NULL;
+    }
 
     text_mode_clear(TEXT_COLOR_BLACK);
 }
@@ -1138,29 +1154,82 @@ static void handle_scan_key(char key) {
         return;
     }
 
-    if (scan_count <= 0) return;
-
-    int old = scan_selected;
-
-    if (key == 'w' || key == 'W') {
-        scan_selected = (scan_selected - 1 + scan_count) % scan_count;
-    } else if (key == 's' || key == 'S') {
-        scan_selected = (scan_selected + 1) % scan_count;
-    } else if (key == '\n' || key == '\r') {
-        if (scan_selected >= 0 && scan_selected < scan_count) {
-            const char *ssid = wifi_scan_get_ssid(scan_selected);
-            if (ssid && ssid[0]) {
-                strncpy(input_ssid, ssid, sizeof(input_ssid) - 1);
-                state = STATE_ENTER_PASSWORD;
-                input_password[0] = '\0';
-                render();
-            }
-        }
-    }
-
-    if (scan_selected != old) {
+    if (scan_list && ui_list_handle_key(scan_list, key)) {
+        if (state == STATE_MAIN) return;
         render();
     }
+}
+
+static void build_scan_list_items(void) {
+    for (int i = 0; i < scan_count && i < 20; i++) {
+        const char *ssid = wifi_scan_get_ssid(i);
+        int rssi = wifi_scan_get_rssi(i);
+        int quality = (rssi + 100) * 100 / 70;
+        if (quality < 0) quality = 0;
+        if (quality > 100) quality = 100;
+
+        uint8_t color = TEXT_COLOR_GREEN;
+        if (quality < 40) color = TEXT_COLOR_RED;
+        else if (quality < 70) color = TEXT_COLOR_YELLOW;
+
+        const char *quality_label = quality >= 70 ? "Good" : quality >= 40 ? "Fair" : "Weak";
+        snprintf(scan_labels[i], sizeof(scan_labels[i]), "%-24s %3ddBm [%s]", ssid, rssi, quality_label);
+        scan_items[i] = scan_labels[i];
+    }
+}
+
+static void create_scan_list(void) {
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+
+    if (scan_list) {
+        ui_list_destroy(scan_list);
+        scan_list = NULL;
+    }
+    if (scan_back_btn) {
+        ui_button_destroy(scan_back_btn);
+        scan_back_btn = NULL;
+    }
+
+    scan_list = ui_list_create(1, 1, cols - 2, rows - 5);
+    ui_list_set_title(scan_list, "Available Networks");
+    ui_list_set_colors(scan_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                       TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+    ui_list_set_border(scan_list, true);
+    ui_list_set_scrollbar(scan_list, true);
+
+    if (scan_count > 0) {
+        ui_list_set_items(scan_list, scan_items, scan_count);
+        ui_list_set_selection(scan_list, scan_selected);
+    }
+    ui_list_set_callbacks(scan_list, NULL, on_scan_item_selected, NULL);
+
+    int btn_w = 8;
+    scan_back_btn = ui_button_create((cols - btn_w) / 2, rows - 3, btn_w, 3, "BACK");
+    ui_button_set_callback(scan_back_btn, on_scan_back_click, NULL);
+}
+
+static void on_scan_item_selected(ui_list_widget_t *list, int item_index, void *user_data) {
+    (void)list;
+    (void)user_data;
+    if (item_index < 0 || item_index >= scan_count) return;
+    const char *ssid = wifi_scan_get_ssid(item_index);
+    if (ssid && ssid[0]) {
+        strncpy(input_ssid, ssid, sizeof(input_ssid) - 1);
+        state = STATE_ENTER_PASSWORD;
+        input_password[0] = '\0';
+        if (!keyboard_is_available()) {
+            ui_osk_input_text("Enter Password", input_password, sizeof(input_password), NULL, true);
+        }
+        render();
+    }
+}
+
+static void on_scan_back_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    state = STATE_MAIN;
+    render();
 }
 
 static void handle_text_entry_event(event_t *event) {
@@ -1224,6 +1293,35 @@ void app_event(app_context_t *ctx, event_t *event) {
             return;
         }
 
+        // Handle OSK events first
+        if (ui_osk_is_active()) {
+            ui_osk_handle_event(NULL, (event_t*)event);
+            if (!ui_osk_is_active()) {
+                ui_osk_result_t result = ui_osk_get_result();
+                if (result == UI_OSK_RESULT_CONFIRMED) {
+                    if (state == STATE_ENTER_TIMEZONE) {
+                        os_settings_set_string(SETTINGS_KEY_TIMEZONE, input_timezone);
+                        set_status("Timezone saved");
+                    } else if (state == STATE_ENTER_LOCATION) {
+                        trim_spaces(input_location);
+                        char resolved_location[64];
+                        if (!resolve_location(input_location, resolved_location, sizeof(resolved_location))) {
+                            state = STATE_MESSAGE;
+                            set_status("Location lookup failed");
+                            render();
+                            return;
+                        }
+                        snprintf(input_location, sizeof(input_location), "%s", resolved_location);
+                        os_settings_set_string(SETTINGS_KEY_LOCATION, input_location);
+                        set_status("Location saved as lat,lon");
+                    }
+                }
+                state = STATE_MAIN;
+                render();
+            }
+            return;
+        }
+
         switch (state) {
             case STATE_MAIN:
                 handle_main_key(key);
@@ -1258,6 +1356,35 @@ void app_event(app_context_t *ctx, event_t *event) {
                 break;
         }
     } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
+        // Handle OSK touch events first
+        if (ui_osk_is_active()) {
+            ui_osk_handle_event(NULL, (event_t*)event);
+            if (!ui_osk_is_active()) {
+                ui_osk_result_t result = ui_osk_get_result();
+                if (result == UI_OSK_RESULT_CONFIRMED) {
+                    if (state == STATE_ENTER_TIMEZONE) {
+                        os_settings_set_string(SETTINGS_KEY_TIMEZONE, input_timezone);
+                        set_status("Timezone saved");
+                    } else if (state == STATE_ENTER_LOCATION) {
+                        trim_spaces(input_location);
+                        char resolved_location[64];
+                        if (!resolve_location(input_location, resolved_location, sizeof(resolved_location))) {
+                            state = STATE_MESSAGE;
+                            set_status("Location lookup failed");
+                            render();
+                            return;
+                        }
+                        snprintf(input_location, sizeof(input_location), "%s", resolved_location);
+                        os_settings_set_string(SETTINGS_KEY_LOCATION, input_location);
+                        set_status("Location saved as lat,lon");
+                    }
+                }
+                state = STATE_MAIN;
+                render();
+            }
+            return;
+        }
+
         // Convert pixel coordinates to character coordinates
         int cw = text_mode_get_char_width();
         int ch = text_mode_get_char_height();
@@ -1270,6 +1397,14 @@ void app_event(app_context_t *ctx, event_t *event) {
         char_event.touch.y = y_col;
 
         switch (state) {
+            case STATE_SCAN_RESULTS:
+                if (scan_list && ui_list_handle_touch(scan_list, event)) {
+                    if (state != STATE_SCAN_RESULTS) return;
+                    render();
+                } else if (scan_back_btn && ui_button_handle_touch(scan_back_btn, event)) {
+                    // handled by callback
+                }
+                break;
             case STATE_FONT_SELECTION:
                 if (ui_list_handle_touch(font_family_list, event)) {
                     render();
