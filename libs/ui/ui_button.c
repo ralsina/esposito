@@ -77,37 +77,22 @@ void ui_button_draw(ui_button_t *button) {
         }
     }
 
-    // Draw button text centered WITH border attributes preserved
+    // Draw button text centered
     if (button->text) {
-        int text_len = strlen(button->text);
-        int text_x = button->x + (button->width - text_len) / 2;
+        int display_cols = 0;
+        for (int i = 0; button->text[i]; ) {
+            unsigned char b = (unsigned char)button->text[i];
+            if ((b & 0xE0) == 0xC0) i += 2;
+            else if ((b & 0xF0) == 0xE0) i += 3;
+            else if ((b & 0xF8) == 0xF0) i += 4;
+            else i += 1;
+            display_cols++;
+        }
+
+        int text_x = button->x + (button->width - display_cols) / 2;
         int text_y = button->y + (button->height - 1) / 2;
 
-        // Draw text character by character to handle borders properly
-        for (int i = 0; i < text_len; i++) {
-            int char_x = text_x + i;
-            if (char_x < button->x + button->width) { // Don't draw beyond button width
-                uint8_t text_attr = TEXT_ATTR_NORMAL;
-
-                // Add borders if this character is at edges
-                if (text_y == button->y) {
-                    text_attr |= TEXT_ATTR_BORDER_TOP;
-                }
-                if (text_y == button->y + button->height - 1) {
-                    text_attr |= TEXT_ATTR_UNDERLINE; // Bottom border
-                }
-                if (char_x == button->x) {
-                    text_attr |= TEXT_ATTR_BORDER_LEFT;
-                }
-                if (char_x == button->x + button->width - 1) {
-                    text_attr |= TEXT_ATTR_BORDER_RIGHT;
-                }
-
-                // Draw single character with appropriate attributes
-                char str[2] = {button->text[i], '\0'};
-                text_mode_print_at_attr_bg(char_x, text_y, str, button->fg_color, button->bg_color, text_attr);
-            }
-        }
+        text_mode_print_at_attr_bg(text_x, text_y, button->text, button->fg_color, button->bg_color, TEXT_ATTR_NORMAL);
     }
 }
 

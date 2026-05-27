@@ -39,21 +39,53 @@ typedef enum {
 // Text attributes
 typedef enum {
     TEXT_ATTR_NORMAL = 0,
-    TEXT_ATTR_BOLD = 1,           // Bit 0: Bold text
-    TEXT_ATTR_ITALIC = 2,         // Bit 1: Italic text
-    TEXT_ATTR_UNDERLINE = 4,      // Bit 2: Underline (bottom border)
-    TEXT_ATTR_INVERSE = 8,        // Bit 3: Inverse colors
-    TEXT_ATTR_LINE_DRAWING = 16,  // Bit 4: VT100 line drawing mode
-    TEXT_ATTR_BORDER_TOP = 32,    // Bit 5: Top border line
-    TEXT_ATTR_BORDER_LEFT = 64,   // Bit 6: Left border line
-    TEXT_ATTR_BORDER_RIGHT = 128, // Bit 7: Right border line
+    TEXT_ATTR_BOLD = 1,
+    TEXT_ATTR_ITALIC = 2,
+    TEXT_ATTR_UNDERLINE = 4,
+    TEXT_ATTR_INVERSE = 8,
+    TEXT_ATTR_SYMBOL = 16,          // Render from symbol font
+    TEXT_ATTR_LINE_DRAWING = 16,    // Alias for backward compat
+    TEXT_ATTR_BORDER_TOP = 32,
+    TEXT_ATTR_BORDER_LEFT = 64,
+    TEXT_ATTR_BORDER_RIGHT = 128,
 } text_attribute_t;
+
+// Symbol codepoints for use with TEXT_ATTR_SYMBOL
+// These are Unicode codepoints stored in text_cell_t.character (uint16_t)
+#define SYM_LEFT      0x2190    // ←
+#define SYM_UP        0x2191    // ↑
+#define SYM_RIGHT     0x2192    // →
+#define SYM_DOWN      0x2193    // ↓
+#define SYM_LEFTRIGHT 0x2194   // ↔
+#define SYM_UPDOWN    0x2195   // ↕
+#define SYM_CHECK     0x2713    // ✓
+#define SYM_CROSS     0x2717    // ✗
+#define SYM_MENU      0x2261    // ≡
+#define SYM_GEAR      0x2699    // ⚙
+#define SYM_RETURN    0x23CE    // ⏎
+#define SYM_BOX       0x2610    // ☐
+#define SYM_CHECKBOX  0x2611    // ☑
+#define SYM_ELLIPSIS  0x2026    // …
+#define SYM_LTE       0x2264    // ≤
+#define SYM_GTE       0x2265    // ≥
+#define SYM_NEQ       0x2260    // ≠
+#define SYM_BULLET    0x25CF    // ●
+#define SYM_CIRCLE    0x25CB    // ○
+#define SYM_SQUARE    0x25A0    // ■
+#define SYM_SQUARE_O  0x25A1    // □
+#define SYM_DIAMOND   0x25C6    // ◆
+#define SYM_DIAMOND_O 0x25C7    // ◇
+#define SYM_TRI_UP    0x25B2    // ▲
+#define SYM_TRI_DOWN  0x25BC    // ▼
+#define SYM_TRI_LEFT  0x25C0    // ◀
+#define SYM_TRI_RIGHT 0x25B6    // ▶
+#define SYM_SEARCH    0x2315    // ⌕
 
 // Cell data structure
 typedef struct {
-    char character;
-    uint8_t color;      // foreground color (0-15)
-    uint8_t bg_color;   // background color (0-15)
+    uint16_t character;  // Unicode codepoint
+    uint8_t color;
+    uint8_t bg_color;
     uint8_t attributes;
 } text_cell_t;
 

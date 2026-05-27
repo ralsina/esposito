@@ -145,6 +145,10 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
                 if (next_ch >= 0x80) {
                     long next_cp = decode_utf8(tokenizer, next_ch);
                     if (next_cp < 0) break;
+                    if (next_cp == 0x00A0) {
+                        tokenizer->pushback = ' ';
+                        break;
+                    }
                     append_utf8_codepoint(tokenizer, next_cp);
                     continue;
                 }
@@ -233,6 +237,10 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
                 if (escaped >= 0x80) {
                     long cp = decode_utf8(tokenizer, escaped);
                     if (cp < 0) break;
+                    if (cp == 0x00A0) {
+                        tokenizer->pushback = ' ';
+                        break;
+                    }
                     append_utf8_codepoint(tokenizer, cp);
                 } else {
                     append_utf8_codepoint(tokenizer, escaped);
@@ -244,6 +252,10 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
         if (next_ch >= 0x80) {
             long cp = decode_utf8(tokenizer, next_ch);
             if (cp < 0) break;
+            if (cp == 0x00A0) {
+                tokenizer->pushback = ' ';
+                break;
+            }
             append_utf8_codepoint(tokenizer, cp);
             continue;
         }

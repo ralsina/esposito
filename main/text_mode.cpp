@@ -37,6 +37,10 @@ static bool graphics = false;
 
 static void update_cell(int x, int y);
 
+static const uint8_t *vlw_find_glyph(const uint8_t *data, size_t size, uint16_t unicode,
+                                      int *out_width, int *out_height,
+                                      int *out_top_offset, int *out_left_offset);
+
 enum line_drawing_mask_t {
     LINE_DRAW_LEFT = 1 << 0,
     LINE_DRAW_RIGHT = 1 << 1,
@@ -44,118 +48,97 @@ enum line_drawing_mask_t {
     LINE_DRAW_DOWN = 1 << 3,
 };
 
-static bool cell_uses_line_drawing(const text_cell_t *cell) {
-    return cell && (cell->attributes & TEXT_ATTR_LINE_DRAWING);
-}
-
-static uint8_t line_drawing_base_mask(char ch) {
-    switch (ch) {
-        case '-': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT;
-        case 'q': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT;
-        case '|': return LINE_DRAW_UP | LINE_DRAW_DOWN;
-        case 'x': return LINE_DRAW_UP | LINE_DRAW_DOWN;
-        case '+': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
-        case 'n': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
-        case 'l': return LINE_DRAW_RIGHT | LINE_DRAW_DOWN;
-        case 'k': return LINE_DRAW_LEFT | LINE_DRAW_DOWN;
-        case 'm': return LINE_DRAW_RIGHT | LINE_DRAW_UP;
-        case 'j': return LINE_DRAW_LEFT | LINE_DRAW_UP;
-        case 't': return LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
-        case 'u': return LINE_DRAW_LEFT | LINE_DRAW_UP | LINE_DRAW_DOWN;
-        case 'v': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP;
-        case 'w': return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_DOWN;
+static uint8_t codepoint_to_mask(uint16_t cp) {
+    switch (cp) {
+        case 0x2500: return LINE_DRAW_LEFT | LINE_DRAW_RIGHT;
+        case 0x2502: return LINE_DRAW_UP | LINE_DRAW_DOWN;
+        case 0x250C: return LINE_DRAW_RIGHT | LINE_DRAW_DOWN;
+        case 0x2510: return LINE_DRAW_LEFT | LINE_DRAW_DOWN;
+        case 0x2514: return LINE_DRAW_RIGHT | LINE_DRAW_UP;
+        case 0x2518: return LINE_DRAW_LEFT | LINE_DRAW_UP;
+        case 0x251C: return LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
+        case 0x2524: return LINE_DRAW_LEFT | LINE_DRAW_UP | LINE_DRAW_DOWN;
+        case 0x252C: return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_DOWN;
+        case 0x2534: return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP;
+        case 0x253C: return LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
         default: return 0;
     }
 }
 
+static bool cell_is_symbol(const text_cell_t *cell) {
+    return cell && (cell->attributes & TEXT_ATTR_SYMBOL);
+}
+
+static bool is_box_drawing(uint16_t cp) {
+    return cp >= 0x2500 && cp <= 0x257F;
+}
+
+static uint16_t vt100_to_unicode(char ch) {
+    switch (ch) {
+        case '-': case 'q': return 0x2500;
+        case '|': case 'x': return 0x2502;
+        case 'l': return 0x250C;
+        case 'k': return 0x2510;
+        case 'm': return 0x2514;
+        case 'j': return 0x2518;
+        case 't': return 0x251C;
+        case 'u': return 0x2524;
+        case 'w': return 0x252C;
+        case 'v': return 0x2534;
+        case 'n': return 0x253C;
+        case '+': return 0x253C;
+        default: return (uint16_t)(uint8_t)ch;
+    }
+}
+
+static uint16_t mask_to_box_char(uint8_t mask) {
+    if (mask == (LINE_DRAW_LEFT | LINE_DRAW_RIGHT)) return 0x2500;
+    if (mask == (LINE_DRAW_UP | LINE_DRAW_DOWN)) return 0x2502;
+    if (mask == (LINE_DRAW_RIGHT | LINE_DRAW_DOWN)) return 0x250C;
+    if (mask == (LINE_DRAW_LEFT | LINE_DRAW_DOWN)) return 0x2510;
+    if (mask == (LINE_DRAW_RIGHT | LINE_DRAW_UP)) return 0x2514;
+    if (mask == (LINE_DRAW_LEFT | LINE_DRAW_UP)) return 0x2518;
+    if (mask == (LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN)) return 0x251C;
+    if (mask == (LINE_DRAW_LEFT | LINE_DRAW_UP | LINE_DRAW_DOWN)) return 0x2524;
+    if (mask == (LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_DOWN)) return 0x252C;
+    if (mask == (LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP)) return 0x2534;
+    if (mask == (LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN)) return 0x253C;
+    return 0x253C;
+}
+
 static bool neighbor_connects_to_direction(int nx, int ny, uint8_t opposite_mask) {
-    if (!grid || nx < 0 || ny < 0 || nx >= grid_cols || ny >= grid_rows) {
-        return false;
-    }
-
+    if (!grid || nx < 0 || ny < 0 || nx >= grid_cols || ny >= grid_rows) return false;
     const text_cell_t *neighbor = &grid[ny * grid_cols + nx];
-    if (!cell_uses_line_drawing(neighbor)) {
-        return false;
-    }
-
-    return (line_drawing_base_mask(neighbor->character) & opposite_mask) != 0;
+    if (!cell_is_symbol(neighbor)) return false;
+    return (codepoint_to_mask(neighbor->character) & opposite_mask) != 0;
 }
 
-static uint8_t line_drawing_mask_for_cell(int x, int y) {
-    if (!grid || x < 0 || y < 0 || x >= grid_cols || y >= grid_rows) {
-        return 0;
-    }
-
+static uint16_t resolve_box_char(int x, int y) {
+    if (!grid || x < 0 || y < 0 || x >= grid_cols || y >= grid_rows) return '?';
     const text_cell_t *cell = &grid[y * grid_cols + x];
-    if (!cell_uses_line_drawing(cell)) {
-        return 0;
+    if (!cell_is_symbol(cell) || !is_box_drawing(cell->character)) return cell->character;
+
+    uint8_t base_mask = codepoint_to_mask(cell->character);
+    if (base_mask == (LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN)) {
+        uint8_t mask = 0;
+        if (neighbor_connects_to_direction(x - 1, y, LINE_DRAW_RIGHT)) mask |= LINE_DRAW_LEFT;
+        if (neighbor_connects_to_direction(x + 1, y, LINE_DRAW_LEFT)) mask |= LINE_DRAW_RIGHT;
+        if (neighbor_connects_to_direction(x, y - 1, LINE_DRAW_DOWN)) mask |= LINE_DRAW_UP;
+        if (neighbor_connects_to_direction(x, y + 1, LINE_DRAW_UP)) mask |= LINE_DRAW_DOWN;
+        if (mask == 0) mask = base_mask;
+        return mask_to_box_char(mask);
     }
-
-    uint8_t mask = line_drawing_base_mask(cell->character);
-    if (cell->character == '+') {
-        mask = 0;
-        if (neighbor_connects_to_direction(x - 1, y, LINE_DRAW_RIGHT)) {
-            mask |= LINE_DRAW_LEFT;
-        }
-        if (neighbor_connects_to_direction(x + 1, y, LINE_DRAW_LEFT)) {
-            mask |= LINE_DRAW_RIGHT;
-        }
-        if (neighbor_connects_to_direction(x, y - 1, LINE_DRAW_DOWN)) {
-            mask |= LINE_DRAW_UP;
-        }
-        if (neighbor_connects_to_direction(x, y + 1, LINE_DRAW_UP)) {
-            mask |= LINE_DRAW_DOWN;
-        }
-
-        if (mask == 0) {
-            mask = LINE_DRAW_LEFT | LINE_DRAW_RIGHT | LINE_DRAW_UP | LINE_DRAW_DOWN;
-        }
-    }
-
-    return mask;
+    return cell->character;
 }
 
-static void draw_line_drawing_cell(int px, int py, uint8_t fg, uint8_t mask) {
-    int mid_x = px + font_width / 2;
-    int mid_y = py + font_height / 2;
-    int right = px + font_width - 1;
-    int bottom = py + font_height - 1;
-
-    if ((mask & LINE_DRAW_LEFT) && (mask & LINE_DRAW_RIGHT)) {
-        display_fill_rect(px, mid_y, font_width, 1, fg);
-    } else if (mask & LINE_DRAW_LEFT) {
-        display_fill_rect(px, mid_y, mid_x - px + 1, 1, fg);
-    } else if (mask & LINE_DRAW_RIGHT) {
-        display_fill_rect(mid_x, mid_y, right - mid_x + 1, 1, fg);
-    }
-
-    if ((mask & LINE_DRAW_UP) && (mask & LINE_DRAW_DOWN)) {
-        display_fill_rect(mid_x, py, 1, font_height, fg);
-    } else if (mask & LINE_DRAW_UP) {
-        display_fill_rect(mid_x, py, 1, mid_y - py + 1, fg);
-    } else if (mask & LINE_DRAW_DOWN) {
-        display_fill_rect(mid_x, mid_y, 1, bottom - mid_y + 1, fg);
-    }
-}
-
-static void refresh_line_drawing_cells_around(int x, int y) {
-    static const int offsets[][2] = {
-        {0, 0},
-        {-1, 0},
-        {1, 0},
-        {0, -1},
-        {0, 1},
-    };
-
+static void refresh_symbol_cells_around(int x, int y) {
+    static const int offsets[][2] = {{0,0}, {-1,0}, {1,0}, {0,-1}, {0,1}};
     for (size_t index = 0; index < sizeof(offsets) / sizeof(offsets[0]); index++) {
         int nx = x + offsets[index][0];
         int ny = y + offsets[index][1];
-        if (!grid || nx < 0 || ny < 0 || nx >= grid_cols || ny >= grid_rows) {
-            continue;
-        }
-
+        if (!grid || nx < 0 || ny < 0 || nx >= grid_cols || ny >= grid_rows) continue;
         text_cell_t *cell = &grid[ny * grid_cols + nx];
-        if (cell->attributes & TEXT_ATTR_LINE_DRAWING) {
+        if (cell->attributes & TEXT_ATTR_SYMBOL) {
             update_cell(nx, ny);
         }
     }
@@ -190,14 +173,6 @@ static void update_cell(int x, int y) {
 
     display_fill_rect(px, py, font_width, font_height, bg);
 
-    if (cell->attributes & TEXT_ATTR_LINE_DRAWING) {
-        uint8_t mask = line_drawing_mask_for_cell(x, y);
-        if (mask != 0 && cell->character != ' ') {
-            draw_line_drawing_cell(px, py, fg, mask);
-        }
-        return;
-    }
-
     if (cell->character != ' ') {
         font_variant_t needed = FONT_VARIANT_REGULAR;
         if (cell->attributes & TEXT_ATTR_BOLD && cell->attributes & TEXT_ATTR_ITALIC) {
@@ -212,7 +187,29 @@ static void update_cell(int x, int y) {
                 current_variant = needed;
             }
         }
-        display_draw_char_at(px, py, cell->character, fg, bg);
+
+        uint16_t cp = cell->character;
+        if (cell->attributes & TEXT_ATTR_SYMBOL) {
+            cp = resolve_box_char(x, y);
+        }
+
+        size_t var_size = 0;
+        const uint8_t *var_data = font_get_variant_data(current_font, current_variant, &var_size);
+        int gw = 0, gh = 0, gtop = 0, gleft = 0;
+        const uint8_t *glyph = vlw_find_glyph(var_data, var_size, cp, &gw, &gh, &gtop, &gleft);
+        if (glyph) {
+            display_draw_unicode_at(px, py, cp, fg, bg);
+        } else {
+            size_t sup_size = 0;
+            const uint8_t *sup_data = font_get_supplement_data(current_font, &sup_size);
+            glyph = vlw_find_glyph(sup_data, sup_size, cp, &gw, &gh, &gtop, &gleft);
+            if (glyph) {
+                display_draw_unicode_with_font(px, py, cp, fg, bg, sup_data, sup_size);
+                display_load_font(current_font, current_variant);
+            } else {
+                display_draw_unicode_at(px, py, '?', fg, bg);
+            }
+        }
     }
 
     // Draw borders
@@ -481,35 +478,65 @@ void text_mode_print_at_color(int x, int y, const char *str, uint16_t color) {
     text_mode_print_at_attr(x, y, str, color & 0x0F, TEXT_ATTR_NORMAL);
 }
 
+static int utf8_decode(const char *str, uint16_t *out_cp) {
+    uint8_t b0 = (uint8_t)str[0];
+    if (b0 < 0x80) {
+        *out_cp = b0;
+        return 1;
+    } else if ((b0 & 0xE0) == 0xC0) {
+        *out_cp = (uint16_t)((b0 & 0x1F) << 6) | (uint8_t)(str[1] & 0x3F);
+        return 2;
+    } else if ((b0 & 0xF0) == 0xE0) {
+        *out_cp = (uint16_t)((b0 & 0x0F) << 12) | ((uint8_t)(str[1] & 0x3F) << 6) | (uint8_t)(str[2] & 0x3F);
+        return 3;
+    }
+    *out_cp = '?';
+    return 1;
+}
+
 static void text_mode_write_cells(int x, int y, const char *str, uint8_t fg_color, uint8_t bg, uint8_t attr) {
     if (!initialized || !grid || !str) return;
     if (x < 0 || x >= grid_cols || y < 0 || y >= grid_rows) return;
 
     int len = strlen(str);
-    int max_chars = grid_cols - x;
-    int write_len = len < max_chars ? len : max_chars;
+    int cx = x;
+    int max_x = grid_cols;
+    const char *p = str;
+    const char *end = str + len;
 
-    for (int i = 0; i < write_len; i++) {
-        int idx = y * grid_cols + x + i;
+    while (p < end && cx < max_x) {
+        uint16_t cp;
+        int bytes = utf8_decode(p, &cp);
+        if (p + bytes > end) break;
+
+        if (attr & TEXT_ATTR_SYMBOL) {
+            cp = vt100_to_unicode((char)cp);
+        }
+
+        int idx = y * grid_cols + cx;
         text_cell_t *cell = &grid[idx];
 
-        if (cell->character == str[i] &&
+        if (cell->character == cp &&
             cell->color == fg_color &&
             cell->bg_color == bg &&
             cell->attributes == attr) {
+            cx++;
+            p += bytes;
             continue;
         }
 
-        cell->character = str[i];
+        cell->character = cp;
         cell->color = fg_color;
         cell->bg_color = bg;
         cell->attributes = attr;
-        update_cell(x + i, y);
-        refresh_line_drawing_cells_around(x + i, y);
+        update_cell(cx, y);
+        refresh_symbol_cells_around(cx, y);
+        cx++;
+        p += bytes;
     }
 
-    if (write_len > 0) {
-        cursor_x = x + write_len - 1;
+    if (cx > x) {
+        cursor_x = cx - 1;
         if (cursor_x >= grid_cols) {
             cursor_x = 0;
             cursor_y = (cursor_y + 1) % grid_rows;
@@ -643,8 +670,6 @@ bool text_mode_save_screenshot(void) {
 
     int fw = font_width;
     int fh = font_height;
-    int mid_x = fw / 2;
-    int mid_y = fh / 2;
     int max_gx = grid_cols;
     int max_gy = grid_rows;
 
@@ -680,13 +705,12 @@ bool text_mode_save_screenshot(void) {
             uint8_t g_bg = (rgb565_bg >> 3) & 0xFC; g_bg |= g_bg >> 6;
             uint8_t b_bg = (rgb565_bg << 3) & 0xF8; b_bg |= b_bg >> 5;
 
-            bool line_drawing = (attrs & TEXT_ATTR_LINE_DRAWING) != 0;
-            uint8_t line_mask = 0;
-            if (line_drawing) {
-                line_mask = line_drawing_mask_for_cell(gx, gy);
+            bool is_symbol = (attrs & TEXT_ATTR_SYMBOL) != 0;
+            uint16_t render_cp = cell->character;
+            if (is_symbol) {
+                render_cp = resolve_box_char(gx, gy);
             }
 
-            // Determine font variant from attributes
             font_variant_t variant = FONT_VARIANT_REGULAR;
             if ((attrs & TEXT_ATTR_BOLD) && (attrs & TEXT_ATTR_ITALIC))
                 variant = FONT_VARIANT_BOLDITALIC;
@@ -695,7 +719,6 @@ bool text_mode_save_screenshot(void) {
             else if (attrs & TEXT_ATTR_ITALIC)
                 variant = FONT_VARIANT_ITALIC;
 
-            // Load VLW data for this variant and find glyph
             size_t var_size = 0;
             const uint8_t *var_data = font_get_variant_data(current_font, variant, &var_size);
             int gw = 0, gh = 0, top_offset = 0, left_offset = 0;
@@ -703,30 +726,28 @@ bool text_mode_save_screenshot(void) {
             int ascent = 0;
             if (var_data) {
                 ascent = (int)vlw_read_be32(var_data + 16);
-                if (cell->character != ' ') {
-                    bitmap = vlw_find_glyph(var_data, var_size, (unsigned char)cell->character,
+                if (render_cp != ' ') {
+                    bitmap = vlw_find_glyph(var_data, var_size, render_cp,
                                             &gw, &gh, &top_offset, &left_offset);
                 }
+            }
+            if (!bitmap && render_cp != ' ') {
+                size_t sup_size = 0;
+                const uint8_t *sup_data = font_get_supplement_data(current_font, &sup_size);
+                if (sup_data) {
+                    bitmap = vlw_find_glyph(sup_data, sup_size, render_cp,
+                                            &gw, &gh, &top_offset, &left_offset);
+                }
+            }
+            if (!bitmap && render_cp != ' ') {
+                var_data = font_get_variant_data(current_font, variant, &var_size);
+                bitmap = vlw_find_glyph(var_data, var_size, '?',
+                                        &gw, &gh, &top_offset, &left_offset);
             }
 
             for (int dx = 0; dx < fw; dx++) {
                 uint8_t alpha = 0;
-                if (line_drawing && line_mask != 0) {
-                    bool set = false;
-                    if ((line_mask & LINE_DRAW_LEFT) && (line_mask & LINE_DRAW_RIGHT) && char_row == mid_y)
-                        set = true;
-                    else if ((line_mask & LINE_DRAW_LEFT) && !(line_mask & LINE_DRAW_RIGHT) && char_row == mid_y && dx <= mid_x)
-                        set = true;
-                    else if ((line_mask & LINE_DRAW_RIGHT) && !(line_mask & LINE_DRAW_LEFT) && char_row == mid_y && dx >= mid_x)
-                        set = true;
-                    else if ((line_mask & LINE_DRAW_UP) && (line_mask & LINE_DRAW_DOWN) && dx == mid_x)
-                        set = true;
-                    else if ((line_mask & LINE_DRAW_UP) && !(line_mask & LINE_DRAW_DOWN) && dx == mid_x && char_row <= mid_y)
-                        set = true;
-                    else if ((line_mask & LINE_DRAW_DOWN) && !(line_mask & LINE_DRAW_UP) && dx == mid_x && char_row >= mid_y)
-                        set = true;
-                    if (set) alpha = 255;
-                } else if (bitmap && gw > 0 && gh > 0) {
+                if (bitmap && gw > 0 && gh > 0) {
                     int glyph_row = char_row - (ascent - top_offset);
                     int glyph_col = dx - left_offset;
                     if (glyph_row >= 0 && glyph_row < gh && glyph_col >= 0 && glyph_col < gw) {

@@ -56,6 +56,8 @@ bool font_get_vlw_metrics(const uint8_t *data, size_t size, int *out_width, int 
 
 const uint8_t *font_get_variant_data(font_id_t id, font_variant_t variant, size_t *out_size);
 
+const uint8_t *font_get_supplement_data(font_id_t id, size_t *out_size);
+
 #ifdef __cplusplus
 }
 #endif

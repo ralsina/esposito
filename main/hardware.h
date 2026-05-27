@@ -41,6 +41,8 @@ bool display_draw_jpg_fit(const char *path, int *drawn_width, int *drawn_height)
 
 // Display character with specific foreground and background at pixel position
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color);
+void display_draw_unicode_at(int x, int y, uint16_t codepoint, uint16_t fg_color, uint16_t bg_color);
+void display_draw_unicode_with_font(int x, int y, uint16_t codepoint, uint16_t fg_color, uint16_t bg_color, const uint8_t *font_data, size_t font_size);
 bool display_save_screenshot_ppm(const char *path);
 
 // Screen dimension functions

@@ -78,6 +78,17 @@
 #include "ibmplex_italic-14.h"
 #include "ibmplex_bolditalic-14.h"
 
+// Supplement symbol fonts (DejaVu Sans Mono — box-drawing + symbols)
+#include "supplement-6.h"
+#include "supplement-7.h"
+#include "supplement-8.h"
+#include "supplement-9.h"
+#include "supplement-10.h"
+#include "supplement-11.h"
+#include "supplement-12.h"
+#include "supplement-13.h"
+#include "supplement-14.h"
+
 typedef struct {
     const uint8_t *data;
     size_t size;
@@ -104,6 +115,18 @@ static const variant_data_t font_variants[FONT_COUNT][FONT_VARIANT_COUNT] = {
     { VDATA(ibmplex_12), VDATA(ibmplex_bold_12), VDATA(ibmplex_italic_12), VDATA(ibmplex_bolditalic_12) },
     { VDATA(ibmplex_13), VDATA(ibmplex_bold_13), VDATA(ibmplex_italic_13), VDATA(ibmplex_bolditalic_13) },
     { VDATA(ibmplex_14), VDATA(ibmplex_bold_14), VDATA(ibmplex_italic_14), VDATA(ibmplex_bolditalic_14) },
+};
+
+static const variant_data_t supplement_fonts[9] = {
+    VDATA(supplement_6),
+    VDATA(supplement_7),
+    VDATA(supplement_8),
+    VDATA(supplement_9),
+    VDATA(supplement_10),
+    VDATA(supplement_11),
+    VDATA(supplement_12),
+    VDATA(supplement_13),
+    VDATA(supplement_14),
 };
 
 font_info_t font_table[FONT_COUNT] = {
@@ -152,6 +175,21 @@ const uint8_t *font_get_variant_data(font_id_t id, font_variant_t variant, size_
     if (variant < 0 || variant >= FONT_VARIANT_COUNT) variant = FONT_VARIANT_REGULAR;
     if (out_size) *out_size = font_variants[id][variant].size;
     return font_variants[id][variant].data;
+}
+
+const uint8_t *font_get_supplement_data(font_id_t id, size_t *out_size) {
+    int size_index = -1;
+    if (id >= FONT_HACK_6 && id <= FONT_HACK_14) {
+        size_index = id - FONT_HACK_6;
+    } else if (id >= FONT_IBMPLEX_6 && id <= FONT_IBMPLEX_14) {
+        size_index = id - FONT_IBMPLEX_6;
+    }
+    if (size_index < 0 || size_index >= 9) {
+        if (out_size) *out_size = 0;
+        return NULL;
+    }
+    if (out_size) *out_size = supplement_fonts[size_index].size;
+    return supplement_fonts[size_index].data;
 }
 
 static uint32_t read_be32(const uint8_t *p) {

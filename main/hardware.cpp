@@ -423,27 +423,77 @@ void display_draw_scaled_text_bg(int x, int y, const char *text, uint16_t fg, ui
 }
 
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color) {
+    display_draw_unicode_at(x, y, (uint16_t)(uint8_t)ch, fg_color, bg_color);
+}
+
+static void codepoint_to_utf8(uint32_t cp, char *out, int *out_len) {
+    if (cp < 0x80) {
+        out[0] = (char)cp;
+        *out_len = 1;
+    } else if (cp < 0x800) {
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+        *out_len = 2;
+    } else if (cp < 0x10000) {
+        out[0] = (char)(0xE0 | (cp >> 12));
+        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (cp & 0x3F));
+        *out_len = 3;
+    } else {
+        out[0] = (char)(0xF0 | (cp >> 18));
+        out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[3] = (char)(0x80 | (cp & 0x3F));
+        *out_len = 4;
+    }
+    out[*out_len] = '\0';
+}
+
+void display_draw_unicode_at(int x, int y, uint16_t codepoint, uint16_t fg_color, uint16_t bg_color) {
     if (!display_initialized) return;
     tft.fillRect(x, y, disp_font_width, disp_font_height, bg_color);
-    if (ch != ' ') {
-        char text[2] = {ch, '\0'};
-        int32_t clip_x = 0;
-        int32_t clip_y = 0;
-        int32_t clip_w = 0;
-        int32_t clip_h = 0;
-        tft.getClipRect(&clip_x, &clip_y, &clip_w, &clip_h);
+    if (codepoint == ' ') return;
 
-        // Add 1 pixel padding to handle sub-pixel positioning and rounding issues
-        tft.setClipRect(x - 1, y, disp_font_width + 2, disp_font_height);
-        tft.setTextDatum(TL_DATUM);
-        tft.setTextColor(fg_color, bg_color);
-        tft.drawString(text, x, y);
+    char text[5];
+    int len;
+    codepoint_to_utf8(codepoint, text, &len);
 
-        if (clip_w > 0 && clip_h > 0) {
-            tft.setClipRect(clip_x, clip_y, clip_w, clip_h);
-        } else {
-            tft.clearClipRect();
-        }
+    int32_t clip_x = 0, clip_y = 0, clip_w = 0, clip_h = 0;
+    tft.getClipRect(&clip_x, &clip_y, &clip_w, &clip_h);
+    tft.setClipRect(x - 1, y, disp_font_width + 2, disp_font_height);
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(fg_color, bg_color);
+    tft.drawString(text, x, y);
+
+    if (clip_w > 0 && clip_h > 0) {
+        tft.setClipRect(clip_x, clip_y, clip_w, clip_h);
+    } else {
+        tft.clearClipRect();
+    }
+}
+
+void display_draw_unicode_with_font(int x, int y, uint16_t codepoint, uint16_t fg_color, uint16_t bg_color, const uint8_t *font_data, size_t font_size) {
+    if (!display_initialized || !font_data) return;
+    tft.fillRect(x, y, disp_font_width, disp_font_height, bg_color);
+    if (codepoint == ' ') return;
+
+    tft.loadFont(font_data);
+
+    char text[5];
+    int len;
+    codepoint_to_utf8(codepoint, text, &len);
+
+    int32_t clip_x = 0, clip_y = 0, clip_w = 0, clip_h = 0;
+    tft.getClipRect(&clip_x, &clip_y, &clip_w, &clip_h);
+    tft.setClipRect(x - 1, y, disp_font_width + 2, disp_font_height);
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(fg_color, bg_color);
+    tft.drawString(text, x, y);
+
+    if (clip_w > 0 && clip_h > 0) {
+        tft.setClipRect(clip_x, clip_y, clip_w, clip_h);
+    } else {
+        tft.clearClipRect();
     }
 }
 

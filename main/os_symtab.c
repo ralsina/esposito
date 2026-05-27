@@ -28,6 +28,8 @@ static const os_symtab_entry_t symtab[] = {
     {"display_draw_pixel",      display_draw_pixel},
     {"display_fill_rect",       display_fill_rect},
     {"display_draw_char_at",    display_draw_char_at},
+    {"display_draw_unicode_at", display_draw_unicode_at},
+    {"display_draw_unicode_with_font", display_draw_unicode_with_font},
     {"display_measure_scaled_text", display_measure_scaled_text},
     {"display_draw_scaled_text_bg", display_draw_scaled_text_bg},
     {"display_get_jpg_size",    display_get_jpg_size},
