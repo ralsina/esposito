@@ -201,20 +201,13 @@ static void scan_and_build(reader_state_t *state) {
                 }
                 if ((unsigned char)line[i] >= 0x80) {
                     unsigned char b0 = (unsigned char)line[i];
-                    long cp = 0;
-                    int bytes = 0;
-                    if ((b0 & 0xE0) == 0xC0) { cp = b0 & 0x1F; bytes = 1; }
-                    else if ((b0 & 0xF0) == 0xE0) { cp = b0 & 0x0F; bytes = 2; }
-                    else if ((b0 & 0xF8) == 0xF0) { cp = b0 & 0x07; bytes = 3; }
-                    for (int b = 0; b < bytes && line[i + 1]; b++) {
-                        cp = (cp << 6) | ((unsigned char)line[++i] & 0x3F);
+                    int seq_len = 1;
+                    if ((b0 & 0xE0) == 0xC0) seq_len = 2;
+                    else if ((b0 & 0xF0) == 0xE0) seq_len = 3;
+                    else if ((b0 & 0xF8) == 0xF0) seq_len = 4;
+                    for (int s = 0; s < seq_len && line[i] && ti < (int)sizeof(entry->title) - 1; s++) {
+                        entry->title[ti++] = line[i++];
                     }
-                    char repl[4];
-                    int n = get_ascii_replacement(cp, repl);
-                    for (int r = 0; r < n && ti < (int)sizeof(entry->title) - 1; r++) {
-                        entry->title[ti++] = repl[r];
-                    }
-                    i++;
                     continue;
                 }
                 entry->title[ti++] = line[i++];

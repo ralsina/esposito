@@ -48,7 +48,4 @@ long tokenizer_get_position(tokenizer_t *tokenizer);
 // Set file position (for jumping to cached position)
 void tokenizer_set_position(tokenizer_t *tokenizer, long position);
 
-// Get ASCII replacement for a Unicode codepoint. Returns number of chars written to out.
-int get_ascii_replacement(long cp, char *out);
-
 #endif

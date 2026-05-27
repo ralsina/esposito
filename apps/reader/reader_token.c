@@ -45,34 +45,29 @@ static long decode_utf8(tokenizer_t *tokenizer, int lead) {
     return cp;
 }
 
-// Append ASCII replacement chars to current word token
-static void append_replacement(tokenizer_t *tokenizer, const char *s, int len) {
+static void append_utf8_codepoint(tokenizer_t *tokenizer, long cp) {
     int cap = (int)sizeof(tokenizer->current_token.text) - 1 - (int)tokenizer->current_token.text_len;
+    uint8_t buf[4];
+    int len = 0;
+    if (cp < 0x80) {
+        buf[0] = (uint8_t)cp; len = 1;
+    } else if (cp < 0x800) {
+        buf[0] = 0xC0 | (uint8_t)(cp >> 6);
+        buf[1] = 0x80 | (uint8_t)(cp & 0x3F); len = 2;
+    } else if (cp < 0x10000) {
+        buf[0] = 0xE0 | (uint8_t)(cp >> 12);
+        buf[1] = 0x80 | (uint8_t)((cp >> 6) & 0x3F);
+        buf[2] = 0x80 | (uint8_t)(cp & 0x3F); len = 3;
+    } else if (cp < 0x110000) {
+        buf[0] = 0xF0 | (uint8_t)(cp >> 18);
+        buf[1] = 0x80 | (uint8_t)((cp >> 12) & 0x3F);
+        buf[2] = 0x80 | (uint8_t)((cp >> 6) & 0x3F);
+        buf[3] = 0x80 | (uint8_t)(cp & 0x3F); len = 4;
+    }
     if (len > cap) len = cap;
-    memcpy(tokenizer->current_token.text + tokenizer->current_token.text_len, s, len);
+    memcpy(tokenizer->current_token.text + tokenizer->current_token.text_len, buf, len);
     tokenizer->current_token.text_len += len;
     tokenizer->current_token.text[tokenizer->current_token.text_len] = '\0';
-}
-
-// Map typographic codepoint to ASCII replacement (returns 0 to skip, >0 replacement count)
-int get_ascii_replacement(long cp, char *out) {
-    switch (cp) {
-        case 0x2013: case 0x2014: case 0x2212:
-        case 0x2010: case 0x2011: case 0x2012:
-            out[0] = '-'; return 1;
-        case 0x2018: case 0x2019: case 0x201A: case 0x201B: case 0x2032:
-            out[0] = '\''; return 1;
-        case 0x201C: case 0x201D: case 0x201E: case 0x2033: case 0x00AB: case 0x00BB:
-            out[0] = '"'; return 1;
-        case 0x2026:
-            out[0] = '.'; out[1] = '.'; out[2] = '.'; return 3;
-        case 0x00A0:
-            out[0] = ' '; return 1;
-        case 0x2022: case 0x00B7:
-            out[0] = '*'; return 1;
-        default:
-            return 0; // unknown, skip
-    }
 }
 
 void tokenizer_init(tokenizer_t *tokenizer, FILE *file) {
@@ -104,11 +99,9 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
 
     tokenizer->current_token.file_pos = tokenizer->current_pos - 1;
 
-    // Handle non-ASCII (UTF-8) as a single-character word with asciification
     if (ch >= 0x80) {
         long cp = decode_utf8(tokenizer, ch);
         if (cp < 0) {
-            // Partial sequence at EOF
             tokenizer->current_token.type = TOKEN_WORD;
             tokenizer->current_token.text[0] = (char)ch;
             tokenizer->current_token.text[1] = '\0';
@@ -116,24 +109,15 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
             tokenizer->has_token = true;
             return true;
         }
-        char repl[4];
-        int n = get_ascii_replacement(cp, repl);
-        if (n == 0) {
-            // Unknown codepoint, skip it and recurse
-            return tokenizer_next(tokenizer);
-        }
-        if (n == 1 && repl[0] == ' ') {
-            ch = ' '; // fall through to TOKEN_SPACE handling
+        if (cp == 0x00A0) {
+            ch = ' ';
         } else {
             tokenizer->current_token.type = TOKEN_WORD;
             tokenizer->current_token.text_len = 0;
-            append_replacement(tokenizer, repl, n);
-            // Continue reading the rest of the word
-            while (tokenizer->current_token.text_len < sizeof(tokenizer->current_token.text) - 1) {
+            append_utf8_codepoint(tokenizer, cp);
+            while (tokenizer->current_token.text_len < sizeof(tokenizer->current_token.text) - 4) {
                 int next_ch = read_raw_byte(tokenizer);
-                if (next_ch < 0) {
-                    break;
-                }
+                if (next_ch < 0) break;
                 if (next_ch == ' ' || next_ch == '\t' || next_ch == '\n' || next_ch == '#') {
                     tokenizer->pushback = next_ch;
                     break;
@@ -142,21 +126,18 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
                     int escaped = read_raw_byte(tokenizer);
                     if (escaped < 0) break;
                     if (escaped == '\\') {
-                        append_replacement(tokenizer, "\\", 1);
+                        append_utf8_codepoint(tokenizer, '\\');
                     } else {
                         if (escaped == ' ' || escaped == '\t' || escaped == '\n' || escaped == '#') {
                             tokenizer->pushback = escaped;
                             break;
                         }
                         if (escaped >= 0x80) {
-                            long cp = decode_utf8(tokenizer, escaped);
-                            if (cp < 0) break;
-                            char repl[4];
-                            int n = get_ascii_replacement(cp, repl);
-                            if (n > 0) append_replacement(tokenizer, repl, n);
+                            long ecp = decode_utf8(tokenizer, escaped);
+                            if (ecp < 0) break;
+                            append_utf8_codepoint(tokenizer, ecp);
                         } else {
-                            tokenizer->current_token.text[tokenizer->current_token.text_len] = (char)escaped;
-                            tokenizer->current_token.text_len++;
+                            append_utf8_codepoint(tokenizer, escaped);
                         }
                     }
                     continue;
@@ -164,18 +145,11 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
                 if (next_ch >= 0x80) {
                     long next_cp = decode_utf8(tokenizer, next_ch);
                     if (next_cp < 0) break;
-                    char next_repl[4];
-                    int next_n = get_ascii_replacement(next_cp, next_repl);
-                    if (next_n > 0) {
-                        append_replacement(tokenizer, next_repl, next_n);
-                    }
+                    append_utf8_codepoint(tokenizer, next_cp);
                     continue;
                 }
-                tokenizer->current_token.text[tokenizer->current_token.text_len] = (char)next_ch;
-                tokenizer->current_token.text_len++;
-                tokenizer->current_pos++;
+                append_utf8_codepoint(tokenizer, next_ch);
             }
-            tokenizer->current_token.text[tokenizer->current_token.text_len] = '\0';
             tokenizer->has_token = true;
             return true;
         }
@@ -237,12 +211,9 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
     tokenizer->current_token.text[0] = (char)ch;
     tokenizer->current_token.text_len = 1;
 
-    // Keep reading word characters
-    while (tokenizer->current_token.text_len < sizeof(tokenizer->current_token.text) - 1) {
+    while (tokenizer->current_token.text_len < sizeof(tokenizer->current_token.text) - 4) {
         int next_ch = read_raw_byte(tokenizer);
-        if (next_ch < 0) {
-            break;
-        }
+        if (next_ch < 0) break;
 
         if (next_ch == ' ' || next_ch == '\t' || next_ch == '\n' || next_ch == '#' || next_ch == '<') {
             tokenizer->pushback = next_ch;
@@ -253,8 +224,7 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
             int escaped = read_raw_byte(tokenizer);
             if (escaped < 0) break;
             if (escaped == '\\') {
-                tokenizer->current_token.text[tokenizer->current_token.text_len] = '\\';
-                tokenizer->current_token.text_len++;
+                append_utf8_codepoint(tokenizer, '\\');
             } else {
                 if (escaped == ' ' || escaped == '\t' || escaped == '\n' || escaped == '#' || escaped == '<') {
                     tokenizer->pushback = escaped;
@@ -263,12 +233,9 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
                 if (escaped >= 0x80) {
                     long cp = decode_utf8(tokenizer, escaped);
                     if (cp < 0) break;
-                    char repl[4];
-                    int n = get_ascii_replacement(cp, repl);
-                    if (n > 0) append_replacement(tokenizer, repl, n);
+                    append_utf8_codepoint(tokenizer, cp);
                 } else {
-                    tokenizer->current_token.text[tokenizer->current_token.text_len] = (char)escaped;
-                    tokenizer->current_token.text_len++;
+                    append_utf8_codepoint(tokenizer, escaped);
                 }
             }
             continue;
@@ -277,16 +244,11 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
         if (next_ch >= 0x80) {
             long cp = decode_utf8(tokenizer, next_ch);
             if (cp < 0) break;
-            char repl[4];
-            int n = get_ascii_replacement(cp, repl);
-            if (n > 0) {
-                append_replacement(tokenizer, repl, n);
-            }
+            append_utf8_codepoint(tokenizer, cp);
             continue;
         }
 
-        tokenizer->current_token.text[tokenizer->current_token.text_len] = (char)next_ch;
-        tokenizer->current_token.text_len++;
+        append_utf8_codepoint(tokenizer, next_ch);
     }
 
     tokenizer->current_token.text[tokenizer->current_token.text_len] = '\0';
