@@ -4,6 +4,8 @@
   <div class="hero-actions">
       <a href="#Getting-Started" class="primary contrast" role="button">Get Started</span>
       <a href="https://github.com/ralsina/esposito" role="button" class="contrast">GitHub</a>
+      <a href="/posts/index.html" role="button" class="contrast">News</a>
+
   </div>
 </section>
 
