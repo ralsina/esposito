@@ -1,58 +1,12 @@
 #ifndef HARDWARE_CONFIG_H
 #define HARDWARE_CONFIG_H
 
-// Hardware Configuration for Cheap Yellow Display (2USB version)
-// Based on terminado project
+#include "board.h"
 
-// Display Configuration
-#define SCREEN_WIDTH 320
-#define SCREEN_HEIGHT 240
-#define DISPLAY_TYPE_ST7789  // ST7789 for 2-port CYD version
-#define DEFAULT_DISPLAY_ROTATION 1  // Landscape mode (0=0°, 1=90°, 2=180°, 3=270°)
+#define SCREEN_WIDTH BOARD_SCREEN_WIDTH
+#define SCREEN_HEIGHT BOARD_SCREEN_HEIGHT
+#define DEFAULT_DISPLAY_ROTATION BOARD_DEFAULT_DISPLAY_ROTATION
 
-// SPI Display Pins
-#define PIN_LCD_SCLK 14
-#define PIN_LCD_MOSI 13
-#define PIN_LCD_MISO 12
-#define PIN_LCD_DC 2
-#define PIN_LCD_CS 15
-#define PIN_LCD_BL 21
-
-// I2C Configuration for BBQ20 Keyboard
-#define I2C_SDA 22
-#define I2C_SCL 27
-#define I2C_PORT I2C_NUM_0
-#define I2C_FREQ 100000  // 100kHz for BBQ20 compatibility
-
-// SD Card Configuration (from witnessmenow CYD2USB repository)
-// The SD card uses VSPI bus (separate from display's HSPI/SPI2_HOST)
-// These are the default VSPI pins for ESP32
-#define SD_MISO_PIN 19   // MISO pin (VSPI)
-#define SD_MOSI_PIN 23   // MOSI pin (VSPI)
-#define SD_CLK_PIN  18   // CLK/SCK pin (VSPI)
-#define SD_CS_PIN    5   // CS pin for SD card (VSPI SS)
-
-// Alternative SDMMC pin names (not used in SDSPI mode)
-#define SD_CMD_PIN  11   // CMD pin for SDMMC mode only
-#define SD_D0_PIN   13   // D0 pin for SDMMC mode only
-
-// RGB LED Configuration
-#define LED_RED_PIN     4
-#define LED_GREEN_PIN   16
-#define LED_BLUE_PIN    17
-#define LED_LEDC_TIMER  LEDC_TIMER_0
-#define LED_LEDC_MODE   LEDC_HIGH_SPEED_MODE
-#define LED_RESOLUTION  LEDC_TIMER_8_BIT
-#define LED_FREQ        5000
-#define LED_CH_RED      LEDC_CHANNEL_0
-#define LED_CH_GREEN    LEDC_CHANNEL_1
-#define LED_CH_BLUE     LEDC_CHANNEL_2
-
-// Touch Configuration (if available)
-#define TOUCH_I2C_ADDR 0x14
-#define TOUCH_I2C_PORT I2C_NUM_1
-
-// Display Colors
 #define COLOR_BLACK 0x0000
 #define COLOR_WHITE 0xFFFF
 #define COLOR_RED 0xF800

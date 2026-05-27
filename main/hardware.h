@@ -69,6 +69,21 @@ void display_set_backlight(uint8_t brightness);  // 0-255
 // RGB LED control
 void led_set_rgb(uint8_t r, uint8_t g, uint8_t b);
 
+// Keyboard backlight control
+void keyboard_set_backlight(uint8_t brightness);
+uint8_t keyboard_get_backlight(void);
+
+// Board information
+typedef struct {
+    const char *board_name;
+    int screen_width;
+    int screen_height;
+    bool has_touchscreen;
+    bool has_keyboard_backlight;
+} board_info_t;
+
+const board_info_t *os_get_board_info(void);
+
 // Serial functions
 bool serial_init(int baud, int data_bits, char parity, int stop_bits);
 void serial_deinit(void);

@@ -6,11 +6,11 @@
 #include "app_manifest.h"
 #include "elf_loader.h"
 #include "hardware.h"
+#include "hardware_config.h"
 #include "text_mode.h"
 #include "terminal_mode.h"
 #include "touchscreen.h"
 #include "wifi.h"
-#include "bbq20_keyboard.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
@@ -610,7 +610,7 @@ void os_event_loop(void) {
         // Poll for BOOT button (GPIO 0) to trigger launcher
         {
             static int boot_debounce = 0;
-            if (gpio_get_level(GPIO_NUM_0) == 0) {
+            if (gpio_get_level(BOARD_BOOT_BUTTON_GPIO) == 0) {
                 if (boot_debounce < 3) boot_debounce++;
                 if (boot_debounce == 3) {
                     boot_debounce = 4;
@@ -701,7 +701,7 @@ void os_event_loop(void) {
             if (screensaver_active) {
                 if (event.type == EVENT_KEYBOARD || event.type == EVENT_TOUCH) {
                     display_set_backlight(screensaver_restore_brightness);
-                    bbq20_set_backlight(screensaver_restore_kbd_backlight);
+                    keyboard_set_backlight(screensaver_restore_kbd_backlight);
 
                     // Restore saved PM config to bring CPU back to normal frequency
                     int restored_cpu_mhz = 160;
@@ -788,8 +788,8 @@ void os_event_loop(void) {
                     screensaver_restore_brightness = (uint8_t)os_settings_get_int("display/backlight", 255);
                     display_set_backlight(0);
 
-                    screensaver_restore_kbd_backlight = bbq20_get_backlight();
-                    bbq20_set_backlight(0);
+                    screensaver_restore_kbd_backlight = keyboard_get_backlight();
+                    keyboard_set_backlight(0);
 
                     // Save current PM config and reduce CPU to 80 MHz
                     if (esp_pm_get_configuration(&screensaver_saved_pm_config) == ESP_OK) {

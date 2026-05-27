@@ -12,6 +12,7 @@
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "driver/i2c_types.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -70,14 +71,14 @@ bool hardware_init(void) {
 
     // Configure BOOT button (GPIO 0) as input with pull-up
     gpio_config_t boot_btn = {
-        .pin_bit_mask = (1ULL << GPIO_NUM_0),
+        .pin_bit_mask = (1ULL << BOARD_BOOT_BUTTON_GPIO),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&boot_btn);
-    ESP_LOGI(TAG, "BOOT button (GPIO 0) configured");
+    ESP_LOGI(TAG, "BOOT button configured");
 
     if (!timer_init()) {
         ESP_LOGE(TAG, "Timer initialization failed");
@@ -496,43 +497,71 @@ void led_set_rgb(uint8_t r, uint8_t g, uint8_t b) {
     static bool led_initialized = false;
     if (!led_initialized) {
         ledc_timer_config_t timer = {};
-        timer.speed_mode = LED_LEDC_MODE;
-        timer.duty_resolution = LED_RESOLUTION;
-        timer.timer_num = LED_LEDC_TIMER;
-        timer.freq_hz = LED_FREQ;
+        timer.speed_mode = BOARD_LED_LEDC_MODE;
+        timer.duty_resolution = BOARD_LED_RESOLUTION;
+        timer.timer_num = BOARD_LED_LEDC_TIMER;
+        timer.freq_hz = BOARD_LED_FREQ;
         timer.clk_cfg = LEDC_AUTO_CLK;
         ledc_timer_config(&timer);
 
         ledc_channel_config_t ch_red = {};
-        ch_red.gpio_num = LED_RED_PIN;
-        ch_red.speed_mode = LED_LEDC_MODE;
-        ch_red.channel = LED_CH_RED;
-        ch_red.timer_sel = LED_LEDC_TIMER;
+        ch_red.gpio_num = BOARD_LED_RED_PIN;
+        ch_red.speed_mode = BOARD_LED_LEDC_MODE;
+        ch_red.channel = BOARD_LED_CH_RED;
+        ch_red.timer_sel = BOARD_LED_LEDC_TIMER;
         ledc_channel_config(&ch_red);
 
         ledc_channel_config_t ch_green = {};
-        ch_green.gpio_num = LED_GREEN_PIN;
-        ch_green.speed_mode = LED_LEDC_MODE;
-        ch_green.channel = LED_CH_GREEN;
-        ch_green.timer_sel = LED_LEDC_TIMER;
+        ch_green.gpio_num = BOARD_LED_GREEN_PIN;
+        ch_green.speed_mode = BOARD_LED_LEDC_MODE;
+        ch_green.channel = BOARD_LED_CH_GREEN;
+        ch_red.timer_sel = BOARD_LED_LEDC_TIMER;
         ledc_channel_config(&ch_green);
 
         ledc_channel_config_t ch_blue = {};
-        ch_blue.gpio_num = LED_BLUE_PIN;
-        ch_blue.speed_mode = LED_LEDC_MODE;
-        ch_blue.channel = LED_CH_BLUE;
-        ch_blue.timer_sel = LED_LEDC_TIMER;
+        ch_blue.gpio_num = BOARD_LED_BLUE_PIN;
+        ch_blue.speed_mode = BOARD_LED_LEDC_MODE;
+        ch_blue.channel = BOARD_LED_CH_BLUE;
+        ch_blue.timer_sel = BOARD_LED_LEDC_TIMER;
         ledc_channel_config(&ch_blue);
 
         led_initialized = true;
     }
 
-    ledc_set_duty(LED_LEDC_MODE, LED_CH_RED,   r);
-    ledc_set_duty(LED_LEDC_MODE, LED_CH_GREEN, g);
-    ledc_set_duty(LED_LEDC_MODE, LED_CH_BLUE,  b);
-    ledc_update_duty(LED_LEDC_MODE, LED_CH_RED);
-    ledc_update_duty(LED_LEDC_MODE, LED_CH_GREEN);
-    ledc_update_duty(LED_LEDC_MODE, LED_CH_BLUE);
+    ledc_set_duty(BOARD_LED_LEDC_MODE, BOARD_LED_CH_RED,   r);
+    ledc_set_duty(BOARD_LED_LEDC_MODE, BOARD_LED_CH_GREEN, g);
+    ledc_set_duty(BOARD_LED_LEDC_MODE, BOARD_LED_CH_BLUE,  b);
+    ledc_update_duty(BOARD_LED_LEDC_MODE, BOARD_LED_CH_RED);
+    ledc_update_duty(BOARD_LED_LEDC_MODE, BOARD_LED_CH_GREEN);
+    ledc_update_duty(BOARD_LED_LEDC_MODE, BOARD_LED_CH_BLUE);
+}
+
+void keyboard_set_backlight(uint8_t brightness) {
+#if BOARD_HAS_KEYBOARD_BACKLIGHT
+    bbq20_set_backlight(brightness);
+#else
+    (void)brightness;
+#endif
+}
+
+uint8_t keyboard_get_backlight(void) {
+#if BOARD_HAS_KEYBOARD_BACKLIGHT
+    return bbq20_get_backlight();
+#else
+    return 0;
+#endif
+}
+
+static const board_info_t board_info = {
+    .board_name = BOARD_NAME,
+    .screen_width = BOARD_SCREEN_WIDTH,
+    .screen_height = BOARD_SCREEN_HEIGHT,
+    .has_touchscreen = BOARD_HAS_TOUCHSCREEN,
+    .has_keyboard_backlight = BOARD_HAS_KEYBOARD_BACKLIGHT,
+};
+
+const board_info_t *os_get_board_info(void) {
+    return &board_info;
 }
 
 bool display_load_vlw_font(const char *path) {
@@ -579,8 +608,8 @@ void transform_touch_coordinates(int *x, int *y, int rotation) {
 
     int original_x = *x;
     int original_y = *y;
-    const int width = SCREEN_WIDTH;
-    const int height = SCREEN_HEIGHT;
+    const int width = BOARD_SCREEN_WIDTH;
+    const int height = BOARD_SCREEN_HEIGHT;
 
     switch (rotation) {
         case 0: // 0° - no transformation

@@ -104,8 +104,8 @@ static void bbq20_recover_i2c(void) {
     }
 
     // Force release GPIO pins so they can be re-claimed
-    gpio_reset_pin(I2C_SDA);
-    gpio_reset_pin(I2C_SCL);
+    gpio_reset_pin(BOARD_I2C_SDA);
+    gpio_reset_pin(BOARD_I2C_SCL);
     vTaskDelay(pdMS_TO_TICKS(10));
 
     // Re-initialize from scratch
@@ -188,13 +188,12 @@ bool bbq20_keyboard_init(void) {
     }
 
     ESP_LOGI(TAG, "Initializing BBQ20 keyboard via I2C (new driver)");
-    ESP_LOGI(TAG, "I2C pins: SDA=GPIO%d, SCL=GPIO%d", I2C_SDA, I2C_SCL);
+    ESP_LOGI(TAG, "I2C pins: SDA=GPIO%d, SCL=GPIO%d", BOARD_I2C_SDA, BOARD_I2C_SCL);
 
-    // Configure I2C bus using new driver
     i2c_master_bus_config_t i2c_bus_config = {
-        .i2c_port = I2C_NUM_0,
-        .sda_io_num = I2C_SDA,
-        .scl_io_num = I2C_SCL,
+        .i2c_port = BOARD_I2C_PORT,
+        .sda_io_num = BOARD_I2C_SDA,
+        .scl_io_num = BOARD_I2C_SCL,
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = true,
@@ -272,7 +271,7 @@ bool bbq20_keyboard_init(void) {
 
     ESP_LOGW(TAG, "⚠️  No BBQ20 keyboard found on I2C bus");
     ESP_LOGW(TAG, "⚠️  Checked addresses: 0x1F, 0x3F, 0x1E, 0x2E");
-    ESP_LOGW(TAG, "⚠️  Check connections: SDA=GPIO%d, SCL=GPIO%d", I2C_SDA, I2C_SCL);
+    ESP_LOGW(TAG, "Check connections: SDA=GPIO%d, SCL=GPIO%d", BOARD_I2C_SDA, BOARD_I2C_SCL);
     bbq20_initialized = false;
     return false;
 }

@@ -1,6 +1,7 @@
 #include "graphics_mode.h"
 #include "hardware.h"
 #include "lovgfx_config.h"
+#include "hardware_config.h"
 #include <lgfx/v1/LGFXBase.hpp>
 #include <lgfx/v1/LGFX_Sprite.hpp>
 #include <esp_log.h>
@@ -11,15 +12,13 @@ static const char *TAG = "graphics_mode";
 
 extern LGFX* display_tft;
 
-// Default CGA-style 16-color palette (RGB565), matching text_mode
 static const uint16_t default_palette[16] = {
     0x0000, 0x0010, 0x0400, 0x0410, 0x8000, 0x8010, 0x8400, 0x8410,
     0x4208, 0x001F, 0x07E0, 0x07FF, 0xF800, 0xF81F, 0xFFE0, 0xFFFF,
 };
 
-// Screen dimensions (fixed for CYD)
-static const int SCREEN_WIDTH = 320;
-static const int SCREEN_HEIGHT = 240;
+static const int GFX_SCREEN_WIDTH = BOARD_SCREEN_WIDTH;
+static const int GFX_SCREEN_HEIGHT = BOARD_SCREEN_HEIGHT;
 
 // Sprite instance (static to avoid allocation overhead)
 static LGFX_Sprite *g_sprite = NULL;
@@ -28,7 +27,7 @@ static bool g_active = false;
 void graphics_mode_init(uint8_t *buffer, size_t buffer_size) {
     ESP_LOGI(TAG, "graphics_mode_init: entering, buffer=%p size=%u", buffer, buffer_size);
 
-    size_t required = (size_t)SCREEN_WIDTH * SCREEN_HEIGHT / 2;
+    size_t required = (size_t)GFX_SCREEN_WIDTH * GFX_SCREEN_HEIGHT / 2;
     if (!buffer || buffer_size < required) {
         ESP_LOGE(TAG, "graphics_mode_init: buffer too small (need %u, got %u)", required, buffer_size);
         return;
@@ -49,8 +48,8 @@ void graphics_mode_init(uint8_t *buffer, size_t buffer_size) {
     }
 
     g_sprite->setColorDepth(4);
-    ESP_LOGI(TAG, "graphics_mode_init: setBuffer %dx%d bpp=4", SCREEN_WIDTH, SCREEN_HEIGHT);
-    g_sprite->setBuffer(buffer, SCREEN_WIDTH, SCREEN_HEIGHT, 4);
+    ESP_LOGI(TAG, "graphics_mode_init: setBuffer %dx%d bpp=4", GFX_SCREEN_WIDTH, GFX_SCREEN_HEIGHT);
+    g_sprite->setBuffer(buffer, GFX_SCREEN_WIDTH, GFX_SCREEN_HEIGHT, 4);
 
     // Create palette for 4bpp mode
     g_sprite->createPalette();
@@ -131,7 +130,7 @@ void *graphics_mode_get_buffer(void) {
 }
 
 size_t graphics_mode_get_buffer_size(void) {
-    return (size_t)SCREEN_WIDTH * SCREEN_HEIGHT / 2;
+    return (size_t)GFX_SCREEN_WIDTH * GFX_SCREEN_HEIGHT / 2;
 }
 
 bool graphics_mode_is_active(void) {

@@ -10,26 +10,16 @@
 
 static const char *TAG = "touchscreen";
 
-// Calibration factors (these need to be adjusted for your specific screen)
-// These are starting values - you may need to tweak them
-static float xfac = 1.0f;
-static float yfac = 1.0f;
-static int xoff = 0;
-static int yoff = 0;
+static const uint16_t raw_x_min = BOARD_TOUCH_RAW_X_MIN;
+static const uint16_t raw_x_range = BOARD_TOUCH_RAW_X_RANGE;
+static const uint16_t raw_y_min = BOARD_TOUCH_RAW_Y_MIN;
+static const uint16_t raw_y_range = BOARD_TOUCH_RAW_Y_RANGE;
 
-// Physical touchscreen calibration constants (XPT2046)
-// These are hardware properties - adjusted based on actual touch testing
-static const uint16_t raw_x_min = 210;  // Adjusted from 200
-static const uint16_t raw_x_range = 3600;  // Adjusted from 3700
-static const uint16_t raw_y_min = 260;  // Adjusted from 200
-static const uint16_t raw_y_range = 3600;  // Adjusted from 3700
-
-// Touchscreen configuration - uses GPIO bit-banging like witnessmenow
-#define TOUCH_MOSI        32
-#define TOUCH_MISO        39
-#define TOUCH_CLK         25
-#define TOUCH_CS          33
-#define TOUCH_IRQ         36
+#define TOUCH_MOSI        BOARD_TOUCH_MOSI
+#define TOUCH_MISO        BOARD_TOUCH_MISO
+#define TOUCH_CLK         BOARD_TOUCH_CLK
+#define TOUCH_CS          BOARD_TOUCH_CS
+#define TOUCH_IRQ         BOARD_TOUCH_IRQ
 
 // XPT2046 commands
 #define XPT2046_CMD_X     0x90

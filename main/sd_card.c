@@ -13,9 +13,8 @@ static const char *TAG = "sd_card_test";
 static bool sd_card_mounted = false;
 
 bool sd_card_init(void) {
-    ESP_LOGI(TAG, "Initializing SD card on SPI3/VSPI bus");
-    ESP_LOGI(TAG, "Using CYD2USB SDSPI mode with SPI3/VSPI bus (separate from display):");
-    ESP_LOGI(TAG, "  MISO=%d, MOSI=%d, SCLK=%d, CS=%d", SD_MISO_PIN, SD_MOSI_PIN, SD_CLK_PIN, SD_CS_PIN);
+    ESP_LOGI(TAG, "Using SDSPI mode (separate from display):");
+    ESP_LOGI(TAG, "  MISO=%d, MOSI=%d, SCLK=%d, CS=%d", BOARD_SD_MISO_PIN, BOARD_SD_MOSI_PIN, BOARD_SD_CLK_PIN, BOARD_SD_CS_PIN);
 
     esp_err_t ret;
 
@@ -28,36 +27,32 @@ bool sd_card_init(void) {
 
     sdmmc_card_t *card;
 
-    // Configure SDSPI host to use SPI3_HOST (VSPI, separate bus from display)
-    // The CYD2USB uses VSPI for SD card (default ESP32 pins: MISO=19, MOSI=23, SCLK=18)
-
-    // First, we need to initialize the SPI3/VSPI bus (not done automatically)
+    // Configure SDSPI host (separate bus from display)
     spi_bus_config_t bus_cfg = {
-        .mosi_io_num = SD_MOSI_PIN,
-        .miso_io_num = SD_MISO_PIN,
-        .sclk_io_num = SD_CLK_PIN,
+        .mosi_io_num = BOARD_SD_MOSI_PIN,
+        .miso_io_num = BOARD_SD_MISO_PIN,
+        .sclk_io_num = BOARD_SD_CLK_PIN,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         .max_transfer_sz = 4092,
     };
 
-    ESP_LOGI(TAG, "Initializing SPI3/VSPI bus...");
-    ret = spi_bus_initialize(SPI3_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
+    ESP_LOGI(TAG, "Initializing SD SPI bus...");
+    ret = spi_bus_initialize(BOARD_SD_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "Failed to initialize SPI bus: %s", esp_err_to_name(ret));
         return false;
     }
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    host.slot = SPI3_HOST;  // Use SPI3/VSPI bus (separate from display's SPI2/HSPI)
-    host.max_freq_khz = 20000;  // Start with lower frequency
+    host.slot = BOARD_SD_SPI_HOST;
+    host.max_freq_khz = 20000;
 
-    ESP_LOGI(TAG, "Attempting SDSPI mount on SPI3/VSPI bus...");
+    ESP_LOGI(TAG, "Attempting SDSPI mount...");
 
-    // Configure SDSPI device - use SPI3/VSPI bus
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
-    slot_config.gpio_cs = SD_CS_PIN;
-    slot_config.host_id = SPI3_HOST;  // SPI3/VSPI bus, separate from display
+    slot_config.gpio_cs = BOARD_SD_CS_PIN;
+    slot_config.host_id = BOARD_SD_SPI_HOST;
 
     ret = esp_vfs_fat_sdspi_mount(
         "/sdcard",
@@ -68,7 +63,7 @@ bool sd_card_init(void) {
     );
 
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "✅ SUCCESS! SD card mounted with SDSPI mode on SPI3/VSPI bus");
+        ESP_LOGI(TAG, "SD card mounted with SDSPI mode");
         sdmmc_card_print_info(stdout, card);
         sd_card_mounted = true;
 
