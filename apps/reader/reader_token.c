@@ -1,7 +1,7 @@
 #include "reader_token.h"
 #include <string.h>
 
-// Read a raw byte from file/pushback without updating position
+// Read a raw byte from file/pushback
 static int read_raw_byte(tokenizer_t *tokenizer) {
     if (tokenizer->pushback != -1) {
         int ch = tokenizer->pushback;
@@ -10,6 +10,7 @@ static int read_raw_byte(tokenizer_t *tokenizer) {
     }
     unsigned char c;
     if (fread(&c, 1, 1, tokenizer->file) == 0) return -1;
+    tokenizer->current_pos++;
     return (int)c;
 }
 
@@ -29,7 +30,6 @@ static long decode_utf8(tokenizer_t *tokenizer, int lead) {
             tokenizer->pushback = cb;
             return cp;
         }
-        tokenizer->current_pos++;
         cp = (cp << 6) | (cb & 0x3F);
     }
     return cp;
@@ -92,7 +92,6 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
         return false;
     }
 
-    tokenizer->current_pos++;
     tokenizer->current_token.file_pos = tokenizer->current_pos - 1;
 
     // Handle non-ASCII (UTF-8) as a single-character word with asciification
@@ -123,22 +122,19 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
             while (tokenizer->current_token.text_len < sizeof(tokenizer->current_token.text) - 1) {
                 int next_ch = read_raw_byte(tokenizer);
                 if (next_ch < 0) {
-                    tokenizer->current_pos++;
                     break;
                 }
-                if (next_ch == ' ' || next_ch == '\t' || next_ch == '\n' || next_ch == '#' || next_ch == '<') {
+                if (next_ch == ' ' || next_ch == '\t' || next_ch == '\n' || next_ch == '#') {
                     tokenizer->pushback = next_ch;
                     break;
                 }
                 if (next_ch == '\\') {
                     int escaped = read_raw_byte(tokenizer);
                     if (escaped < 0) break;
-                    tokenizer->current_pos++;
                     if (escaped == '\\') {
                         append_replacement(tokenizer, "\\", 1);
-                        tokenizer->current_pos++;
                     } else {
-                        if (escaped == ' ' || escaped == '\t' || escaped == '\n' || escaped == '#' || escaped == '<') {
+                        if (escaped == ' ' || escaped == '\t' || escaped == '\n' || escaped == '#') {
                             tokenizer->pushback = escaped;
                             break;
                         }
@@ -151,7 +147,6 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
                         } else {
                             tokenizer->current_token.text[tokenizer->current_token.text_len] = (char)escaped;
                             tokenizer->current_token.text_len++;
-                            tokenizer->current_pos++;
                         }
                     }
                     continue;
@@ -183,8 +178,7 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
             return tokenizer_next(tokenizer);
         }
         if (next == '\\') {
-            tokenizer->current_pos++;
-            ch = '\\'; // fall through to word handler
+            ch = '\\';
         } else {
             tokenizer->pushback = next;
             return tokenizer_next(tokenizer);
@@ -201,74 +195,13 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
         return true;
     }
 
-    // Skip HTML tags (start with '<')
-    if (ch == '<') {
-        bool in_comment = false;
-        bool in_squote = false;
-        bool in_dquote = false;
-        int comment_roll[4] = {0}; // rolling buffer for --> detection
-
-        while (true) {
-            int tag_ch;
-            unsigned char c;
-
-            if (tokenizer->pushback != -1) {
-                tag_ch = tokenizer->pushback;
-                tokenizer->pushback = -1;
-            } else {
-                size_t n = fread(&c, 1, 1, tokenizer->file);
-                if (n == 0) {
-                    tokenizer->current_pos++;
-                    break; // EOF, tag is malformed
-                }
-                tag_ch = c;
-            }
-
-            tokenizer->current_pos++;
-
-            // Check for HTML comment start: <! followed by --
-            if (!in_comment && tag_ch == '!') {
-                unsigned char nc1, nc2;
-                if (fread(&nc1, 1, 1, tokenizer->file) == 0) break;
-                tokenizer->current_pos++;
-                if (nc1 == '-') {
-                    if (fread(&nc2, 1, 1, tokenizer->file) == 0) break;
-                    tokenizer->current_pos++;
-                    if (nc2 == '-') {
-                        in_comment = true;
-                        continue;
-                    }
-                }
-                // Not a comment, consumed chars are tag content, keep going
-            }
-
-            if (in_comment) {
-                // Rolling buffer to detect -->
-                comment_roll[3] = comment_roll[2];
-                comment_roll[2] = comment_roll[1];
-                comment_roll[1] = comment_roll[0];
-                comment_roll[0] = tag_ch;
-                if (comment_roll[3] == '-' && comment_roll[2] == '-' && comment_roll[1] == '>') {
-                    break; // End of HTML comment
-                }
-                continue; // Comment content is invisible
-            }
-
-            // Handle quotes to correctly skip > inside attribute values
-            if (tag_ch == '\'' && !in_dquote) in_squote = !in_squote;
-            if (tag_ch == '"' && !in_squote) in_dquote = !in_dquote;
-
-            if (tag_ch == '>' && !in_squote && !in_dquote) {
-                break; // End of HTML tag
-            }
-
-            if (tag_ch == '\n') {
-                // HTML tag spans multiple lines, keep consuming silently
-                continue;
-            }
-        }
-        // Continue to next character after HTML tag
-        return tokenizer_next(tokenizer);
+    if (ch == '>') {
+        tokenizer->current_token.type = TOKEN_GT;
+        tokenizer->current_token.text[0] = '>';
+        tokenizer->current_token.text[1] = '\0';
+        tokenizer->current_token.text_len = 1;
+        tokenizer->has_token = true;
+        return true;
     }
 
     if (ch == '\n') {
@@ -298,7 +231,6 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
     while (tokenizer->current_token.text_len < sizeof(tokenizer->current_token.text) - 1) {
         int next_ch = read_raw_byte(tokenizer);
         if (next_ch < 0) {
-            tokenizer->current_pos++;
             break;
         }
 
@@ -310,11 +242,9 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
         if (next_ch == '\\') {
             int escaped = read_raw_byte(tokenizer);
             if (escaped < 0) break;
-            tokenizer->current_pos++;
             if (escaped == '\\') {
                 tokenizer->current_token.text[tokenizer->current_token.text_len] = '\\';
                 tokenizer->current_token.text_len++;
-                tokenizer->current_pos++;
             } else {
                 if (escaped == ' ' || escaped == '\t' || escaped == '\n' || escaped == '#' || escaped == '<') {
                     tokenizer->pushback = escaped;
@@ -329,7 +259,6 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
                 } else {
                     tokenizer->current_token.text[tokenizer->current_token.text_len] = (char)escaped;
                     tokenizer->current_token.text_len++;
-                    tokenizer->current_pos++;
                 }
             }
             continue;
@@ -348,7 +277,6 @@ bool tokenizer_next(tokenizer_t *tokenizer) {
 
         tokenizer->current_token.text[tokenizer->current_token.text_len] = (char)next_ch;
         tokenizer->current_token.text_len++;
-        tokenizer->current_pos++;
     }
 
     tokenizer->current_token.text[tokenizer->current_token.text_len] = '\0';

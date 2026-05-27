@@ -108,11 +108,37 @@ bool renderer_process_page(page_renderer_t *renderer) {
                 }
                 break;
 
+            case TOKEN_GT:
+                if (renderer->current_line < renderer->max_lines) {
+                    if (strlen(renderer->lines[renderer->current_line].text) > 0) {
+                        renderer->current_line++;
+                        if (renderer->current_line >= renderer->max_lines) {
+                            renderer->page_full = true;
+                            goto page_done;
+                        }
+                    }
+                    renderer->lines[renderer->current_line].text[0] = ' ';
+                    renderer->lines[renderer->current_line].text[1] = ' ';
+                    renderer->lines[renderer->current_line].text[2] = '\0';
+                    renderer->lines[renderer->current_line].color = TEXT_COLOR_YELLOW;
+                    renderer->lines[renderer->current_line].attr = TEXT_ATTR_NORMAL;
+                    renderer->line_count = renderer->current_line + 1;
+                    renderer->in_paragraph = true;
+                }
+                break;
+
             case TOKEN_SPACE:
-                // Just add space to current line, skip leading spaces
                 if (renderer->current_line < renderer->max_lines) {
                     int len = strlen(renderer->lines[renderer->current_line].text);
-                    if (len > 0 && len < sizeof(renderer->lines[renderer->current_line].text) - 1) {
+                    bool has_visible = false;
+                    for (int i = 0; i < len; i++) {
+                        char c = renderer->lines[renderer->current_line].text[i];
+                        if (c != MD_FORMAT_BOLD && c != MD_FORMAT_TOGGLE && c != MD_FORMAT_UNDERLINE) {
+                            has_visible = true;
+                            break;
+                        }
+                    }
+                    if (has_visible && len < sizeof(renderer->lines[renderer->current_line].text) - 1) {
                         renderer->lines[renderer->current_line].text[len] = ' ';
                         renderer->lines[renderer->current_line].text[len + 1] = '\0';
                     }

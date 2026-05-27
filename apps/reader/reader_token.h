@@ -9,6 +9,7 @@
 typedef enum {
     TOKEN_WORD,              // Regular text content
     TOKEN_HASH,              // # character (heading marker)
+    TOKEN_GT,                // > character (quote block marker)
     TOKEN_NEWLINE,           // \n character
     TOKEN_SPACE,             // Space or tab
     TOKEN_EOF,               // End of file

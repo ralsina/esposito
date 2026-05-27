@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define MAX_RENDERED_LINES 40
-#define MAX_LINE_TEXT 128
+#define MAX_LINE_TEXT 1024
 
 #define MD_FORMAT_TOGGLE ((char)0x1D)
 #define MD_FORMAT_BOLD ((char)0x1E)
