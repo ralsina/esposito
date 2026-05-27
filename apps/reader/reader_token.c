@@ -8,10 +8,20 @@ static int read_raw_byte(tokenizer_t *tokenizer) {
         tokenizer->pushback = -1;
         return ch;
     }
-    unsigned char c;
-    if (fread(&c, 1, 1, tokenizer->file) == 0) return -1;
-    tokenizer->current_pos++;
-    return (int)c;
+    while (true) {
+        unsigned char c;
+        if (fread(&c, 1, 1, tokenizer->file) == 0) return -1;
+        tokenizer->current_pos++;
+        if (c == '<') {
+            while (true) {
+                if (fread(&c, 1, 1, tokenizer->file) == 0) return -1;
+                tokenizer->current_pos++;
+                if (c == '>') break;
+            }
+            continue;
+        }
+        return (int)c;
+    }
 }
 
 // Decode a UTF-8 codepoint starting with lead byte, consumes continuation bytes
