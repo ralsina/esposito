@@ -58,8 +58,11 @@ static int font_size_selected = 0;
 static ui_list_widget_t *font_size_list;
 static bool layout_needs_rebuild = false;
 
-// Main screen exit button
 static ui_button_t *main_exit_btn;
+static ui_button_t *main_up_btn;
+static ui_button_t *main_down_btn;
+static ui_button_t *main_set_btn;
+static ui_button_t *main_left_btn;
 
 typedef enum {
     MAIN_FOCUS_LEFT,
@@ -137,6 +140,11 @@ static void on_font_family_item_selected(ui_list_widget_t *list, int item_index,
 static void on_font_size_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data);
 static void on_font_size_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
 static void on_main_exit_click(ui_button_t *button, void *user_data);
+static void on_main_up_click(ui_button_t *button, void *user_data);
+static void on_main_down_click(ui_button_t *button, void *user_data);
+static void on_main_set_click(ui_button_t *button, void *user_data);
+static void on_main_left_click(ui_button_t *button, void *user_data);
+static void handle_main_key(char key);
 static void on_scan_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
 static void on_scan_back_click(ui_button_t *button, void *user_data);
 static void build_scan_list_items(void);
@@ -320,6 +328,30 @@ static void on_main_exit_click(ui_button_t *button, void *user_data) {
     app_launcher_start();
 }
 
+static void on_main_up_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    handle_main_key('w');
+}
+
+static void on_main_down_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    handle_main_key('s');
+}
+
+static void on_main_set_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    handle_main_key('\n');
+}
+
+static void on_main_left_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    handle_main_key('a');
+}
+
 static void rebuild_layout_widgets(void) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
@@ -351,6 +383,22 @@ static void rebuild_layout_widgets(void) {
     if (main_exit_btn) {
         ui_button_destroy(main_exit_btn);
         main_exit_btn = NULL;
+    }
+    if (main_up_btn) {
+        ui_button_destroy(main_up_btn);
+        main_up_btn = NULL;
+    }
+    if (main_down_btn) {
+        ui_button_destroy(main_down_btn);
+        main_down_btn = NULL;
+    }
+    if (main_set_btn) {
+        ui_button_destroy(main_set_btn);
+        main_set_btn = NULL;
+    }
+    if (main_left_btn) {
+        ui_button_destroy(main_left_btn);
+        main_left_btn = NULL;
     }
 
     ssid_input = ui_text_input_create(0, rows - 4, cols, 4);
@@ -395,9 +443,30 @@ static void rebuild_layout_widgets(void) {
     ui_list_set_selection(font_size_list, font_size_selected);
     ui_list_set_callbacks(font_size_list, on_font_size_selection_changed, on_font_size_item_selected, font_size_list);
 
-    // Create main screen exit button (positioned above status bar at rows-2)
-    main_exit_btn = ui_button_create(cols - 7, rows - 3, 5, 1, "Exit");
-    ui_button_set_callback(main_exit_btn, on_main_exit_click, NULL);
+    {
+        const char *btn_labels[] = {"<", "v", "^", "OK"};
+        const int btn_count = 4;
+        const int btn_w = 5;
+        const int gap = 1;
+        const int total_w = btn_count * btn_w + (btn_count - 1) * gap;
+        int start_x = cols - total_w;
+        int btn_y = rows - 3;
+
+        main_left_btn = ui_button_create(start_x, btn_y, btn_w, 3, btn_labels[0]);
+        ui_button_set_callback(main_left_btn, on_main_left_click, NULL);
+
+        main_down_btn = ui_button_create(start_x + (btn_w + gap), btn_y, btn_w, 3, btn_labels[1]);
+        ui_button_set_callback(main_down_btn, on_main_down_click, NULL);
+
+        main_up_btn = ui_button_create(start_x + 2 * (btn_w + gap), btn_y, btn_w, 3, btn_labels[2]);
+        ui_button_set_callback(main_up_btn, on_main_up_click, NULL);
+
+        main_set_btn = ui_button_create(start_x + 3 * (btn_w + gap), btn_y, btn_w, 3, btn_labels[3]);
+        ui_button_set_callback(main_set_btn, on_main_set_click, NULL);
+
+        main_exit_btn = ui_button_create(0, btn_y, 5, 3, "Exit");
+        ui_button_set_callback(main_exit_btn, on_main_exit_click, NULL);
+    }
 }
 
 static void build_font_family_items(void) {
@@ -811,7 +880,7 @@ static void draw_main_split_layout(void) {
     const int right_x = left_width + 1;
     const int right_width = cols - right_x;
     const int content_top = 2;
-    const int content_bottom = rows - 3;
+    const int content_bottom = rows - 5;
     const int content_height = content_bottom - content_top + 1;
 
     char title[32];
@@ -882,13 +951,17 @@ static void draw_main_split_layout(void) {
     // Show keyboard hints only if keyboard is available
     bool has_keyboard = keyboard_is_available();
     const char *hints = has_keyboard ? "W/S move  A/D pane  Enter select  Esc back" : "";
-    ui_status_bar(rows - 2, hints, status_msg[0] ? status_msg : "Settings");
+    ui_status_bar(rows - 5, hints, status_msg[0] ? status_msg : "Settings");
 }
 
 static void draw_main(void) {
     ui_clear();
     draw_main_split_layout();
     ui_button_draw(main_exit_btn);
+    ui_button_draw(main_left_btn);
+    ui_button_draw(main_down_btn);
+    ui_button_draw(main_up_btn);
+    ui_button_draw(main_set_btn);
 }
 
 static void draw_scan_results(void) {
@@ -1068,6 +1141,22 @@ void app_close(app_context_t *ctx) {
     if (main_exit_btn) {
         ui_button_destroy(main_exit_btn);
         main_exit_btn = NULL;
+    }
+    if (main_up_btn) {
+        ui_button_destroy(main_up_btn);
+        main_up_btn = NULL;
+    }
+    if (main_down_btn) {
+        ui_button_destroy(main_down_btn);
+        main_down_btn = NULL;
+    }
+    if (main_set_btn) {
+        ui_button_destroy(main_set_btn);
+        main_set_btn = NULL;
+    }
+    if (main_left_btn) {
+        ui_button_destroy(main_left_btn);
+        main_left_btn = NULL;
     }
     if (scan_list) {
         ui_list_destroy(scan_list);
@@ -1416,8 +1505,19 @@ void app_event(app_context_t *ctx, event_t *event) {
                 }
                 break;
             case STATE_MAIN:
-                // Check exit button first
                 if (ui_button_handle_touch(main_exit_btn, event)) {
+                    return;
+                }
+                if (ui_button_handle_touch(main_left_btn, event)) {
+                    return;
+                }
+                if (ui_button_handle_touch(main_down_btn, event)) {
+                    return;
+                }
+                if (ui_button_handle_touch(main_up_btn, event)) {
+                    return;
+                }
+                if (ui_button_handle_touch(main_set_btn, event)) {
                     return;
                 }
                 {
@@ -1429,7 +1529,7 @@ void app_event(app_context_t *ctx, event_t *event) {
                     const int right_x = left_width + 1;
                     const int right_width = cols - right_x;
                     const int content_top = 2;
-                    const int content_bottom = rows - 3;
+                    const int content_bottom = rows - 5;
                     const int content_height = content_bottom - content_top + 1;
 
                     // Check if touch is in left pane (section list)
