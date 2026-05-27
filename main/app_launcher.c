@@ -162,13 +162,13 @@ static void app_launcher_show_static(void) {
         int btn_open_x = btn_up_x + btn_w + 2;  // 2 columns gap
         int btn_down_x = btn_open_x + btn_w + 2;
 
-        btn_up = ui_button_create(btn_up_x, btn_row, btn_w, btn_h, "  UP  ");
+        btn_up = ui_button_create(btn_up_x, btn_row, btn_w, btn_h, "\xE2\x96\xB2");
         ui_button_set_callback(btn_up, on_launcher_up_click, NULL);
 
-        btn_open = ui_button_create(btn_open_x, btn_row, btn_w, btn_h, " OPEN ");
+        btn_open = ui_button_create(btn_open_x, btn_row, btn_w, btn_h, "\xE2\x9C\x93");
         ui_button_set_callback(btn_open, on_launcher_open_click, NULL);
 
-        btn_down = ui_button_create(btn_down_x, btn_row, btn_w, btn_h, " DOWN ");
+        btn_down = ui_button_create(btn_down_x, btn_row, btn_w, btn_h, "\xE2\x96\xBC");
         ui_button_set_callback(btn_down, on_launcher_down_click, NULL);
     } else {
         // Update button positions if screen size changed (e.g., font change or rotation)
