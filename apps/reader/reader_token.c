@@ -55,7 +55,7 @@ static void append_replacement(tokenizer_t *tokenizer, const char *s, int len) {
 }
 
 // Map typographic codepoint to ASCII replacement (returns 0 to skip, >0 replacement count)
-static int get_ascii_replacement(long cp, char *out) {
+int get_ascii_replacement(long cp, char *out) {
     switch (cp) {
         case 0x2013: case 0x2014: case 0x2212:
         case 0x2010: case 0x2011: case 0x2012:

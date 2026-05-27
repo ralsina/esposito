@@ -2,6 +2,7 @@
 
 #include "app_config.h"
 #include "reader_renderer.h"
+#include "reader_token.h"
 #include "text_mode.h"
 
 #include <stdio.h>
@@ -13,7 +14,7 @@
 #define KEY_TOC_MTIME_PREFIX "rtoc_mt"
 #define KEY_TOC_VER_PREFIX   "rtoc_v"
 #define KEY_TOC_TOTAL_PREFIX "rtoc_tp"
-#define TOC_CACHE_VERSION    5
+#define TOC_CACHE_VERSION    6
 
 // Field and record separators for serialized TOC
 #define TOC_FIELD_SEP '\x01'
@@ -158,7 +159,6 @@ static void scan_and_build(reader_state_t *state) {
 
     if (!state->file) return;
 
-    // Save position and md state, then rewind
     long saved_pos = ftell(state->file);
     struct stat st;
     long total_size = 0;
@@ -172,78 +172,73 @@ static void scan_and_build(reader_state_t *state) {
 
     int screen_width = state->screen_width > 0 ? state->screen_width : 36;
     int content_rows = state->content_rows > 0 ? state->content_rows : 26;
+    int lines_per_page = content_rows;
 
-    rendered_line_t *scan_lines = malloc(sizeof(rendered_line_t) * MAX_RENDERED_LINES);
-    uint8_t *scan_levels = malloc(sizeof(uint8_t) * MAX_RENDERED_LINES);
-    if (!scan_lines || !scan_levels) {
-        // Keep reader usable even if TOC scan cannot allocate scratch memory.
-        if (scan_lines) free(scan_lines);
-        if (scan_levels) free(scan_levels);
-        fseek(state->file, saved_pos, SEEK_SET);
-        return;
-    }
-
+    char line[2048];
+    int line_on_page = 0;
     int page = 1;
 
-    while (state->toc_count < MAX_TOC_ENTRIES) {
-        uint32_t page_start = (uint32_t)ftell(state->file);
+    while (fgets(line, sizeof(line), state->file) && state->toc_count < MAX_TOC_ENTRIES) {
+        line_on_page++;
 
-        page_renderer_t renderer;
-        renderer_init(&renderer, state->file, scan_lines, scan_levels, content_rows, screen_width);
-        renderer.tokenizer.current_pos = page_start;
-        if (!renderer_process_page(&renderer)) break;
-        int count = renderer.line_count;
+        long line_offset = ftell(state->file) - (long)strlen(line);
 
-        // Detect headings across the full page, not only at top.
-        int in_heading_block = 0;
-        for (int i = 0; i < count && state->toc_count < MAX_TOC_ENTRIES; i++) {
-            if (scan_lines[i].text[0] == '\0') {
-                in_heading_block = 0;
-                continue;
-            }
-
-            int heading_level = (int)scan_levels[i];
-            int is_heading = heading_level > 0;
-
-            // For wrapped headings, keep only the first rendered line.
-            if (is_heading && !in_heading_block) {
-                toc_entry_t *entry = &state->toc[state->toc_count++];
-                strip_markers(scan_lines[i].text, entry->title, sizeof(entry->title));
-                entry->level = (uint8_t)heading_level;
-                if (entry->level < 1) {
-                    entry->level = 1;
+        int hashes = 0;
+        int i = 0;
+        while (line[i] == '#') {
+            hashes++;
+            i++;
+        }
+        if (hashes >= 1 && hashes <= 6 && line[i] == ' ') {
+            toc_entry_t *entry = &state->toc[state->toc_count++];
+            int ti = 0;
+            i++;
+            while (line[i] && line[i] != '\n' && ti < (int)sizeof(entry->title) - 4) {
+                if (line[i] == '<') {
+                    while (line[i] && line[i] != '>') i++;
+                    if (line[i] == '>') i++;
+                    continue;
                 }
-                if (entry->level > 6) {
-                    entry->level = 6;
+                if ((unsigned char)line[i] >= 0x80) {
+                    unsigned char b0 = (unsigned char)line[i];
+                    long cp = 0;
+                    int bytes = 0;
+                    if ((b0 & 0xE0) == 0xC0) { cp = b0 & 0x1F; bytes = 1; }
+                    else if ((b0 & 0xF0) == 0xE0) { cp = b0 & 0x0F; bytes = 2; }
+                    else if ((b0 & 0xF8) == 0xF0) { cp = b0 & 0x07; bytes = 3; }
+                    for (int b = 0; b < bytes && line[i + 1]; b++) {
+                        cp = (cp << 6) | ((unsigned char)line[++i] & 0x3F);
+                    }
+                    char repl[4];
+                    int n = get_ascii_replacement(cp, repl);
+                    for (int r = 0; r < n && ti < (int)sizeof(entry->title) - 1; r++) {
+                        entry->title[ti++] = repl[r];
+                    }
+                    i++;
+                    continue;
                 }
-                entry->page_number = page;
-                entry->file_offset = page_start;
-                in_heading_block = 1;
-            } else if (!is_heading) {
-                in_heading_block = 0;
+                entry->title[ti++] = line[i++];
             }
+            while (ti > 0 && entry->title[ti - 1] == ' ') ti--;
+            entry->title[ti] = '\0';
+            entry->level = hashes;
+            entry->page_number = page;
+            entry->file_offset = (uint32_t)line_offset;
+        }
+
+        if (line_on_page >= lines_per_page) {
+            line_on_page = 0;
+            page++;
         }
 
         long scanned = ftell(state->file);
-        if (scanned < 0) {
-            scanned = 0;
-        }
+        if (scanned < 0) scanned = 0;
         draw_scan_progress(state->current_file, scanned, total_size, page, state->toc_count, 0);
-
-        // Advance to next page
-        long next_pos = renderer_get_position(&renderer);
-        if (next_pos <= page_start) break;
-        fseek(state->file, next_pos, SEEK_SET);
-
-        page++;
     }
 
-    state->total_pages = page - 1;
+    state->total_pages = page;
     draw_scan_progress(state->current_file, total_size, total_size, state->total_pages, state->toc_count, 1);
 
-    // Restore file position
-    free(scan_levels);
-    free(scan_lines);
     fseek(state->file, saved_pos, SEEK_SET);
 }
 
