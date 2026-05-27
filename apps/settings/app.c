@@ -444,7 +444,7 @@ static void rebuild_layout_widgets(void) {
     ui_list_set_callbacks(font_size_list, on_font_size_selection_changed, on_font_size_item_selected, font_size_list);
 
     {
-        const char *btn_labels[] = {"<", "v", "^", "OK"};
+        const char *btn_labels[] = {"\xE2\x97\x80", "\xE2\x96\xBC", "\xE2\x96\xB2", "\xE2\x9C\x93"};
         const int btn_count = 4;
         const int btn_w = 5;
         const int gap = 1;
@@ -464,7 +464,7 @@ static void rebuild_layout_widgets(void) {
         main_set_btn = ui_button_create(start_x + 3 * (btn_w + gap), btn_y, btn_w, 3, btn_labels[3]);
         ui_button_set_callback(main_set_btn, on_main_set_click, NULL);
 
-        main_exit_btn = ui_button_create(0, btn_y, 5, 3, "Exit");
+        main_exit_btn = ui_button_create(0, btn_y, 5, 3, "\xE2\x9C\x98");
         ui_button_set_callback(main_exit_btn, on_main_exit_click, NULL);
     }
 }
@@ -1294,7 +1294,7 @@ static void create_scan_list(void) {
     ui_list_set_callbacks(scan_list, NULL, on_scan_item_selected, NULL);
 
     int btn_w = 8;
-    scan_back_btn = ui_button_create((cols - btn_w) / 2, rows - 3, btn_w, 3, "BACK");
+    scan_back_btn = ui_button_create((cols - btn_w) / 2, rows - 3, btn_w, 3, "\xE2\x9C\x98");
     ui_button_set_callback(scan_back_btn, on_scan_back_click, NULL);
 }
 
