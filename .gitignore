@@ -1,5 +1,9 @@
 ./build
 .claude/
+# Python
+__pycache__/
+*.pyc
+
 # Prerequisites
 *.d
 
