@@ -78,7 +78,7 @@ static const struct {
     {"⇧", "SHIFT"},
     {"⌫", "BSP"},
     {"⏎", "ENT"},
-    {"␛", "ESC"},
+    {"\xE2\x9C\x98", "ESC"},
     {"_", "SPACE"},
     {NULL, NULL}
 };
@@ -231,11 +231,11 @@ bool ui_osk_handle_event(app_context_t *ctx, event_t *event) {
                             const char *original_label = state->original_labels[global_button_index];
                              
 // Handle special keys directly
-                            if (strcmp(original_label, "⏎") == 0) {
-                                finish_osk(UI_OSK_RESULT_CONFIRMED);
-                            } else if (strcmp(original_label, "␛") == 0) {
-                                finish_osk(UI_OSK_RESULT_CANCELLED);
-                            } else if (strcmp(original_label, "⇧") == 0) {
+                             if (strcmp(original_label, "⏎") == 0) {
+                                 finish_osk(UI_OSK_RESULT_CONFIRMED);
+                             } else if (strcmp(original_label, "\xE2\x9C\x98") == 0) {
+                                 finish_osk(UI_OSK_RESULT_CANCELLED);
+                             } else if (strcmp(original_label, "⇧") == 0) {
                                 // Toggle shift mode
                                 state->shift_active = !state->shift_active;
                                 for (int i = 0; i < state->total_button_count; i++) {
@@ -627,7 +627,7 @@ static void update_button_label(osk_state_t *state, int button_index) {
     // Skip special keys
     if (strcmp(original_label, "_") == 0 ||
         strcmp(original_label, "⏎") == 0 ||
-        strcmp(original_label, "␛") == 0 ||
+        strcmp(original_label, "\xE2\x9C\x98") == 0 ||
         strcmp(original_label, "⌫") == 0) {
         return;
     }
@@ -753,14 +753,14 @@ static void create_keyboard_layout(osk_state_t *state) {
     const char *row2_labels[10] = {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p"};
     const char *row3_labels[10] = {"a", "s", "d", "f", "g", "h", "j", "k", "l", ";"};
     const char *row4_labels[10] = {"z", "x", "c", "v", "b", "n", "m", ",", ".", "/"};
-    const char *row5_labels[6] = {"␛", "⇧", "#@", "⌫", "_", "⏎"};
+    const char *row5_labels[6] = {"\xE2\x9C\x98", "⇧", "#@", "⌫", "_", "⏎"};
     
     // Symbol keyboard layout
     const char *symbol_row1_labels[10] = {"!", "@", "#", "$", "%", "^", "&", "*", "(", ")"};
     const char *symbol_row2_labels[10] = {"-", "_", "=", "+", "[", "]", "{", "}", "|", "\\"};
     const char *symbol_row3_labels[10] = {":", ";", "'", "\"", "<", ">", ",", ".", "?", "/"};
     const char *symbol_row4_labels[10] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
-    const char *symbol_row5_labels[6] = {"␛", "⇧", "#@", "⌫", "_", "⏎"};
+    const char *symbol_row5_labels[6] = {"\xE2\x9C\x98", "⇧", "#@", "⌫", "_", "⏎"};
 
     int current_y = keyboard_start_y;
     int button_index = 0;
