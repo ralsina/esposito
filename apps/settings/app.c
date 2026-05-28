@@ -556,7 +556,7 @@ static font_id_t find_font_by_family_size(const char *family, int size) {
             return font_table[index].id;
         }
     }
-    return FONT_SPLEEN;
+    return FONT_BOOT;
 }
 
 // Font family list callbacks
@@ -1176,7 +1176,7 @@ void app_init(app_context_t *ctx) {
     char current_font[32];
     os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
     font_id_t current_id = font_lookup_by_name(current_font);
-    if (current_id < 0) current_id = FONT_SPLEEN;
+    if (current_id < 0) current_id = FONT_BOOT;
 
     font_family_selected = 0;
     strncpy(selected_family, font_table[current_id].family, sizeof(selected_family) - 1);

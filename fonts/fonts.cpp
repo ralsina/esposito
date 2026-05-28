@@ -17,7 +17,7 @@ static const char *TAG = "fonts";
 // Static boot font data for initial use (before font_cache_init)
 // The name "boot 6" keeps it distinct from SD-loaded fonts
 static const font_info_t boot_font_info = {
-    .id = FONT_SPLEEN,
+    .id = FONT_BOOT,
     .name = "boot 6",
     .family = "boot",
     .size = 6,
@@ -242,9 +242,9 @@ bool font_cache_init(void) {
 
 static bool load_fpack_to_cache(int id) {
     if (id < 0 || id >= font_count) return false;
-    if (id == FONT_SPLEEN) {
+    if (id == FONT_BOOT) {
         // Boot font is always in PROGMEM, no SD load needed
-        cached_font_id = FONT_SPLEEN;
+        cached_font_id = FONT_BOOT;
         return true;
     }
 
@@ -348,7 +348,7 @@ const uint8_t *font_get_variant_data(font_id_t id, font_variant_t variant, size_
     if (variant < 0 || variant >= FONT_VARIANT_COUNT) variant = FONT_VARIANT_REGULAR;
 
     // Boot font is always available in PROGMEM (regular variant only)
-    if (id == FONT_SPLEEN) {
+    if (id == FONT_BOOT) {
         // Return the embedded boot font VLW data
         if (variant == FONT_VARIANT_REGULAR) {
             if (out_size) *out_size = sizeof(hack_6);
@@ -401,7 +401,7 @@ const uint8_t *font_get_supplement_data(font_id_t id, size_t *out_size) {
     }
 
     // Boot font has no supplement
-    if (id == FONT_SPLEEN) {
+    if (id == FONT_BOOT) {
         if (out_size) *out_size = 0;
         return NULL;
     }

@@ -29,7 +29,7 @@ typedef struct {
 } font_info_t;
 
 // Embedded boot font (spleen-5x8.h, always available in PROGMEM)
-#define FONT_SPLEEN 0
+#define FONT_BOOT 0
 
 // Dynamic font registry — populated by font_cache_init()
 extern font_info_t *font_table;
