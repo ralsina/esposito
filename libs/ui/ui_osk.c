@@ -75,11 +75,11 @@ static const struct {
     const char *label;
     const char *key;
 } special_keys[] = {
-    {"SHIFT", "SHIFT"},
-    {"BSP", "BSP"},
-    {"ENT", "ENT"},
-    {"ESC", "ESC"},
-    {"SPACE", "SPACE"},
+    {"⇧", "SHIFT"},
+    {"⌫", "BSP"},
+    {"⏎", "ENT"},
+    {"␛", "ESC"},
+    {"_", "SPACE"},
     {NULL, NULL}
 };
 
@@ -229,13 +229,13 @@ bool ui_osk_handle_event(app_context_t *ctx, event_t *event) {
                         
                         if (global_button_index < state->total_button_count) {
                             const char *original_label = state->original_labels[global_button_index];
-                            
+                             
 // Handle special keys directly
-                            if (strcmp(original_label, "ENT") == 0) {
+                            if (strcmp(original_label, "⏎") == 0) {
                                 finish_osk(UI_OSK_RESULT_CONFIRMED);
-                            } else if (strcmp(original_label, "ESC") == 0) {
+                            } else if (strcmp(original_label, "␛") == 0) {
                                 finish_osk(UI_OSK_RESULT_CANCELLED);
-                            } else if (strcmp(original_label, "SHIFT") == 0) {
+                            } else if (strcmp(original_label, "⇧") == 0) {
                                 // Toggle shift mode
                                 state->shift_active = !state->shift_active;
                                 for (int i = 0; i < state->total_button_count; i++) {
@@ -246,7 +246,7 @@ bool ui_osk_handle_event(app_context_t *ctx, event_t *event) {
                                         ui_toolbar_draw(state->keyboard_bars[r]);
                                     }
                                 }
-                            } else if (strcmp(original_label, "SYMBOL") == 0) {
+                            } else if (strcmp(original_label, "#@") == 0) {
                                 // Toggle symbol mode
                                 state->symbol_mode = !state->symbol_mode;
                                 for (int i = 0; i < state->total_button_count; i++) {
@@ -257,14 +257,14 @@ bool ui_osk_handle_event(app_context_t *ctx, event_t *event) {
                                         ui_toolbar_draw(state->keyboard_bars[r]);
                                     }
                                 }
-                            } else if (strcmp(original_label, "BSP") == 0) {
+                            } else if (strcmp(original_label, "⌫") == 0) {
                                 // Handle backspace
                                 if (state->cursor_pos > 0) {
                                     state->cursor_pos--;
                                     state->input_buffer[state->cursor_pos] = '\0';
                                     draw_input_display(state, "");
                                 }
-                            } else if (strcmp(original_label, "SPACE") == 0) {
+                            } else if (strcmp(original_label, "_") == 0) {
                                 // Handle space
                                 if (state->cursor_pos < MAX_INPUT_LENGTH - 1) {
                                     state->input_buffer[state->cursor_pos++] = ' ';
@@ -483,7 +483,7 @@ static void handle_key_press(osk_state_t *state, const char *key) {
     if (!key) return;
 
     // Handle SHIFT key
-    if (strcmp(key, "SHIFT") == 0) {
+    if (strcmp(key, "⇧") == 0) {
         state->shift_active = !state->shift_active;
 
         // Update all button labels to reflect shift state
@@ -501,7 +501,7 @@ static void handle_key_press(osk_state_t *state, const char *key) {
     }
     
     // Handle SYMBOL key
-    if (strcmp(key, "SYMBOL") == 0) {
+    if (strcmp(key, "#@") == 0) {
         state->symbol_mode = !state->symbol_mode;
         
         // Update all button labels to reflect symbol mode
@@ -519,7 +519,7 @@ static void handle_key_press(osk_state_t *state, const char *key) {
     }
 
     // Handle backspace
-    if (strcmp(key, "BSP") == 0) {
+    if (strcmp(key, "⌫") == 0) {
         if (state->cursor_pos > 0) {
             state->cursor_pos--;
             state->input_buffer[state->cursor_pos] = '\0';
@@ -529,7 +529,7 @@ static void handle_key_press(osk_state_t *state, const char *key) {
     }
 
     // Handle space
-    if (strcmp(key, "SPACE") == 0) {
+    if (strcmp(key, "_") == 0) {
         if (state->cursor_pos < MAX_INPUT_LENGTH - 1) {
             state->input_buffer[state->cursor_pos++] = ' ';
             state->input_buffer[state->cursor_pos] = '\0';
@@ -603,7 +603,7 @@ static void update_button_label(osk_state_t *state, int button_index) {
     }
 
     // Handle SHIFT key visual
-    if (strcmp(original_label, "SHIFT") == 0) {
+    if (strcmp(original_label, "⇧") == 0) {
         if (state->shift_active) {
             ui_button_set_colors(button, TEXT_COLOR_YELLOW, TEXT_COLOR_RED);
         } else {
@@ -614,7 +614,7 @@ static void update_button_label(osk_state_t *state, int button_index) {
     }
     
     // Handle SYMBOL key visual
-    if (strcmp(original_label, "SYMBOL") == 0) {
+    if (strcmp(original_label, "#@") == 0) {
         if (state->symbol_mode) {
             ui_button_set_colors(button, TEXT_COLOR_YELLOW, TEXT_COLOR_GREEN);
         } else {
@@ -625,10 +625,10 @@ static void update_button_label(osk_state_t *state, int button_index) {
     }
 
     // Skip special keys
-    if (strcmp(original_label, "SPACE") == 0 ||
-        strcmp(original_label, "ENT") == 0 ||
-        strcmp(original_label, "ESC") == 0 ||
-        strcmp(original_label, "BSP") == 0) {
+    if (strcmp(original_label, "_") == 0 ||
+        strcmp(original_label, "⏎") == 0 ||
+        strcmp(original_label, "␛") == 0 ||
+        strcmp(original_label, "⌫") == 0) {
         return;
     }
 
@@ -753,14 +753,14 @@ static void create_keyboard_layout(osk_state_t *state) {
     const char *row2_labels[10] = {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p"};
     const char *row3_labels[10] = {"a", "s", "d", "f", "g", "h", "j", "k", "l", ";"};
     const char *row4_labels[10] = {"z", "x", "c", "v", "b", "n", "m", ",", ".", "/"};
-    const char *row5_labels[6] = {"ESC", "SHIFT", "SYMBOL", "BSP", "SPACE", "ENT"};
+    const char *row5_labels[6] = {"␛", "⇧", "#@", "⌫", "_", "⏎"};
     
     // Symbol keyboard layout
     const char *symbol_row1_labels[10] = {"!", "@", "#", "$", "%", "^", "&", "*", "(", ")"};
     const char *symbol_row2_labels[10] = {"-", "_", "=", "+", "[", "]", "{", "}", "|", "\\"};
     const char *symbol_row3_labels[10] = {":", ";", "'", "\"", "<", ">", ",", ".", "?", "/"};
     const char *symbol_row4_labels[10] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
-    const char *symbol_row5_labels[5] = {"ESC", "SYMBOL", "BSP", "SPACE", "ENT"};
+    const char *symbol_row5_labels[6] = {"␛", "⇧", "#@", "⌫", "_", "⏎"};
 
     int current_y = keyboard_start_y;
     int button_index = 0;
