@@ -65,32 +65,39 @@ ui_toolbar_t* ui_toolbar_create(int y, int height, int button_count, const char 
         return toolbar;
     }
 
-    // Try adding 1-cell gaps between buttons
-    int gap = 0;
-    if (slack >= num_gaps) {
-        gap = 1;
-        slack -= num_gaps;
+// New algorithm: prioritize 3-cell wide buttons, no gaps if needed
+    int gap = 0;        // No gaps - prioritize button width
+    int margin = 0;      // No margins - prioritize button width
+    int per_button_extra = 0; // Extra width per button for expansion
+    
+    // First priority: ALWAYS make buttons at least 3 cells wide if possible
+    int min_button_width = 3;
+    int min_total_width = button_count * min_button_width;
+    
+    if (slack >= min_total_width) {
+        // We can make all buttons 3 cells wide - PRIORITY 1
+        per_button_extra = min_button_width - 1; // 1 (label) + extra = 3 minimum
+        gap = 0; // NO gaps - prioritize width over gaps
+    } else {
+        // Can't reach 3-cell width - use ALL available space for buttons
+        per_button_extra = slack / button_count;
+        gap = 0; // NO gaps even for smaller buttons - maximize width
     }
 
-    // Try adding 1-cell margins (left + right = 2 per button)
-    // Margin pairs are inherently parity-matched: (label_width + 2) has the
-    // same parity as label_width, so the label is always centered.
-    int margin = 0;
-    if (slack >= 2 * button_count) {
-        margin = 1;
-        slack -= 2 * button_count;
-    }
-
-    // Build buttons, using remaining slack for horizontal centering
+    // Build buttons with extra width
     int total_width = 0;
+    int start_x = 0; // Start from left, no margins
+    
     for (int i = 0; i < button_count; i++) {
         int label_w = label_display_width(labels ? labels[i] : NULL);
-        toolbar->button_widths[i] = label_w + 2 * margin;
-        total_width += toolbar->button_widths[i];
+        int button_width = label_w + per_button_extra;
+        toolbar->button_widths[i] = button_width;
+        total_width += button_width;
     }
     total_width += num_gaps * gap;
 
-    int start_x = slack / 2;
+    // Center the toolbar if there's extra space
+    start_x = (cols - total_width) / 2;
 
     int x = start_x;
     for (int i = 0; i < button_count; i++) {

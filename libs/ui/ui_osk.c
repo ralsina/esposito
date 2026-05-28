@@ -1,5 +1,6 @@
 #include "ui_osk.h"
 #include "ui_button.h"
+#include "ui_toolbar.h"
 #include "hardware.h"
 #include "os_core.h"
 #include <stdio.h>
@@ -19,14 +20,14 @@ typedef struct {
     char input_buffer[MAX_INPUT_LENGTH];
     int cursor_pos;
     bool shift_active;
+    bool symbol_mode;
     bool mask_input;
     bool is_active;
 
-    ui_button_t *buttons[MAX_BUTTONS];
-    int button_count;
-
-    // Store original labels (we own this memory)
-    char *original_labels[MAX_BUTTONS];
+    // Use toolbars instead of individual buttons
+    ui_toolbar_t *keyboard_bars[5]; // 5 keyboard rows
+    char *original_labels[MAX_BUTTONS]; // Still need for shift handling
+    int total_button_count;
 
     int title_y;
     int input_y;
@@ -106,9 +107,10 @@ bool ui_osk_input_text(
     }
 
     // Initialize state
-    state->button_count = 0;
+    state->total_button_count = 0;
     state->cursor_pos = 0;
     state->shift_active = false;
+    state->symbol_mode = false;
     state->mask_input = mask_input;
     state->is_active = true;
     state->user_buffer = buffer;
@@ -199,38 +201,158 @@ bool ui_osk_handle_event(app_context_t *ctx, event_t *event) {
             }
         }
 
-        // Check each button for hit
-        for (int i = 0; i < state->button_count; i++) {
-            ui_button_t *button = state->buttons[i];
-            if (button && ui_button_handle_touch(button, event)) {
-                // Use original label for key handling
-                const char *key_to_handle = state->original_labels[i];
-
-                // Map duplicate buttons to their actual functions
-                const char *actual_key = key_to_handle;
-                if (strcmp(key_to_handle, "ENTER") == 0) {
-                    actual_key = "ENT"; // Map ENTER to ENT
-                }
-
-                // Handle special keys directly
-                if (strcmp(actual_key, "ENT") == 0) {
-                    finish_osk(UI_OSK_RESULT_CONFIRMED);
-                } else if (strcmp(actual_key, "ESC") == 0) {
-                    finish_osk(UI_OSK_RESULT_CANCELLED);
-                } else {
-                    // Handle normal keys
-                    handle_key_press(state, actual_key);
-                }
-
-                if (state->needs_redraw) {
-                    draw_input_display(state, "");
-                    state->needs_redraw = false;
-                }
-
-                return true;
-            }
-        }
-    } else if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
+        // Check each toolbar for button hits
+        for (int row = 0; row < 5; row++) {
+            if (state->keyboard_bars[row] && ui_toolbar_handle_touch(state->keyboard_bars[row], event)) {
+                // Find which button was actually hit by checking each button in the toolbar
+                int row_button_count = 0;
+                if (row == 0) row_button_count = 10;      // Numbers row
+                else if (row == 1) row_button_count = 10; // QWERTY row  
+                else if (row == 2) row_button_count = 10; // ASDF row
+                else if (row == 3) row_button_count = 10; // ZXCV row
+                else if (row == 4) row_button_count = 5;  // Special row
+                
+                // Check each button in this toolbar to see if it was the one hit
+                for (int col = 0; col < row_button_count; col++) {
+                    ui_button_t *button = ui_toolbar_get_button(state->keyboard_bars[row], col);
+                    if (button && ui_button_handle_touch(button, event)) {
+                        // Calculate the global button index
+                        int global_button_index = 0;
+                        for (int r = 0; r < row; r++) {
+                            if (r == 0) global_button_index += 10;  // Numbers
+                            else if (r == 1) global_button_index += 10; // QWERTY
+                            else if (r == 2) global_button_index += 10; // ASDF
+                            else if (r == 3) global_button_index += 10; // ZXCV
+                            else if (r == 4) global_button_index += 5;  // Special
+                        }
+                        global_button_index += col;
+                        
+                        if (global_button_index < state->total_button_count) {
+                            const char *original_label = state->original_labels[global_button_index];
+                            
+// Handle special keys directly
+                            if (strcmp(original_label, "ENT") == 0) {
+                                finish_osk(UI_OSK_RESULT_CONFIRMED);
+                            } else if (strcmp(original_label, "ESC") == 0) {
+                                finish_osk(UI_OSK_RESULT_CANCELLED);
+                            } else if (strcmp(original_label, "SHIFT") == 0) {
+                                // Toggle shift mode
+                                state->shift_active = !state->shift_active;
+                                for (int i = 0; i < state->total_button_count; i++) {
+                                    update_button_label(state, i);
+                                }
+                                for (int r = 0; r < 5; r++) {
+                                    if (state->keyboard_bars[r]) {
+                                        ui_toolbar_draw(state->keyboard_bars[r]);
+                                    }
+                                }
+                            } else if (strcmp(original_label, "SYMBOL") == 0) {
+                                // Toggle symbol mode
+                                state->symbol_mode = !state->symbol_mode;
+                                for (int i = 0; i < state->total_button_count; i++) {
+                                    update_button_label(state, i);
+                                }
+                                for (int r = 0; r < 5; r++) {
+                                    if (state->keyboard_bars[r]) {
+                                        ui_toolbar_draw(state->keyboard_bars[r]);
+                                    }
+                                }
+                            } else if (strcmp(original_label, "BSP") == 0) {
+                                // Handle backspace
+                                if (state->cursor_pos > 0) {
+                                    state->cursor_pos--;
+                                    state->input_buffer[state->cursor_pos] = '\0';
+                                    draw_input_display(state, "");
+                                }
+                            } else if (strcmp(original_label, "SPACE") == 0) {
+                                // Handle space
+                                if (state->cursor_pos < MAX_INPUT_LENGTH - 1) {
+                                    state->input_buffer[state->cursor_pos++] = ' ';
+                                    state->input_buffer[state->cursor_pos] = '\0';
+                                    draw_input_display(state, "");
+                                }
+                            } else {
+                                // Handle normal keys - calculate based on current mode
+                                const char *symbol_keys[4][10] = {
+                                    {"!", "@", "#", "$", "%", "^", "&", "*", "(", ")"},
+                                    {"-", "_", "=", "+", "[", "]", "{", "}", "|", "\\"},
+                                    {":", ";", "'", "\"", "<", ">", ",", ".", "?", "/"},
+                                    {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"}
+                                };
+                                
+                                const char *main_keys[4][10] = {
+                                    {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"},
+                                    {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p"},
+                                    {"a", "s", "d", "f", "g", "h", "j", "k", "l", ";"},
+                                    {"z", "x", "c", "v", "b", "n", "m", ",", ".", "/"}
+                                };
+                                
+                                // Calculate row and column from button index
+                                int key_row = 0;
+                                int key_col = 0;
+                                if (global_button_index < 10) {
+                                    key_row = 0;
+                                    key_col = global_button_index;
+                                } else if (global_button_index < 20) {
+                                    key_row = 1;
+                                    key_col = global_button_index - 10;
+                                } else if (global_button_index < 30) {
+                                    key_row = 2;
+                                    key_col = global_button_index - 20;
+                                } else if (global_button_index < 40) {
+                                    key_row = 3;
+                                    key_col = global_button_index - 30;
+                                } else {
+                                    return true; // Special keys handled above
+                                }
+                                
+                                char c = '\0';
+                                if (state->symbol_mode) {
+                                    // Use symbol keyboard
+                                    c = symbol_keys[key_row][key_col][0];
+                                    
+                                    // Apply shift to symbols if needed
+                                    if (state->shift_active) {
+                                        c = get_shifted_char(c);
+                                    }
+                                } else {
+                                    // Use main QWERTY keyboard
+                                    c = main_keys[key_row][key_col][0];
+                                    
+                                    // Apply shift to letters if needed
+                                    if (c >= 'a' && c <= 'z') {
+                                        c = state->shift_active ? (char)toupper(c) : c;
+                                    } else if (c >= '0' && c <= '9' && state->shift_active) {
+                                        const char *shifted_symbols = ")!@#$%^&*(";
+                                        c = shifted_symbols[c - '0'];
+                                    } else if (state->shift_active) {
+                                        c = get_shifted_char(c);
+                                    }
+                                }
+                                
+                                // Add character to buffer
+                                if (state->cursor_pos < MAX_INPUT_LENGTH - 1) {
+                                    int current_len = strlen(state->input_buffer);
+                                    if (state->cursor_pos < current_len) {
+                                        // Shift characters to make room
+                                        for (int i = current_len; i >= state->cursor_pos; i--) {
+                                            state->input_buffer[i + 1] = state->input_buffer[i];
+                                        }
+                                    }
+                                    
+                                    state->input_buffer[state->cursor_pos++] = c;
+                                    state->input_buffer[state->cursor_pos] = '\0';
+                                     draw_input_display(state, "");
+                                 }
+                             }
+ 
+                             return true;
+                         }
+                     }
+                 }
+             }
+         }
+     } else if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         char key = event->keyboard.key;
 
         // Handle physical keyboard input
@@ -253,7 +375,7 @@ bool ui_osk_handle_event(app_context_t *ctx, event_t *event) {
                 state->shift_active = !state->shift_active;
 
                 // Update all button labels to reflect shift state
-                for (int i = 0; i < state->button_count; i++) {
+                for (int i = 0; i < state->total_button_count; i++) {
                     update_button_label(state, i);
                 }
                 return true;
@@ -365,8 +487,33 @@ static void handle_key_press(osk_state_t *state, const char *key) {
         state->shift_active = !state->shift_active;
 
         // Update all button labels to reflect shift state
-        for (int i = 0; i < state->button_count; i++) {
+        for (int i = 0; i < state->total_button_count; i++) {
             update_button_label(state, i);
+        }
+        
+        // Redraw all toolbars after all labels have been updated
+        for (int row = 0; row < 5; row++) {
+            if (state->keyboard_bars[row]) {
+                ui_toolbar_draw(state->keyboard_bars[row]);
+            }
+        }
+        return;
+    }
+    
+    // Handle SYMBOL key
+    if (strcmp(key, "SYMBOL") == 0) {
+        state->symbol_mode = !state->symbol_mode;
+        
+        // Update all button labels to reflect symbol mode
+        for (int i = 0; i < state->total_button_count; i++) {
+            update_button_label(state, i);
+        }
+        
+        // Redraw all toolbars after all labels have been updated
+        for (int row = 0; row < 5; row++) {
+            if (state->keyboard_bars[row]) {
+                ui_toolbar_draw(state->keyboard_bars[row]);
+            }
         }
         return;
     }
@@ -421,11 +568,34 @@ static void handle_key_press(osk_state_t *state, const char *key) {
 
 // Update a single button's label based on shift state
 static void update_button_label(osk_state_t *state, int button_index) {
-    if (button_index < 0 || button_index >= state->button_count) {
+    if (button_index < 0 || button_index >= state->total_button_count) {
         return;
     }
 
-    ui_button_t *button = state->buttons[button_index];
+    // Find the button in the toolbar system
+    ui_button_t *button = NULL;
+    int current_button_index = 0;
+    
+    for (int row = 0; row < 5; row++) {
+        if (state->keyboard_bars[row]) {
+            int row_button_count = 0;
+            if (row == 0) row_button_count = 10;
+            else if (row == 1) row_button_count = 10;
+            else if (row == 2) row_button_count = 10;
+            else if (row == 3) row_button_count = 10;
+            else if (row == 4) row_button_count = 5;
+            
+            for (int col = 0; col < row_button_count; col++) {
+                if (current_button_index == button_index) {
+                    button = ui_toolbar_get_button(state->keyboard_bars[row], col);
+                    break;
+                }
+                current_button_index++;
+            }
+            if (button) break;
+        }
+    }
+
     const char *original_label = state->original_labels[button_index];
 
     if (!button || !original_label) {
@@ -439,7 +609,18 @@ static void update_button_label(osk_state_t *state, int button_index) {
         } else {
             ui_button_set_colors(button, TEXT_COLOR_WHITE, TEXT_COLOR_BLUE);
         }
-        ui_button_draw(button);
+        // Don't redraw here - let the caller handle redrawing all toolbars
+        return;
+    }
+    
+    // Handle SYMBOL key visual
+    if (strcmp(original_label, "SYMBOL") == 0) {
+        if (state->symbol_mode) {
+            ui_button_set_colors(button, TEXT_COLOR_YELLOW, TEXT_COLOR_GREEN);
+        } else {
+            ui_button_set_colors(button, TEXT_COLOR_WHITE, TEXT_COLOR_BLUE);
+        }
+        // Don't redraw here - let the caller handle redrawing all toolbars
         return;
     }
 
@@ -455,21 +636,76 @@ static void update_button_label(osk_state_t *state, int button_index) {
     if (strlen(original_label) == 1) {
         char c = original_label[0];
         char new_char = c;
-
-        // Calculate what the label should be
-        if (c >= 'a' && c <= 'z') {
-            new_char = state->shift_active ? (char)toupper(c) : c;
-        } else if (c >= '0' && c <= '9' && state->shift_active) {
-            const char *shifted_symbols = ")!@#$%^&*(";
-            new_char = shifted_symbols[c - '0'];
-        } else if (state->shift_active) {
-            new_char = get_shifted_char(c);
+        
+        // Get the current row and column from button_index
+        int current_row = 0;
+        int current_col = 0;
+        if (button_index < 10) {
+            current_row = 0;
+            current_col = button_index;
+        } else if (button_index < 20) {
+            current_row = 1;
+            current_col = button_index - 10;
+        } else if (button_index < 30) {
+            current_row = 2;
+            current_col = button_index - 20;
+        } else if (button_index < 40) {
+            current_row = 3;
+            current_col = button_index - 30;
+        } else {
+            return; // Special keys
+        }
+        
+        // If in symbol mode, use symbol keyboard
+        if (state->symbol_mode) {
+            static const char *symbol_keys[4][10] = {
+                {"!", "@", "#", "$", "%", "^", "&", "*", "(", ")"},
+                {"-", "_", "=", "+", "[", "]", "{", "}", "|", "\\"},
+                {":", ";", "'", "\"", "<", ">", ",", ".", "?", "/"},
+                {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"}
+            };
+            
+            if (current_row < 4) {
+                new_char = symbol_keys[current_row][current_col][0];
+                
+                // Apply shift to symbols if needed
+                if (state->shift_active) {
+                    new_char = get_shifted_char(new_char);
+                }
+            }
+        } else {
+            // Normal QWERTY keyboard
+            // Calculate what the label should be
+            if (c >= 'a' && c <= 'z') {
+                new_char = state->shift_active ? (char)toupper(c) : c;
+            } else if (c >= '0' && c <= '9' && state->shift_active) {
+                const char *shifted_symbols = ")!@#$%^&*(";
+                new_char = shifted_symbols[c - '0'];
+            } else if (state->shift_active) {
+                new_char = get_shifted_char(c);
+            }
         }
 
         // Update button label if it needs to change
         char new_label[2] = {new_char, '\0'};
         ui_button_set_text(button, new_label);
-        ui_button_draw(button);
+        // Redraw the toolbar that contains this button
+        // Calculate which toolbar this button belongs to based on button_index
+        int toolbar_row = 0;
+        if (button_index < 10) {
+            toolbar_row = 0; // Numbers row
+        } else if (button_index < 20) {
+            toolbar_row = 1; // QWERTY row
+        } else if (button_index < 30) {
+            toolbar_row = 2; // ASDF row
+        } else if (button_index < 40) {
+            toolbar_row = 3; // ZXCV row
+        } else {
+            toolbar_row = 4; // Special row
+        }
+        if (state->keyboard_bars[toolbar_row]) {
+            ui_toolbar_draw(state->keyboard_bars[toolbar_row]);
+        }
     }
 }
 
@@ -480,112 +716,141 @@ static void create_keyboard_layout(osk_state_t *state) {
 
     // Calculate available space for keyboard
     int available_rows = screen_rows - state->keyboard_start_y;
-    int total_keyboard_rows = KEYBOARD_ROWS + 1; // 4 main rows + 1 special keys row
+    int total_keyboard_rows = 5; // 5 keyboard rows (4 main + 1 special)
 
-    // Calculate button height to fit available space
+    // Calculate button height to fit available space with vertical gaps
+    int vertical_gap = 1; // 1-row gap between toolbars
+    int total_gap_rows = (total_keyboard_rows - 1) * vertical_gap; // Total gap space
+    
+    // Calculate button height - distribute available space among toolbars
     int button_height = available_rows / total_keyboard_rows;
-    if (button_height < 2) {
-        button_height = 2; // Minimum height for touch
+    if (button_height < 1) {
+        button_height = 1; // Minimum height for touch
     }
-
-    // Position keyboard at bottom of screen
-    int keyboard_start_y = screen_rows - (total_keyboard_rows * button_height);
+    
+    // If we have plenty of space, make buttons taller
+    if (button_height == 1 && available_rows > total_keyboard_rows) {
+        button_height = available_rows / total_keyboard_rows;
+    }
+    
+    // Calculate total space needed by keyboard
+    int total_keyboard_space = (total_keyboard_rows * button_height) + total_gap_rows;
+    
+    // Position keyboard so last toolbar is flush to bottom of screen
+    int keyboard_start_y = screen_rows - total_keyboard_space;
     if (keyboard_start_y < state->keyboard_start_y) {
         keyboard_start_y = state->keyboard_start_y; // Ensure we don't overlap input area
+        // Recalculate button height if we don't have enough space
+        button_height = (available_rows - total_gap_rows) / total_keyboard_rows;
+        if (button_height < 1) button_height = 1;
+        // Recalculate total space with new button height
+        total_keyboard_space = (total_keyboard_rows * button_height) + total_gap_rows;
+        keyboard_start_y = screen_rows - total_keyboard_space;
     }
 
-    // Calculate button width to fit screen
-    int button_width = screen_cols / KEYBOARD_COLS;
-    if (button_width <= 1) {
-        button_width = 2; // Minimum width
-    }
+// Define keyboard rows using toolbars - remove duplicated buttons, let toolbars handle width
+    const char *row1_labels[10] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
+    const char *row2_labels[10] = {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p"};
+    const char *row3_labels[10] = {"a", "s", "d", "f", "g", "h", "j", "k", "l", ";"};
+    const char *row4_labels[10] = {"z", "x", "c", "v", "b", "n", "m", ",", ".", "/"};
+    const char *row5_labels[6] = {"ESC", "SHIFT", "SYMBOL", "BSP", "SPACE", "ENT"};
+    
+    // Symbol keyboard layout
+    const char *symbol_row1_labels[10] = {"!", "@", "#", "$", "%", "^", "&", "*", "(", ")"};
+    const char *symbol_row2_labels[10] = {"-", "_", "=", "+", "[", "]", "{", "}", "|", "\\"};
+    const char *symbol_row3_labels[10] = {":", ";", "'", "\"", "<", ">", ",", ".", "?", "/"};
+    const char *symbol_row4_labels[10] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"};
+    const char *symbol_row5_labels[5] = {"ESC", "SYMBOL", "BSP", "SPACE", "ENT"};
 
-    // Create main keyboard (4x10 grid) centered horizontally
     int current_y = keyboard_start_y;
-    for (int row = 0; row < KEYBOARD_ROWS; row++) {
-        // Center this row horizontally
-        int row_width = button_width * KEYBOARD_COLS;
-        int current_x = (screen_cols - row_width) / 2;
+    int button_index = 0;
 
-        for (int col = 0; col < KEYBOARD_COLS; col++) {
-            const char *label = keyboard_layout[row][col];
+    // Create toolbar for each row with vertical gaps
+    state->keyboard_bars[0] = ui_toolbar_create(current_y, button_height, 10, row1_labels);
+    current_y += button_height + 1; // Add vertical gap after each row
 
-            ui_button_t *button = ui_button_create(current_x, current_y, button_width, button_height, label);
-            if (button) {
-                // Use malloc+memcpy instead of strdup
-                size_t len = strlen(label);
-                state->original_labels[state->button_count] = (char*)malloc(len + 1);
-                if (state->original_labels[state->button_count]) {
-                    memcpy(state->original_labels[state->button_count], label, len + 1);
+    state->keyboard_bars[1] = ui_toolbar_create(current_y, button_height, 10, row2_labels);
+    current_y += button_height + 1; // Add vertical gap after each row
+
+    state->keyboard_bars[2] = ui_toolbar_create(current_y, button_height, 10, row3_labels);
+    current_y += button_height + 1; // Add vertical gap after each row
+
+    state->keyboard_bars[3] = ui_toolbar_create(current_y, button_height, 10, row4_labels);
+    current_y += button_height + 1; // Add vertical gap after each row
+
+    // Last row doesn't need gap after it
+    state->keyboard_bars[4] = ui_toolbar_create(current_y, button_height, 6, row5_labels);
+
+    // Store original labels for shift handling
+    // Fix: Handle each row directly instead of using a jagged array
+    for (int row = 0; row < 5; row++) {
+        const char **current_row = NULL;
+        int count = 0;
+        
+        // Get the current row and count
+        switch (row) {
+            case 0: current_row = row1_labels; count = 10; break;
+            case 1: current_row = row2_labels; count = 10; break;
+            case 2: current_row = row3_labels; count = 10; break;
+            case 3: current_row = row4_labels; count = 10; break;
+             case 4: current_row = row5_labels; count = 6; break;
+        }
+        
+        for (int col = 0; col < count; col++) {
+            // Special row handling - all keys are now unique
+            if (row == 4) {
+                size_t len = strlen(current_row[col]);
+                state->original_labels[button_index] = (char*)malloc(len + 1);
+                if (state->original_labels[button_index]) {
+                    memcpy(state->original_labels[button_index], current_row[col], len + 1);
                 }
-                ui_button_set_colors(button, TEXT_COLOR_WHITE, TEXT_COLOR_BLUE);
-                state->buttons[state->button_count++] = button;
+                button_index++;
+            } else {
+                // Regular keyboard keys
+                size_t len = strlen(current_row[col]);
+                state->original_labels[button_index] = (char*)malloc(len + 1);
+                if (state->original_labels[button_index]) {
+                    memcpy(state->original_labels[button_index], current_row[col], len + 1);
+                }
+                button_index++;
             }
-
-            current_x += button_width;
         }
-        current_y += button_height;
     }
 
-    // Create 5th row with special keys - use same approach as main rows
-    int special_y = current_y;
-
-    // Simple approach: 5 special keys spread across the row
-    // ESC(1) SHIFT(2) BSP(2) SPACE(3) ENT(2) = 10 units total
-    const char *special_row[] = {"ESC", "SHIFT", "SHIFT", "BSP", "BSP", "SPACE", "SPACE", "SPACE", "ENT", "ENT"};
-    uint16_t special_colors[] = {TEXT_COLOR_RED, TEXT_COLOR_BLUE, TEXT_COLOR_BLUE, TEXT_COLOR_BLUE, TEXT_COLOR_BLUE, TEXT_COLOR_BLUE, TEXT_COLOR_BLUE, TEXT_COLOR_BLUE, TEXT_COLOR_GREEN, TEXT_COLOR_GREEN};
-
-    int current_x = (screen_cols - (button_width * KEYBOARD_COLS)) / 2; // Center like main rows
-
-    for (int col = 0; col < KEYBOARD_COLS; col++) {
-        const char *label = special_row[col];
-
-        ui_button_t *button = ui_button_create(current_x, special_y, button_width, button_height, label);
-        if (button) {
-            // Use malloc+memcpy instead of strdup
-            size_t len = strlen(label);
-            state->original_labels[state->button_count] = (char*)malloc(len + 1);
-            if (state->original_labels[state->button_count]) {
-                memcpy(state->original_labels[state->button_count], label, len + 1);
-            }
-            ui_button_set_colors(button, TEXT_COLOR_WHITE, special_colors[col]);
-            state->buttons[state->button_count++] = button;
-        }
-
-        current_x += button_width;
-    }
+    state->total_button_count = button_index;
 
     // Initialize all button labels
-    for (int i = 0; i < state->button_count; i++) {
+    for (int i = 0; i < state->total_button_count; i++) {
         update_button_label(state, i);
     }
 
-    // os_log(TAG, "Total buttons created: %d", state->button_count);
-
-    // Draw all buttons to ensure they're visible
-    for (int i = 0; i < state->button_count; i++) {
-        if (state->buttons[i]) {
-            // os_log(TAG, "Drawing button %d at x=%d, y=%d", i, state->buttons[i]->x, state->buttons[i]->y);
-            ui_button_draw(state->buttons[i]);
+    // Draw all toolbars to ensure they're visible
+    for (int i = 0; i < 5; i++) {
+        if (state->keyboard_bars[i]) {
+            ui_toolbar_draw(state->keyboard_bars[i]);
         }
     }
 }
 
 // Destroy keyboard layout
 static void destroy_keyboard_layout(osk_state_t *state) {
-    for (int i = 0; i < state->button_count; i++) {
-        // Free our copy of the original label
+    // Destroy toolbars and their buttons
+    for (int i = 0; i < 5; i++) {
+        if (state->keyboard_bars[i]) {
+            ui_toolbar_destroy(state->keyboard_bars[i]);
+            state->keyboard_bars[i] = NULL;
+        }
+    }
+
+    // Free original labels
+    for (int i = 0; i < state->total_button_count; i++) {
         if (state->original_labels[i]) {
             free(state->original_labels[i]);
             state->original_labels[i] = NULL;
         }
-
-        // Destroy button
-        if (state->buttons[i]) {
-            ui_button_destroy(state->buttons[i]);
-        }
     }
-    state->button_count = 0;
+
+    state->total_button_count = 0;
 }
 
 // Draw input display area

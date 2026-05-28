@@ -13,6 +13,7 @@
 
 // Declare external functions
 extern float strtof(const char *str, char **endptr);
+extern void app_launcher_start(void);
 
 #define MAX_DISPLAY 20
 
@@ -197,7 +198,7 @@ void button_percent(ui_button_t *button, void *user_data) {
 
 void button_exit(ui_button_t *button, void *user_data) {
     printf("button_exit\n");
-    os_load_app("launcher");
+    app_launcher_start();
 }
 
 void create_buttons() {
