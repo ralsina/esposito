@@ -273,26 +273,28 @@ def main():
         out_dir = Path(__file__).parent.parent / "fonts"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    font_families = {"IBMPlexMono": "ibmplex", "HackNerdFont": "hack"}
-    variants = {
-        "Regular": "",
-        "Bold": "_bold",
-        "Italic": "_italic",
-        "BoldItalic": "_bolditalic",
-    }
+    # Each font family: (TTF basename, short prefix, dict of {variant_display_name: suffix})
+    # The TTF filename is "{TTF_basename}-{variant_display_name}.ttf"
+    # The VLW output name is "{short_prefix}{suffix}-{size}.vlw"
+    font_families = [
+        ("IBMPlexMono",  "ibmplex",   {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
+        ("HackNerdFont", "hack",      {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
+        ("IoskeleyMono", "ioskeley",  {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
+        ("Orbitron",     "orbitron",  {"Regular": "", "Bold": "_bold"}),
+    ]
 
     boot_data = None
     boot_name = None
 
-    for family in font_families:
-        for variant in variants:
+    for family, short, variants in font_families:
+        for variant, suffix in variants.items():
             for size in range(6, 15):
                 ttf_filename = f"{family}-{variant}.ttf"
-                name = f"{font_families[family]}{variants[variant]}"
+                name = f"{short}{suffix}"
                 ttf_path = FONTS_DIR / ttf_filename
                 if not ttf_path.exists():
-                    print(f"TTF not found: {ttf_path}")
-                    sys.exit(1)
+                    print(f"TTF not found, skipping: {ttf_path}")
+                    continue
 
                 print(f"Generating {name} ({ttf_filename} @ {size}px)...", end=" ")
                 vlw_data = generate_vlw(str(ttf_path), size)
