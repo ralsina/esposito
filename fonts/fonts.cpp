@@ -354,9 +354,9 @@ const uint8_t *font_get_variant_data(font_id_t id, font_variant_t variant, size_
             if (out_size) *out_size = sizeof(hack_6);
             return (const uint8_t *)hack_6;
         }
-        // Other variants not available for boot font
-        if (out_size) *out_size = 0;
-        return NULL;
+        // Fallback to regular for missing variants
+        if (out_size) *out_size = sizeof(hack_6);
+        return (const uint8_t *)hack_6;
     }
 
     // For SD fonts, ensure the font is cached in the flash partition
@@ -378,6 +378,14 @@ const uint8_t *font_get_variant_data(font_id_t id, font_variant_t variant, size_
     read_be32(cache_mmap_ptr + 80 + (int)variant * 8, &size);
 
     if (offset == 0 || size == 0) {
+        if (variant != FONT_VARIANT_REGULAR) {
+            read_be32(cache_mmap_ptr + 76 + (int)FONT_VARIANT_REGULAR * 8, &offset);
+            read_be32(cache_mmap_ptr + 80 + (int)FONT_VARIANT_REGULAR * 8, &size);
+            if (offset != 0 && size != 0) {
+                if (out_size) *out_size = (size_t)size;
+                return cache_mmap_ptr + offset;
+            }
+        }
         if (out_size) *out_size = 0;
         return NULL;
     }
