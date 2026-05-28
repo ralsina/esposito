@@ -112,7 +112,7 @@ bool display_init(void) {
 }
 
 bool display_load_font(font_id_t id, font_variant_t variant) {
-    if (id < 0 || id >= FONT_COUNT) {
+    if (id < 0 || id >= font_count) {
         ESP_LOGE(TAG, "Invalid font ID: %d", id);
         return false;
     }
@@ -120,7 +120,6 @@ bool display_load_font(font_id_t id, font_variant_t variant) {
     size_t data_size;
     const uint8_t *data = font_get_variant_data(id, variant, &data_size);
     if (!data) {
-        ESP_LOGE(TAG, "No variant data for font %d variant %d", id, variant);
         return false;
     }
 

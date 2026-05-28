@@ -2,7 +2,6 @@
 #include "os_core.h"
 #include "hardware.h"
 #include <stdlib.h>
-#include <string.h>
 
 static int label_display_width(const char *s) {
     if (!s) return 0;
@@ -16,12 +15,6 @@ static int label_display_width(const char *s) {
         cols++;
     }
     return cols;
-}
-
-static int match_parity(int width, int parity) {
-    if (parity < 0) return width;
-    if ((width % 2) != (parity % 2)) width++;
-    return width;
 }
 
 ui_toolbar_t* ui_toolbar_create(int y, int height, int button_count, const char **labels) {
@@ -50,25 +43,54 @@ ui_toolbar_t* ui_toolbar_create(int y, int height, int button_count, const char 
     }
 
     int cols = text_mode_get_cols();
-    int gap = 1;
-    int total_gaps = (button_count - 1) * gap;
-    int available = cols - total_gaps;
-    int btn_width = available / button_count;
-    int remainder = available - (btn_width * button_count);
 
-    int total_group_width = 0;
+    // Count the total display width of all labels
+    int total_labels = 0;
+    for (int i = 0; i < button_count; i++) {
+        total_labels += label_display_width(labels ? labels[i] : NULL);
+    }
+
+    int slack = cols - total_labels;
+    int num_gaps = button_count - 1;
+
+    if (slack < 0) {
+        // Doesn't fit — each button is exactly its label width, left-aligned
+        int x = 0;
+        for (int i = 0; i < button_count; i++) {
+            int w = label_display_width(labels ? labels[i] : NULL);
+            toolbar->button_widths[i] = w;
+            toolbar->buttons[i] = ui_button_create(x, y, w, height, labels ? labels[i] : NULL);
+            x += w;
+        }
+        return toolbar;
+    }
+
+    // Try adding 1-cell gaps between buttons
+    int gap = 0;
+    if (slack >= num_gaps) {
+        gap = 1;
+        slack -= num_gaps;
+    }
+
+    // Try adding 1-cell margins (left + right = 2 per button)
+    // Margin pairs are inherently parity-matched: (label_width + 2) has the
+    // same parity as label_width, so the label is always centered.
+    int margin = 0;
+    if (slack >= 2 * button_count) {
+        margin = 1;
+        slack -= 2 * button_count;
+    }
+
+    // Build buttons, using remaining slack for horizontal centering
+    int total_width = 0;
     for (int i = 0; i < button_count; i++) {
         int label_w = label_display_width(labels ? labels[i] : NULL);
-        int w = btn_width + (i < remainder ? 1 : 0);
-        if (w < 3) w = 3;
-        w = match_parity(w, label_w);
-        toolbar->button_widths[i] = w;
-        total_group_width += w;
+        toolbar->button_widths[i] = label_w + 2 * margin;
+        total_width += toolbar->button_widths[i];
     }
-    total_group_width += total_gaps;
+    total_width += num_gaps * gap;
 
-    int start_x = (cols - total_group_width) / 2;
-    if (start_x < 0) start_x = 0;
+    int start_x = slack / 2;
 
     int x = start_x;
     for (int i = 0; i < button_count; i++) {

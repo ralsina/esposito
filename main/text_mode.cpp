@@ -26,7 +26,7 @@ static int grid_cols = TEXT_MODE_COLS;
 static int grid_rows = TEXT_MODE_ROWS;
 static int font_width = TEXT_MODE_CHAR_WIDTH;
 static int font_height = TEXT_MODE_CHAR_HEIGHT;
-static font_id_t current_font = FONT_HACK_8;
+static font_id_t current_font = FONT_SPLEEN;
 static font_variant_t current_variant = FONT_VARIANT_REGULAR;
 
 static int cursor_x = 0;
@@ -240,7 +240,7 @@ static bool init_grid(font_id_t font) {
         grid = NULL;
     }
 
-    if (font < 0 || font >= FONT_COUNT) font = FONT_HACK_8;
+    if (font < 0 || font >= font_count) font = FONT_SPLEEN;
     current_font = font;
     current_variant = FONT_VARIANT_REGULAR;
     font_width = font_table[font].char_width;
@@ -256,7 +256,7 @@ static bool init_grid(font_id_t font) {
         grid_rows = TEXT_MODE_ROWS;
         font_width = TEXT_MODE_CHAR_WIDTH;
         font_height = TEXT_MODE_CHAR_HEIGHT;
-        current_font = FONT_HACK_8;
+        current_font = FONT_SPLEEN;
         current_variant = FONT_VARIANT_REGULAR;
         return false;
     }
@@ -270,7 +270,7 @@ static bool init_grid(font_id_t font) {
 }
 
 bool text_mode_init_ex(font_id_t font) {
-    if (font < 0 || font >= FONT_COUNT) font = FONT_HACK_8;
+    if (font < 0 || font >= font_count) font = FONT_SPLEEN;
 
     if (!init_grid(font)) return false;
 
@@ -316,8 +316,8 @@ bool text_mode_init(void) {
     }
 
     font_id_t default_font = font_lookup_by_name(font_setting);
-    if (default_font < 0 || default_font >= FONT_COUNT) {
-        default_font = FONT_HACK_8;
+    if (default_font < 0 || default_font >= font_count) {
+        default_font = FONT_SPLEEN;
     }
 
     ESP_LOGI(TAG, "text_mode_init: using font %s (read '%s' from settings, len=%d)",
@@ -340,11 +340,11 @@ bool text_mode_apply_configured_font(void) {
     ESP_LOGI(TAG, "Font setting read: len=%d, value='%s'", (int)len, font_setting);
 
     font_id_t configured_font = font_lookup_by_name(font_setting);
-    ESP_LOGI(TAG, "Font lookup result: %d (FONT_COUNT=%d)", (int)configured_font, FONT_COUNT);
+    ESP_LOGI(TAG, "Font lookup result: %d (font_count=%d)", (int)configured_font, font_count);
 
-    if (configured_font < 0 || configured_font >= FONT_COUNT) {
-        ESP_LOGW(TAG, "Invalid font ID %d, falling back to hack 8", (int)configured_font);
-        configured_font = FONT_HACK_8;
+    if (configured_font < 0 || configured_font >= font_count) {
+        ESP_LOGW(TAG, "Invalid font ID %d, falling back to boot font", (int)configured_font);
+        configured_font = FONT_SPLEEN;
     }
 
     ESP_LOGI(TAG, "Applying configured font: %s (%s, ID=%d)",
@@ -359,7 +359,7 @@ bool text_mode_set_font(font_id_t font) {
         return false;
     }
 
-    if (font < 0 || font >= FONT_COUNT) {
+    if (font < 0 || font >= font_count) {
         ESP_LOGE(TAG, "Invalid font ID: %d", (int)font);
         return false;
     }

@@ -3,31 +3,11 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define FONT_HACK_6   0
-#define FONT_HACK_7   1
-#define FONT_HACK_8   2
-#define FONT_HACK_9   3
-#define FONT_HACK_10  4
-#define FONT_HACK_11  5
-#define FONT_HACK_12  6
-#define FONT_HACK_13  7
-#define FONT_HACK_14  8
-#define FONT_IBMPLEX_6  9
-#define FONT_IBMPLEX_7  10
-#define FONT_IBMPLEX_8  11
-#define FONT_IBMPLEX_9  12
-#define FONT_IBMPLEX_10 13
-#define FONT_IBMPLEX_11 14
-#define FONT_IBMPLEX_12 15
-#define FONT_IBMPLEX_13 16
-#define FONT_IBMPLEX_14 17
-#define FONT_COUNT      18
-#define FONT_INVALID    (-1)
 
 typedef enum {
     FONT_VARIANT_REGULAR,
@@ -48,14 +28,34 @@ typedef struct {
     int char_height;
 } font_info_t;
 
-extern font_info_t font_table[];
+// Embedded boot font (spleen-5x8.h, always available in PROGMEM)
+#define FONT_SPLEEN 0
 
+// Dynamic font registry — populated by font_cache_init()
+extern font_info_t *font_table;
+extern int font_count;
+
+// Look up a font by its name string (e.g. "hack 10")
 font_id_t font_lookup_by_name(const char *name);
 
+// Parse VLW binary metrics (width, height) from raw VLW data
 bool font_get_vlw_metrics(const uint8_t *data, size_t size, int *out_width, int *out_height);
 
+// Initialize font cache: scan SD card for .fpack files and build font_table
+// Must be called after sd_card_init(). Uses the fontcache flash partition.
+bool font_cache_init(void);
+
+// Load a font's .fpack from SD into the fontcache flash partition and mmap it
+// After this, font_get_variant_data/font_get_supplement_data will return
+// pointers into the mapped flash region for the given font.
+bool font_cache_load(font_id_t id);
+
+// Get the VLW data pointer for a specific variant of the currently active font
+// Returns NULL if the font/variant is not available.
+// The returned pointer is valid as long as font_cache_load is not called again.
 const uint8_t *font_get_variant_data(font_id_t id, font_variant_t variant, size_t *out_size);
 
+// Get supplement VLW data for the currently active font
 const uint8_t *font_get_supplement_data(font_id_t id, size_t *out_size);
 
 #ifdef __cplusplus

@@ -42,21 +42,36 @@ static ui_text_input_widget_t *password_input;
 static ui_text_input_widget_t *timezone_input;
 static ui_text_input_widget_t *location_input;
 
+#define MAX_FONTS 64
+
 // Font family selection
-static char font_family_labels[FONT_COUNT][24];
-static const char *font_family_items[FONT_COUNT];
+static char font_family_labels[MAX_FONTS][24];
+static const char *font_family_items[MAX_FONTS];
 static int font_family_count = 0;
 static int font_family_selected = 0;
 static char selected_family[24];
 static ui_list_widget_t *font_family_list;
 
 // Font size selection
-static char font_size_labels[FONT_COUNT][48];
-static const char *font_size_items[FONT_COUNT];
+static char font_size_labels[MAX_FONTS][48];
+static const char *font_size_items[MAX_FONTS];
 static int font_size_count = 0;
 static int font_size_selected = 0;
 static ui_list_widget_t *font_size_list;
 static bool layout_needs_rebuild = false;
+
+static ui_toolbar_t *font_family_toolbar;
+static ui_toolbar_t *font_size_toolbar;
+
+// Forward declarations for toolbar callbacks
+static void on_font_family_up_click(ui_button_t *button, void *user_data);
+static void on_font_family_down_click(ui_button_t *button, void *user_data);
+static void on_font_family_ok_click(ui_button_t *button, void *user_data);
+static void on_font_family_cancel_click(ui_button_t *button, void *user_data);
+static void on_font_size_up_click(ui_button_t *button, void *user_data);
+static void on_font_size_down_click(ui_button_t *button, void *user_data);
+static void on_font_size_ok_click(ui_button_t *button, void *user_data);
+static void on_font_size_cancel_click(ui_button_t *button, void *user_data);
 
 static ui_button_t *main_exit_btn;
 static ui_button_t *main_up_btn;
@@ -380,6 +395,14 @@ static void rebuild_layout_widgets(void) {
         ui_list_destroy(font_size_list);
         font_size_list = NULL;
     }
+    if (font_family_toolbar) {
+        ui_toolbar_destroy(font_family_toolbar);
+        font_family_toolbar = NULL;
+    }
+    if (font_size_toolbar) {
+        ui_toolbar_destroy(font_size_toolbar);
+        font_size_toolbar = NULL;
+    }
     if (main_exit_btn) {
         ui_button_destroy(main_exit_btn);
         main_exit_btn = NULL;
@@ -423,7 +446,7 @@ static void rebuild_layout_widgets(void) {
     ui_text_input_set_hints(location_input, "City or lat,lon", "ESC Cancel");
 
     // Create font family selection list
-    int list_height = rows - 4;
+    int list_height = rows - 7;
     font_family_list = ui_list_create(2, 2, cols - 4, list_height);
     ui_list_set_title(font_family_list, "Select Font Family");
     ui_list_set_border(font_family_list, true);
@@ -432,6 +455,18 @@ static void rebuild_layout_widgets(void) {
     ui_list_set_items(font_family_list, font_family_items, font_family_count);
     ui_list_set_selection(font_family_list, font_family_selected);
     ui_list_set_callbacks(font_family_list, on_font_family_selection_changed, on_font_family_item_selected, font_family_list);
+
+    // Create font family toolbar
+    {
+        const char *toolbar_labels[] = {"\xE2\x96\xB2", "\xE2\x96\xBC", "\xE2\x9C\x93", "\xE2\x9C\x98"};
+        font_family_toolbar = ui_toolbar_create(rows - 4, 3, 4, toolbar_labels);
+        if (font_family_toolbar) {
+            ui_button_set_callback(ui_toolbar_get_button(font_family_toolbar, 0), on_font_family_up_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(font_family_toolbar, 1), on_font_family_down_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(font_family_toolbar, 2), on_font_family_ok_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(font_family_toolbar, 3), on_font_family_cancel_click, NULL);
+        }
+    }
 
     // Create font size selection list
     font_size_list = ui_list_create(2, 2, cols - 4, list_height);
@@ -442,6 +477,18 @@ static void rebuild_layout_widgets(void) {
     ui_list_set_items(font_size_list, font_size_items, font_size_count);
     ui_list_set_selection(font_size_list, font_size_selected);
     ui_list_set_callbacks(font_size_list, on_font_size_selection_changed, on_font_size_item_selected, font_size_list);
+
+    // Create font size toolbar
+    {
+        const char *toolbar_labels[] = {"\xE2\x96\xB2", "\xE2\x96\xBC", "\xE2\x9C\x93", "\xE2\x9C\x98"};
+        font_size_toolbar = ui_toolbar_create(rows - 4, 3, 4, toolbar_labels);
+        if (font_size_toolbar) {
+            ui_button_set_callback(ui_toolbar_get_button(font_size_toolbar, 0), on_font_size_up_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(font_size_toolbar, 1), on_font_size_down_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(font_size_toolbar, 2), on_font_size_ok_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(font_size_toolbar, 3), on_font_size_cancel_click, NULL);
+        }
+    }
 
     {
         const char *btn_labels[] = {"\xE2\x97\x80", "\xE2\x96\xBC", "\xE2\x96\xB2", "\xE2\x9C\x93"};
@@ -471,7 +518,7 @@ static void rebuild_layout_widgets(void) {
 
 static void build_font_family_items(void) {
     font_family_count = 0;
-    for (int index = 0; index < FONT_COUNT; index++) {
+    for (int index = 0; index < font_count; index++) {
         const char *family = font_table[index].family;
         int found = 0;
         for (int j = 0; j < font_family_count; j++) {
@@ -491,7 +538,7 @@ static void build_font_family_items(void) {
 
 static void build_font_size_items(const char *family) {
     font_size_count = 0;
-    for (int index = 0; index < FONT_COUNT; index++) {
+    for (int index = 0; index < font_count; index++) {
         if (strcmp(font_table[index].family, family) == 0) {
             int cols = display_get_width() / font_table[index].char_width;
             int rows = display_get_height() / font_table[index].char_height;
@@ -504,12 +551,12 @@ static void build_font_size_items(const char *family) {
 }
 
 static font_id_t find_font_by_family_size(const char *family, int size) {
-    for (int index = 0; index < FONT_COUNT; index++) {
+    for (int index = 0; index < font_count; index++) {
         if (strcmp(font_table[index].family, family) == 0 && font_table[index].size == size) {
             return font_table[index].id;
         }
     }
-    return FONT_HACK_8;
+    return FONT_SPLEEN;
 }
 
 // Font family list callbacks
@@ -550,7 +597,7 @@ static void on_font_family_item_selected(ui_list_widget_t *list, int item_index,
         int size = 0;
         sscanf(font_size_items[font_size_selected], "%d", &size);
         font_id_t font_id = find_font_by_family_size(selected_family, size);
-        if (font_id >= 0 && font_id < FONT_COUNT) {
+        if (font_id >= 0 && font_id < font_count) {
             os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
             extern bool text_mode_set_font(font_id_t font);
             text_mode_set_font(font_id);
@@ -578,7 +625,7 @@ static void on_font_size_item_selected(ui_list_widget_t *list, int item_index, v
         sscanf(font_size_items[item_index], "%d", &size);
 
         font_id_t font_id = find_font_by_family_size(selected_family, size);
-        if (font_id >= 0 && font_id < FONT_COUNT) {
+        if (font_id >= 0 && font_id < font_count) {
             os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
             extern font_id_t font_lookup_by_name(const char *name);
             extern bool text_mode_set_font(font_id_t font);
@@ -588,6 +635,56 @@ static void on_font_size_item_selected(ui_list_widget_t *list, int item_index, v
         }
         state = STATE_MAIN;
     }
+}
+
+// Font family toolbar callbacks
+static void on_font_family_up_click(ui_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    ui_list_handle_key(font_family_list, 'w');
+    render();
+}
+
+static void on_font_family_down_click(ui_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    ui_list_handle_key(font_family_list, 's');
+    render();
+}
+
+static void on_font_family_ok_click(ui_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    ui_list_handle_key(font_family_list, '\n');
+    render();
+}
+
+static void on_font_family_cancel_click(ui_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    state = STATE_MAIN;
+    render();
+}
+
+// Font size toolbar callbacks
+static void on_font_size_up_click(ui_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    ui_list_handle_key(font_size_list, 'w');
+    render();
+}
+
+static void on_font_size_down_click(ui_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    ui_list_handle_key(font_size_list, 's');
+    render();
+}
+
+static void on_font_size_ok_click(ui_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    ui_list_handle_key(font_size_list, '\n');
+    render();
+}
+
+static void on_font_size_cancel_click(ui_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    state = STATE_MAIN;
+    render();
 }
 
 static void truncate_text(const char *text, char *out, size_t out_size, int max_chars) {
@@ -1032,10 +1129,12 @@ static void render(void) {
         case STATE_FONT_SELECTION:
             ui_clear();
             ui_list_draw(font_family_list);
+            ui_toolbar_draw(font_family_toolbar);
             break;
         case STATE_FONT_SIZE_SELECTION:
             ui_clear();
             ui_list_draw(font_size_list);
+            ui_toolbar_draw(font_size_toolbar);
             break;
         case STATE_MESSAGE:
             draw_message();
@@ -1077,7 +1176,7 @@ void app_init(app_context_t *ctx) {
     char current_font[32];
     os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
     font_id_t current_id = font_lookup_by_name(current_font);
-    if (current_id < 0) current_id = FONT_HACK_8;
+    if (current_id < 0) current_id = FONT_SPLEEN;
 
     font_family_selected = 0;
     strncpy(selected_family, font_table[current_id].family, sizeof(selected_family) - 1);
@@ -1137,6 +1236,14 @@ void app_close(app_context_t *ctx) {
     if (font_size_list) {
         ui_list_destroy(font_size_list);
         font_size_list = NULL;
+    }
+    if (font_family_toolbar) {
+        ui_toolbar_destroy(font_family_toolbar);
+        font_family_toolbar = NULL;
+    }
+    if (font_size_toolbar) {
+        ui_toolbar_destroy(font_size_toolbar);
+        font_size_toolbar = NULL;
     }
     if (main_exit_btn) {
         ui_button_destroy(main_exit_btn);
@@ -1497,11 +1604,15 @@ void app_event(app_context_t *ctx, event_t *event) {
             case STATE_FONT_SELECTION:
                 if (ui_list_handle_touch(font_family_list, event)) {
                     render();
+                } else if (ui_toolbar_handle_touch(font_family_toolbar, event)) {
+                    // handled by callbacks
                 }
                 break;
             case STATE_FONT_SIZE_SELECTION:
                 if (ui_list_handle_touch(font_size_list, event)) {
                     render();
+                } else if (ui_toolbar_handle_touch(font_size_toolbar, event)) {
+                    // handled by callbacks
                 }
                 break;
             case STATE_MAIN:

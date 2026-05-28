@@ -20,6 +20,8 @@ extern "C" {
     #include "wifi.h"
 }
 
+extern "C" bool font_cache_init(void);
+
 static const char *TAG = "boot";
 
 boot_status_t boot_status = {
@@ -284,6 +286,9 @@ void boot_sequence(void) {
 
         // Apply backlight brightness setting
         display_apply_saved_backlight();
+
+        // Scan SD card for font packs and build the font registry
+        font_cache_init();
 
         // Apply font setting
         bool font_applied = text_mode_apply_configured_font();

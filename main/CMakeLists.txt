@@ -25,5 +25,5 @@ idf_component_register(
         "../libs/ui/ui_text_input.c"
         "../fonts/fonts.cpp"
     INCLUDE_DIRS "." ".." "../libs/ui" "../fonts" "../boards/cyd_2usb" "../managed_components/LovyanGFX/src/lgfx/utility"
-    REQUIRES driver esp_app_format esp_common esp_hw_support esp_system heap log pthread xtensa spiffs esp_driver_spi cxx esp_driver_i2c esp_driver_sdspi esp_driver_uart fatfs wear_levelling esp_wifi esp_netif nvs_flash esp_event lwip esp_http_client mbedtls
+    REQUIRES spi_flash driver esp_app_format esp_common esp_hw_support esp_system heap log pthread xtensa spiffs esp_driver_spi cxx esp_driver_i2c esp_driver_sdspi esp_driver_uart fatfs wear_levelling esp_wifi esp_netif nvs_flash esp_event lwip esp_http_client mbedtls
 )

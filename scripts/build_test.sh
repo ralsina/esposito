@@ -57,6 +57,15 @@ for app_elf in build/apps/*.elf; do
         echo "  Copied $app_name"
     fi
 done
+
+# Step 4b: Copy font packs to SD card
+echo "=== Copying font packs to SD card ==="
+mkdir -p "$SD_MOUNT/fonts/fpack"
+for fpack in build/fonts/*.fpack; do
+    [ -f "$fpack" ] || continue
+    cp "$fpack" "$SD_MOUNT/fonts/fpack/"
+    echo "  Copied $(basename "$fpack")"
+done
 sync
 
 echo ""

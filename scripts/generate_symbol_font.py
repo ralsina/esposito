@@ -131,24 +131,6 @@ def generate_vlw(pixel_size: int, glyph_sources: list) -> bytes:
     return bytes(buf)
 
 
-def vlw_to_header(name: str, vlw_data: bytes) -> str:
-    lines = [
-        f"// Auto-generated supplement VLW font: {name}",
-        f"// Size: {len(vlw_data)} bytes ({len(vlw_data) / 1024:.1f} KB)",
-        "#pragma once",
-        "#include <pgmspace.h>",
-        "",
-        f"const uint8_t {name}[] PROGMEM = {{",
-    ]
-    for i in range(0, len(vlw_data), 16):
-        chunk = vlw_data[i:i + 16]
-        hex_vals = ", ".join(f"0x{b:02X}" for b in chunk)
-        lines.append(f"    {hex_vals},")
-    lines.append("};")
-    lines.append("")
-    return "\n".join(lines)
-
-
 def main():
     if not SYMBOL_FONT.exists():
         print(f"DejaVu Sans Mono not found: {SYMBOL_FONT}")
@@ -156,6 +138,13 @@ def main():
     if not EMOJI_FONT.exists():
         print(f"Noto Emoji not found: {EMOJI_FONT}")
         sys.exit(1)
+
+    # Allow specifying output directory as argument
+    if len(sys.argv) > 1:
+        out_dir = Path(sys.argv[1])
+    else:
+        out_dir = OUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     glyph_sources = collect_glyph_sources()
     if not glyph_sources:
@@ -170,13 +159,11 @@ def main():
         else:
             print(f"  U+{vlw_cp:04X} from {font_name}")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     for size in range(6, 15):
         print(f"Generating supplement-{size}... ", end="")
         vlw_data = generate_vlw(size, glyph_sources)
-        header = vlw_to_header(f"supplement_{size}", vlw_data)
-        out_path = OUT_DIR / f"supplement-{size}.h"
-        out_path.write_bytes(header.encode("utf-8"))
+        out_path = out_dir / f"supplement-{size}.vlw"
+        out_path.write_bytes(vlw_data)
         print(f"{len(vlw_data)} bytes -> {out_path}")
 
     print("Done.")

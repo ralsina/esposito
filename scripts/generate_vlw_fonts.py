@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Generate TFT_eSPI-compatible VLW font PROGMEM headers from a TTF file.
+"""Generate VLW binary font files and pack them into self-describing .fpack bundles.
+
+Scans source_fonts/ directory for TTF files and generates VLW font data at
+multiple sizes (6-14px). Outputs raw .vlw binaries and .fpack bundles.
 
 VLW format (Bodmer/TFT_eSPI smooth font):
   Header:  glyph_count(u32) | version(u32=6) | font_size(u32) | padding(u32)
@@ -10,10 +13,14 @@ VLW format (Bodmer/TFT_eSPI smooth font):
   Glyph bitmaps: 8-bit alpha, row-major, width*height bytes each.
 
 Usage:
-  python scripts/generate_vlw_fonts.py
+  python scripts/generate_vlw_fonts.py [output_dir]
+
+If output_dir is given, .vlw and .fpack files are written there.
+Otherwise they go to fonts/ (default).
 """
 
 import struct
+import subprocess
 import sys
 from pathlib import Path
 
@@ -56,7 +63,6 @@ CHARSET = (
 # Mixed weights match TFT_eSPI bitmap fonts: Font 1/2 were medium, Font 4 was bold.
 
 FONTS_DIR = Path(__file__).parent.parent / "source_fonts"
-OUT_DIR = Path(__file__).parent.parent / "fonts"
 FALLBACK_FONT = Path("/usr/share/fonts/TTF/DejaVuSansMono.ttf")
 EMOJI_FONT = Path("/usr/share/fonts/TTF/NotoEmoji-Regular.ttf")
 EMOJI_MAP = {}
@@ -242,7 +248,6 @@ def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
 
 
 def vlw_to_header(name: str, vlw_data: bytes) -> str:
-    """Convert VLW binary to a C PROGMEM header."""
     lines = [
         f"// Auto-generated VLW font: {name}",
         f"// Size: {len(vlw_data)} bytes ({len(vlw_data) / 1024:.1f} KB)",
@@ -251,20 +256,22 @@ def vlw_to_header(name: str, vlw_data: bytes) -> str:
         "",
         f"const uint8_t {name}[] PROGMEM = {{",
     ]
-
-    # Emit bytes, 16 per line
     for i in range(0, len(vlw_data), 16):
-        chunk = vlw_data[i : i + 16]
+        chunk = vlw_data[i: i + 16]
         hex_vals = ", ".join(f"0x{b:02X}" for b in chunk)
         lines.append(f"    {hex_vals},")
-
     lines.append("};")
     lines.append("")
     return "\n".join(lines)
 
 
 def main():
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    # Allow specifying output directory as argument
+    if len(sys.argv) > 1:
+        out_dir = Path(sys.argv[1])
+    else:
+        out_dir = Path(__file__).parent.parent / "fonts"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     font_families = {"IBMPlexMono": "ibmplex", "HackNerdFont": "hack"}
     variants = {
@@ -273,6 +280,9 @@ def main():
         "Italic": "_italic",
         "BoldItalic": "_bolditalic",
     }
+
+    boot_data = None
+    boot_name = None
 
     for family in font_families:
         for variant in variants:
@@ -286,15 +296,27 @@ def main():
 
                 print(f"Generating {name} ({ttf_filename} @ {size}px)...", end=" ")
                 vlw_data = generate_vlw(str(ttf_path), size)
-                header = vlw_to_header(f"{name}_{size}", vlw_data)
 
-                out_path = OUT_DIR / f"{name}-{size}.h"
-                # Force LF line endings so generated headers are consistent across
-                # platforms and don't trigger `git diff --check` whitespace warnings.
-                out_path.write_bytes(header.encode("utf-8"))
+                out_path = out_dir / f"{name}-{size}.vlw"
+                out_path.write_bytes(vlw_data)
                 print(f"{len(vlw_data)} bytes -> {out_path}")
 
-    print("Done.")
+                # Keep the smallest boot font (hack regular 6px)
+                if family == "HackNerdFont" and variant == "Regular" and size == 6:
+                    boot_data = vlw_data
+                    boot_name = f"{name}_{size}"
+
+    # Generate the embedded boot font PROGMEM header (hack-6 regular)
+    if boot_data and boot_name:
+        boot_header = vlw_to_header(boot_name, boot_data)
+        boot_path = out_dir / "boot_font.h"
+        boot_path.write_bytes(boot_header.encode("utf-8"))
+        print(f"\nBoot font: {boot_path} ({len(boot_data)} bytes)")
+
+    # Pack .vlw files into .fpack bundles
+    print("\n=== Packing .fpack bundles ===")
+    pack_script = Path(__file__).parent / "pack_fpack.py"
+    subprocess.run([sys.executable, str(pack_script), str(out_dir), str(out_dir)], check=True)
 
 
 if __name__ == "__main__":
