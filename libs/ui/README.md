@@ -52,6 +52,47 @@ ui_list_handle_key(list, key);
 ui_list_handle_touch(list, touch_event);
 ```
 
+### Toolbar Widget (`ui_toolbar.h`)
+
+Horizontal container that arranges buttons evenly across the screen width.
+
+**Features:**
+- Auto-calculates button widths to fill available columns
+- Single call to draw and handle touch for all buttons
+- Access individual buttons via `ui_toolbar_get_button()`
+
+**Example:**
+```c
+const char *labels[] = {"\xE2\x96\xB2", "\xE2\x9C\x93", "\xE2\x96\xBC"};  // ▲ ✓ ▼
+ui_toolbar_t *tb = ui_toolbar_create(rows - 1, 1, 3, labels);
+ui_button_set_callback(ui_toolbar_get_button(tb, 0), on_up, app);
+ui_button_set_callback(ui_toolbar_get_button(tb, 1), on_ok, app);
+ui_button_set_callback(ui_toolbar_get_button(tb, 2), on_down, app);
+ui_toolbar_draw(tb);
+
+// In event loop:
+ui_toolbar_handle_touch(tb, touch_event);
+```
+
+### Progress Bar Widget (`ui_progressbar.h`)
+
+Horizontal progress bar with percentage display.
+
+**Features:**
+- Configurable foreground/background/border colors
+- Optional percentage text overlay
+- Simple set_value/redraw cycle
+
+**Example:**
+```c
+ui_progressbar_t *bar = ui_progressbar_create(2, 10, 40);
+ui_progressbar_draw(bar);
+
+// Update:
+ui_progressbar_set_value(bar, bytes_done, bytes_total);
+ui_progressbar_draw(bar);
+```
+
 ### Text Input Widget (`ui_text_input.h`)
 
 Keyboard-based text entry fields with masking and validation support.
@@ -211,4 +252,6 @@ See individual header files for complete API documentation:
 - `ui_button.h` - Button widget API
 - `ui_list.h` - List widget API  
 - `ui_text_input.h` - Text input widget API
+- `ui_toolbar.h` - Toolbar container widget API
+- `ui_progressbar.h` - Progress bar widget API
 - `ui.h` - Legacy utility functions (windows, labels, etc.)

@@ -9,12 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define FILE_LIST_BTN_WIDTH 13
-#define FILE_LIST_BTN_GAP 2
-#define FILE_LIST_BTN_UP_LABEL "  UP  "
-#define FILE_LIST_BTN_OPEN_LABEL " OPEN "
-#define FILE_LIST_BTN_DOWN_LABEL " DOWN "
-#define FILE_LIST_BTN_EXIT_LABEL " EXIT "
 #define TOC_BTN_JUMP_LABEL " JUMP "
 #define TOC_BTN_BACK_LABEL " BACK "
 
@@ -572,14 +566,16 @@ void reader_view_update_progress(const reader_state_t *state, size_t received, s
 }
 
 void reader_view_clear_widgets(reader_state_t *state) {
-    // Destroy all button widgets
+    // Destroy file list toolbar
+    if (state->file_list_toolbar) {
+        ui_toolbar_destroy(state->file_list_toolbar);
+        state->file_list_toolbar = NULL;
+    }
+
+    // Destroy TOC buttons
     if (state->btn_up) {
         free(state->btn_up);
         state->btn_up = NULL;
-    }
-    if (state->btn_get) {
-        free(state->btn_get);
-        state->btn_get = NULL;
     }
     if (state->btn_open) {
         free(state->btn_open);
@@ -593,6 +589,7 @@ void reader_view_clear_widgets(reader_state_t *state) {
         free(state->btn_exit);
         state->btn_exit = NULL;
     }
+
     if (state->btn_jump) {
         free(state->btn_jump);
         state->btn_jump = NULL;
@@ -656,67 +653,17 @@ void reader_view_draw_file_list(reader_state_t *state) {
 
     int button_row = rows - 3;
 
-    // Fixed button layout - use specific widths that fit the symbols
-    // Order: ▲, ▼, ✓, ⇩, ✘
-    int up_width = 6;
-    int down_width = 6;
-    int open_width = 6;
-    int get_width = 6;
-    int exit_width = 6;
-    int gap = 1;
+    const char *toolbar_labels[] = {"\xE2\x96\xB2", "\xE2\x96\xBC", "\xE2\x9C\x93", "\xE2\x87\xA9", "\xE2\x9C\x98"};
+    int toolbar_count = 5;
 
-    int total_width = up_width + gap + down_width + gap + open_width + gap + get_width + gap + exit_width;
-    int start_x = (cols - total_width) / 2;
-    if (start_x < 1) start_x = 1;
+    state->file_list_toolbar = ui_toolbar_create(button_row, 3, toolbar_count, toolbar_labels);
+    if (state->file_list_toolbar) {
+        ui_button_set_callback(ui_toolbar_get_button(state->file_list_toolbar, 0), on_file_list_up_click, state);
+        ui_button_set_callback(ui_toolbar_get_button(state->file_list_toolbar, 1), on_file_list_down_click, state);
+        ui_button_set_callback(ui_toolbar_get_button(state->file_list_toolbar, 2), on_file_list_open_click, state);
+        ui_button_set_callback(ui_toolbar_get_button(state->file_list_toolbar, 3), on_file_list_get_click, state);
+        ui_button_set_callback(ui_toolbar_get_button(state->file_list_toolbar, 4), on_file_list_exit_click, state);
 
-    int up_x = start_x;
-    int down_x = up_x + up_width + gap;
-    int open_x = down_x + down_width + gap;
-    int get_x = open_x + open_width + gap;
-    int exit_x = get_x + get_width + gap;
-
-    if (!state->btn_up) {
-        state->btn_up = ui_button_create(up_x, button_row, up_width, 3, "\xE2\x96\xB2");
-        ui_button_set_callback(state->btn_up, on_file_list_up_click, state);
-
-        state->btn_down = ui_button_create(down_x, button_row, down_width, 3, "\xE2\x96\xBC");
-        ui_button_set_callback(state->btn_down, on_file_list_down_click, state);
-
-        state->btn_open = ui_button_create(open_x, button_row, open_width, 3, "\xE2\x9C\x93");
-        ui_button_set_callback(state->btn_open, on_file_list_open_click, state);
-
-        state->btn_get = ui_button_create(get_x, button_row, get_width, 3, "\xE2\x87\xA9");
-        ui_button_set_callback(state->btn_get, on_file_list_get_click, state);
-
-        state->btn_exit = ui_button_create(exit_x, button_row, exit_width, 3, "\xE2\x9C\x98");
-        ui_button_set_callback(state->btn_exit, on_file_list_exit_click, state);
-    } else {
-        // Update positions and sizes if screen size changed
-        state->btn_up->x = up_x;
-        state->btn_up->y = button_row;
-        state->btn_up->width = up_width;
-
-        state->btn_down->x = down_x;
-        state->btn_down->y = button_row;
-        state->btn_down->width = down_width;
-
-        state->btn_open->x = open_x;
-        state->btn_open->y = button_row;
-        state->btn_open->width = open_width;
-
-        state->btn_get->x = get_x;
-        state->btn_get->y = button_row;
-        state->btn_get->width = get_width;
-
-        state->btn_exit->x = exit_x;
-        state->btn_exit->y = button_row;
-        state->btn_exit->width = exit_width;
+        ui_toolbar_draw(state->file_list_toolbar);
     }
-
-    // Draw buttons
-    ui_button_draw(state->btn_up);
-    ui_button_draw(state->btn_down);
-    ui_button_draw(state->btn_open);
-    ui_button_draw(state->btn_get);
-    ui_button_draw(state->btn_exit);
 }

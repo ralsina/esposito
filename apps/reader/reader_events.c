@@ -56,8 +56,12 @@ void on_file_list_down_click(ui_button_t *button, void *user_data) {
 }
 
 void on_file_list_exit_click(ui_button_t *button, void *user_data) {
-    // This needs special handling - we'll set a flag and handle it in the main loop
-    // For now, do nothing - the file list exit is handled via ESC key
+    reader_state_t *state = (reader_state_t*)user_data;
+    reader_close_current_file(state);
+    config_set_string(KEY_LAST_FILE, "");
+    if (state->launch_app_list) {
+        state->launch_app_list();
+    }
 }
 
 void on_file_list_get_click(ui_button_t *button, void *user_data) {
@@ -466,7 +470,9 @@ static void handle_toc_key(reader_state_t *state, char key, int *bold_pending, i
     // Fall back to button handling for other keys if needed
 }
 
-static void handle_toc_touch(reader_state_t *state, int x_col, int *bold_pending, int *underline_pending) {
+static void handle_toc_touch(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending) {
+    int char_width = text_mode_get_char_width();
+    int x_col = event->touch.x / char_width;
     if (x_col >= state->btn_up_x && x_col < state->btn_up_x + state->btn_w) {
         toc_move_selection(state, -1);
     } else if (x_col >= state->btn_open_x && x_col < state->btn_open_x + state->btn_w) {
@@ -592,10 +598,6 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
     }
 
     if (state->mode == MODE_TOC || state->mode == MODE_FILE_LIST) {
-        // Get current font dimensions for proper coordinate conversion
-        int char_width = text_mode_get_char_width();
-        int char_height = text_mode_get_char_height();
-
         // UI widgets handle pixel-to-character conversion internally
         // Pass the original pixel coordinates directly
 
@@ -605,61 +607,35 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
             return; // List widget handled the touch
         }
 
-        // Check button area first for file list mode (buttons are at bottom)
         if (state->mode == MODE_FILE_LIST) {
-            // Check exit button separately (needs launch_app_list)
-            if (state->btn_exit && ui_button_handle_touch(state->btn_exit, event)) {
-                // Exit button was pressed - launch app list
-                reader_close_current_file(state);
-                config_set_string(KEY_LAST_FILE, "");
-                if (launch_app_list) {
-                    launch_app_list();
-                }
+            // Try toolbar buttons
+            if (state->file_list_toolbar && ui_toolbar_handle_touch(state->file_list_toolbar, event)) {
                 return;
             }
 
-            // Check other buttons
-            if (state->btn_up && ui_button_handle_touch(state->btn_up, event)) return;
-            if (state->btn_down && ui_button_handle_touch(state->btn_down, event)) return;
-            if (state->btn_open && ui_button_handle_touch(state->btn_open, event)) return;
-            if (state->btn_get && ui_button_handle_touch(state->btn_get, event)) return;
-        }
-
-        // Try list widget for file list mode (only if buttons didn't handle it)
-        if (state->mode == MODE_FILE_LIST && state->file_list &&
-            ui_list_handle_touch(state->file_list, event)) {
-            // Check if we switched to reading mode (book was opened)
-            if (state->mode == MODE_READING) {
-                return; // Don't redraw file list, we're now in reading mode
-            }
-            // List widget handled the touch, redraw the updated list
-            ui_list_draw(state->file_list);
-            text_mode_flush();
-            return;
-        }
-
-        // Check exit button separately for file list mode (needs launch_app_list)
-        if (state->mode == MODE_FILE_LIST && state->btn_exit &&
-            ui_button_handle_touch(state->btn_exit, event)) {
-            // Exit button was pressed - launch app list
-            reader_close_current_file(state);
-            config_set_string(KEY_LAST_FILE, "");
-            if (launch_app_list) {
-                launch_app_list();
+            // Try list widget
+            if (state->file_list && ui_list_handle_touch(state->file_list, event)) {
+                if (state->mode == MODE_READING) {
+                    return;
+                }
+                ui_list_draw(state->file_list);
+                text_mode_flush();
+                return;
             }
             return;
         }
 
-        // Try button widgets with character coordinates
-        if (state->btn_up && ui_button_handle_touch(state->btn_up, event)) return;
-        if (state->btn_open && ui_button_handle_touch(state->btn_open, event)) return;
-        if (state->btn_down && ui_button_handle_touch(state->btn_down, event)) return;
-        if (state->mode == MODE_TOC && state->btn_exit && ui_button_handle_touch(state->btn_exit, event)) return;
+        // TOC mode button handling (legacy coordinate-based)
+        if (state->mode == MODE_TOC) {
+            handle_toc_touch(state, event, bold_pending, underline_pending);
+        }
         return;
     }
 }
 
 void reader_events_handle_event(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending, void (*launch_app_list)(void)) {
+    state->launch_app_list = launch_app_list;
+
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         dispatch_keyboard(state, event, bold_pending, underline_pending);
     } else if (event->type == EVENT_TOUCH && event->touch.pressed) {

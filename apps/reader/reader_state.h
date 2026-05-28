@@ -68,8 +68,8 @@ typedef struct {
     const char **toc_titles;  // Persistent array of title pointers for list widget
 
     // Button widgets (managed by UI library)
+    ui_toolbar_t *file_list_toolbar;
     ui_button_t *btn_up;
-    ui_button_t *btn_get;
     ui_button_t *btn_open;
     ui_button_t *btn_down;
     ui_button_t *btn_exit;

@@ -10,6 +10,8 @@
 #include "ui_list.h"
 #include "ui_text_input.h"
 #include "ui_osk.h"
+#include "ui_toolbar.h"
+#include "ui_progressbar.h"
 
 #ifdef __cplusplus
 extern "C" {
