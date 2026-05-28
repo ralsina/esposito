@@ -175,7 +175,7 @@ def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
     fallback_face = None
     if FALLBACK_FONT.exists():
         fallback_face = freetype.Face(str(FALLBACK_FONT))
-        fallback_face.set_pixel_sizes(0, pixel_size)
+        fallback_face.set_pixel_sizes(0, pixel_size + 2)
 
     emoji_face = None
     if EMOJI_FONT.exists():
