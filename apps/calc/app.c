@@ -36,7 +36,7 @@ const char* button_labels[] = {
     "7", "8", "9", "*",
     "4", "5", "6", "-",
     "1", "2", "3", "+",
-    "0", ".", "", "="  // Empty spot for better layout
+    "0", ".", "=", "\u2718"
 };
 
 // Button callback functions
@@ -195,6 +195,11 @@ void button_percent(ui_button_t *button, void *user_data) {
     }
 }
 
+void button_exit(ui_button_t *button, void *user_data) {
+    printf("button_exit\n");
+    os_load_app("launcher");
+}
+
 void create_buttons() {
     // Get actual screen dimensions
     int screen_cols = text_mode_get_cols();
@@ -342,18 +347,7 @@ void create_buttons() {
             int y = button_start_y + row * (button_height + vertical_gap);
             int width = normal_button_width;
 
-            // Last row has special widths
-            if (row == 4) {
-                if (strcmp(label, "=") == 0) {
-                    width = equals_button_width;
-                    // Adjust x position for the wider equals button
-                    if (normal_button_width > 1) {
-                        x = start_x + normal_button_width + normal_button_width + 2;  // After 0 and .
-                    } else {
-                        x = start_x + 2;  // Position after 0 and . on single-char layout
-                    }
-                }
-            }
+
 
             printf("Button[%d] '%s' at x=%d, y=%d, width=%d\n", idx, label, x, y, width);
 
@@ -375,6 +369,8 @@ void create_buttons() {
                 ui_button_set_callback(btn, button_operator, op_data);
             } else if (strcmp(label, "=") == 0) {
                 ui_button_set_callback(btn, button_equals, NULL);
+            } else if (strcmp(label, "\u2718") == 0) {
+                ui_button_set_callback(btn, button_exit, NULL);
             } else if (strcmp(label, ".") == 0) {
                 ui_button_set_callback(btn, button_decimal, NULL);
             } else if (strlen(label) == 1 && label[0] >= '0' && label[0] <= '9') {
@@ -506,8 +502,11 @@ void app_event(app_context_t *ctx, event_t *event) {
         } else if (key == '=' || key == '\r' || key == '\n') {
             button_equals(NULL, NULL);
         } else if (key == 'C' || key == 'c' || key == 27) {
-            // 27 is ESC key
+            // 27 is ESC key - clear for now
             button_clear(NULL, NULL);
+        } else if (key == 27 && strcmp(display_buffer, "Error") == 0) {
+            // ESC key exits to launcher when showing error
+            button_exit(NULL, NULL);
         }
 
         draw_display();
