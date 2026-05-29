@@ -58,9 +58,18 @@ for app_elf in build/apps/*.elf; do
     fi
 done
 
-# Step 4b: Copy font packs to SD card
-echo "=== Copying font packs to SD card ==="
+ # Step 4b: Copy font packs to SD card
+echo "=== Building and copying font packs to SD card ==="
+mkdir -p build/fonts
 mkdir -p "$SD_MOUNT/fonts/fpack"
+
+# Build fpack files from source fonts
+if [ -d "source_fonts" ]; then
+    echo "Generating VLW fonts and fpack bundles..."
+    python3 scripts/generate_vlw_fonts.py build/fonts
+fi
+
+# Copy fpack files to SD card
 for fpack in build/fonts/*.fpack; do
     [ -f "$fpack" ] || continue
     cp "$fpack" "$SD_MOUNT/fonts/fpack/"

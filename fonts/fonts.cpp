@@ -126,9 +126,9 @@ bool font_get_vlw_metrics(const uint8_t *data, size_t size, int *out_width, int 
 
     uint32_t glyph_count, ascent, descent, y_advance;
     read_be32(data + 0, &glyph_count);
-    read_be32(data + 16, &ascent);
-    read_be32(data + 20, &descent);
-    read_be32(data + 8, &y_advance);
+    read_be32(data + 4, &y_advance);
+    read_be32(data + 8, &ascent);
+    read_be32(data + 12, &descent);
 
     if (glyph_count <= 0 || glyph_count > 1000) return false;
 
@@ -138,20 +138,27 @@ bool font_get_vlw_metrics(const uint8_t *data, size_t size, int *out_width, int 
     int height = (int)(y_advance > (uint32_t)(a + d) ? y_advance : (uint32_t)(a + d));
     if (height <= 0) height = 9;
 
+    int max_width = 0;
     int max_advance = 0;
     for (uint32_t i = 0; i < glyph_count; i++) {
         int off = 24 + (int)i * 28;
-        if (off + 16 > (int)size) break;
-        uint32_t xa;
-        read_be32(data + off + 12, &xa);
-        if ((int)xa > max_advance && xa < 100) max_advance = (int)xa;
+        if (off + 20 > (int)size) break;
+        uint32_t glyph_width, x_advance;
+        read_be32(data + off + 8, &glyph_width);
+        read_be32(data + off + 12, &x_advance);
+        if ((int)glyph_width > max_width && glyph_width < 100) max_width = (int)glyph_width;
+        if ((int)x_advance > max_advance && x_advance < 100) max_advance = (int)x_advance;
     }
 
-    int width = max_advance > 0 ? max_advance : 6;
+    int width = max_width > 0 ? max_width : (max_advance > 0 ? max_advance : 6);
     if (width <= 0) width = 6;
 
     if (out_width) *out_width = width;
     if (out_height) *out_height = height;
+
+    ESP_LOGI(TAG, "VLW metrics: width=%d, height=%d (ascent=%d, descent=%d, yAdvance=%u, max_glyph_width=%d)",
+             width, height, a, d, y_advance, max_width);
+
     return true;
 }
 
@@ -221,6 +228,10 @@ bool font_cache_init(void) {
         table[idx].size = (int)hdr.size;
         table[idx].char_width = (int)hdr.char_width;
         table[idx].char_height = (int)hdr.char_height;
+
+        ESP_LOGI(TAG, "Loaded font: %s (family=%s, size=%d, fpack_width=%d, fpack_height=%d)",
+                 table[idx].name, table[idx].family, table[idx].size,
+                 table[idx].char_width, table[idx].char_height);
 
         idx++;
     }
