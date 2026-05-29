@@ -92,7 +92,13 @@ void ui_button_draw(ui_button_t *button) {
         int text_x = button->x + (button->width - display_cols) / 2;
         int text_y = button->y + (button->height - 1) / 2;
 
-        text_mode_print_at_attr_bg(text_x, text_y, button->text, button->fg_color, button->bg_color, TEXT_ATTR_NORMAL);
+        uint8_t text_attr = TEXT_ATTR_NORMAL;
+        if (text_y == button->y) text_attr |= TEXT_ATTR_BORDER_TOP;
+        if (text_y == button->y + button->height - 1) text_attr |= TEXT_ATTR_UNDERLINE;
+        if (text_x == button->x) text_attr |= TEXT_ATTR_BORDER_LEFT;
+        if (text_x == button->x + button->width - 1) text_attr |= TEXT_ATTR_BORDER_RIGHT;
+
+        text_mode_print_at_attr_bg(text_x, text_y, button->text, button->fg_color, button->bg_color, text_attr);
     }
 }
 
