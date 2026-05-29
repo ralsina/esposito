@@ -126,6 +126,7 @@ static const os_symtab_entry_t symtab[] = {
     {"atol",                    atol},
     {"atof",                    atof},
     {"abs",                     abs},
+    {"qsort",                   qsort},
     {"opendir",                 opendir},
     {"readdir",                 readdir},
     {"closedir",                closedir},

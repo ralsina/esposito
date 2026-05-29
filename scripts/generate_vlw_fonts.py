@@ -283,7 +283,6 @@ def main():
         ("KodeMono",    "kode",      {"Regular": "", "Bold": "_bold"}),
         ("Inconsolata", "inconsolata", {"Regular": "", "Bold": "_bold"}),
         ("NovaMono",    "nova",      {"Regular": ""}),
-        ("UbuntuMono",  "ubuntu",    {"Regular": "", "Bold": "_bold"}),
     ]
 
     boot_data = None

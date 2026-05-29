@@ -65,23 +65,24 @@ ui_toolbar_t* ui_toolbar_create(int y, int height, int button_count, const char 
         return toolbar;
     }
 
-// New algorithm: prioritize 3-cell wide buttons, no gaps if needed
-    int gap = 0;        // No gaps - prioritize button width
-    int margin = 0;      // No margins - prioritize button width
-    int per_button_extra = 0; // Extra width per button for expansion
-    
-    // First priority: ALWAYS make buttons at least 3 cells wide if possible
-    int min_button_width = 3;
-    int min_total_width = button_count * min_button_width;
-    
-    if (slack >= min_total_width) {
-        // We can make all buttons 3 cells wide - PRIORITY 1
-        per_button_extra = min_button_width - 1; // 1 (label) + extra = 3 minimum
-        gap = 0; // NO gaps - prioritize width over gaps
+// Keep 3-cell minimum, add gaps when there's room, then extra width
+    int gap = 0;
+    int per_button_extra = 0;
+
+    int three_cell_extra = button_count * 2; // extra cells for 3-cell buttons
+    int gap_cells = num_gaps;                // 1 cell per gap if room
+
+    if (slack >= three_cell_extra + gap_cells) {
+        // Enough for 3-cell buttons + 1-cell gaps + extra width
+        gap = 1;
+        int remain = slack - three_cell_extra - gap_cells;
+        per_button_extra = 2 + remain / button_count;
+    } else if (slack >= three_cell_extra) {
+        // Enough for 3-cell buttons, no room for gaps
+        per_button_extra = 2;
     } else {
-        // Can't reach 3-cell width - use ALL available space for buttons
+        // Not enough for 3-cell, distribute all slack as width
         per_button_extra = slack / button_count;
-        gap = 0; // NO gaps even for smaller buttons - maximize width
     }
 
     // Build buttons with extra width

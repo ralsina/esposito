@@ -536,6 +536,13 @@ static void build_font_family_items(void) {
     }
 }
 
+static int font_size_compare(const void *a, const void *b) {
+    int sa = 0, sb = 0;
+    sscanf(*(const char**)a, "%d", &sa);
+    sscanf(*(const char**)b, "%d", &sb);
+    return sa - sb;
+}
+
 static void build_font_size_items(const char *family) {
     font_size_count = 0;
     for (int index = 0; index < font_count; index++) {
@@ -548,6 +555,7 @@ static void build_font_size_items(const char *family) {
             font_size_count++;
         }
     }
+    qsort(font_size_items, font_size_count, sizeof(char*), font_size_compare);
 }
 
 static font_id_t find_font_by_family_size(const char *family, int size) {

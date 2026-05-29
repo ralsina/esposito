@@ -27,32 +27,30 @@ def read_be_i32(data: bytes, offset: int) -> int:
 
 
 def vlw_parse_metrics(vlw_data: bytes):
-    """Extract glyph count, ascent, descent, and max advance from VLW binary."""
+    """Extract glyph count, column width, and line height from VLW binary.
+
+    The column width is set to the most common x_advance value (modal advance),
+    which gives the correct cell width for monospaced fonts. Max advance would
+        be inflated by wide box-drawing characters.
+        """
     if len(vlw_data) < 24:
         return 0, 0, 0, 0
     glyph_count = read_be32(vlw_data, 0)
     ascent = abs(read_be_i32(vlw_data, 16))
     descent = abs(read_be_i32(vlw_data, 20))
-    # Line height = ascent + descent
-    y_advance = ascent + descent
-    if y_advance <= 0:
-        y_advance = ascent + descent
-    height = max(y_advance, ascent + descent, 9)
+    height = max(ascent + descent, 9)
 
-    max_width = 0
-    max_advance = 0
+    advance_counts = {}
     for i in range(glyph_count):
         off = 24 + i * 28
         if off + 20 > len(vlw_data):
             break
-        width = read_be32(vlw_data, off + 8)
         xa = read_be32(vlw_data, off + 12)
-        if width > max_width and width < 100:
-            max_width = width
-        if xa > max_advance and xa < 100:
-            max_advance = xa
+        if xa < 100:
+            advance_counts[xa] = advance_counts.get(xa, 0) + 1
 
-    width = max(max_width, max_advance, 4) if max_width > 0 or max_advance > 0 else 6
+    modal_advance = max(advance_counts, key=advance_counts.get) if advance_counts else 6
+    width = max(modal_advance, 4)
     return glyph_count, width, height
 
 
