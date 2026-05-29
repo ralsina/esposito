@@ -281,8 +281,9 @@ def main():
         ("HackNerdFont", "hack",      {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
         ("IoskeleyMono", "ioskeley",  {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
         ("KodeMono",    "kode",      {"Regular": "", "Bold": "_bold"}),
-        ("MonomaniacOne", "monomaniac", {"Regular": ""}),
+        ("Inconsolata", "inconsolata", {"Regular": "", "Bold": "_bold"}),
         ("NovaMono",    "nova",      {"Regular": ""}),
+        ("UbuntuMono",  "ubuntu",    {"Regular": "", "Bold": "_bold"}),
     ]
 
     boot_data = None
