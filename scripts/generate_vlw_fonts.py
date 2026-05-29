@@ -280,6 +280,9 @@ def main():
         ("IBMPlexMono",  "ibmplex",   {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
         ("HackNerdFont", "hack",      {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
         ("IoskeleyMono", "ioskeley",  {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
+        ("KodeMono",    "kode",      {"Regular": "", "Bold": "_bold"}),
+        ("MonomaniacOne", "monomaniac", {"Regular": ""}),
+        ("NovaMono",    "nova",      {"Regular": ""}),
     ]
 
     boot_data = None
