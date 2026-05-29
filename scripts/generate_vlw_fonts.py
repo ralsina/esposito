@@ -280,7 +280,6 @@ def main():
         ("IBMPlexMono",  "ibmplex",   {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
         ("HackNerdFont", "hack",      {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
         ("IoskeleyMono", "ioskeley",  {"Regular": "", "Bold": "_bold", "Italic": "_italic", "BoldItalic": "_bolditalic"}),
-        ("Orbitron",     "orbitron",  {"Regular": "", "Bold": "_bold"}),
     ]
 
     boot_data = None

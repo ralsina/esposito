@@ -124,18 +124,17 @@ font_id_t font_lookup_by_name(const char *name) {
 bool font_get_vlw_metrics(const uint8_t *data, size_t size, int *out_width, int *out_height) {
     if (!data || size < 24) return false;
 
-    uint32_t glyph_count, ascent, descent, y_advance;
+    uint32_t glyph_count, ascent, descent;
     read_be32(data + 0, &glyph_count);
-    read_be32(data + 4, &y_advance);
-    read_be32(data + 8, &ascent);
-    read_be32(data + 12, &descent);
+    read_be32(data + 16, &ascent);
+    read_be32(data + 20, &descent);
 
     if (glyph_count <= 0 || glyph_count > 1000) return false;
 
     int a = (int)ascent;
     int d = (int)descent;
-    if (y_advance <= 0) y_advance = (uint32_t)(a + d);
-    int height = (int)(y_advance > (uint32_t)(a + d) ? y_advance : (uint32_t)(a + d));
+    uint32_t y_advance = (uint32_t)(a + d);  // Line height = ascent + descent
+    int height = (int)y_advance;
     if (height <= 0) height = 9;
 
     int max_width = 0;

@@ -33,21 +33,26 @@ def vlw_parse_metrics(vlw_data: bytes):
     glyph_count = read_be32(vlw_data, 0)
     ascent = abs(read_be_i32(vlw_data, 16))
     descent = abs(read_be_i32(vlw_data, 20))
-    y_advance = read_be32(vlw_data, 8)
+    # Line height = ascent + descent
+    y_advance = ascent + descent
     if y_advance <= 0:
         y_advance = ascent + descent
     height = max(y_advance, ascent + descent, 9)
 
+    max_width = 0
     max_advance = 0
     for i in range(glyph_count):
         off = 24 + i * 28
-        if off + 16 > len(vlw_data):
+        if off + 20 > len(vlw_data):
             break
+        width = read_be32(vlw_data, off + 8)
         xa = read_be32(vlw_data, off + 12)
+        if width > max_width and width < 100:
+            max_width = width
         if xa > max_advance and xa < 100:
             max_advance = xa
 
-    width = max(max_advance, 4) if max_advance > 0 else 6
+    width = max(max_width, max_advance, 4) if max_width > 0 or max_advance > 0 else 6
     return glyph_count, width, height
 
 
