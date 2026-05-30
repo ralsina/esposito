@@ -53,9 +53,8 @@ static uint8_t *g_sprite_buffer = NULL;
 static void set_pixel(int x, int y, bool color) {
     if (x < 0 || x >= ARDUBOY_SCREEN_WIDTH || y < 0 || y >= ARDUBOY_SCREEN_HEIGHT) return;
 
-    // Offset to center on 320x240 display
-    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
-    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
+    int offset_x = (display_get_width() - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (display_get_height() - ARDUBOY_SCREEN_HEIGHT) / 2;
 
     graphics_draw_pixel(offset_x + x, offset_y + y, color ? COLOR_GREEN : COLOR_BLACK);
 }
@@ -64,14 +63,13 @@ static void set_pixel(int x, int y, bool color) {
 static bool get_pixel(int x, int y) {
     if (x < 0 || x >= ARDUBOY_SCREEN_WIDTH || y < 0 || y >= ARDUBOY_SCREEN_HEIGHT) return false;
 
-    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
-    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
+    int offset_x = (display_get_width() - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (display_get_height() - ARDUBOY_SCREEN_HEIGHT) / 2;
 
-    // Read directly from the sprite buffer
     if (!g_sprite_buffer) return false;
     int screen_x = offset_x + x;
     int screen_y = offset_y + y;
-    int index = (screen_y * 320 + screen_x) / 2;
+    int index = (screen_y * display_get_width() + screen_x) / 2;
     bool is_low = (screen_x % 2) == 0;
     uint8_t color = is_low ? (g_sprite_buffer[index] >> 4) & 0x0F : g_sprite_buffer[index] & 0x0F;
     return color == COLOR_GREEN;
@@ -115,7 +113,8 @@ void Arduboy::begin() {
 
     // Allocate sprite buffer from app heap
     if (!g_sprite_buffer) {
-        g_sprite_buffer = (uint8_t *)malloc(320 * 240 / 2);
+        int buf_size = display_get_width() * display_get_height() / 2;
+        g_sprite_buffer = (uint8_t *)malloc(buf_size);
         if (!g_sprite_buffer) {
             printf("Arduboy::begin() - failed to allocate sprite buffer\n");
             return;
@@ -124,7 +123,7 @@ void Arduboy::begin() {
     }
 
     // Initialize graphics mode with our pre-allocated buffer
-    graphics_mode_init(g_sprite_buffer, 320 * 240 / 2);
+    graphics_mode_init(g_sprite_buffer, display_get_width() * display_get_height() / 2);
     printf("Arduboy::begin() - graphics_mode_init returned, active=%d\n", graphics_mode_is_active());
 
     if (!graphics_mode_is_active()) {
@@ -223,8 +222,8 @@ void Arduboy::drawPixel(int x, int y, uint8_t color) {
 void Arduboy::drawRect(int x, int y, int width, int height, uint8_t color) {
     if (width <= 0 || height <= 0) return;
 
-    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
-    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
+    int offset_x = (display_get_width() - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (display_get_height() - ARDUBOY_SCREEN_HEIGHT) / 2;
     uint8_t c = color > 0 ? COLOR_GREEN : COLOR_BLACK;
 
     graphics_draw_rect(offset_x + x, offset_y + y, width, height, c);
@@ -233,16 +232,16 @@ void Arduboy::drawRect(int x, int y, int width, int height, uint8_t color) {
 void Arduboy::fillRect(int x, int y, int width, int height, uint8_t color) {
     if (width <= 0 || height <= 0) return;
 
-    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
-    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
+    int offset_x = (display_get_width() - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (display_get_height() - ARDUBOY_SCREEN_HEIGHT) / 2;
     uint8_t c = color > 0 ? COLOR_GREEN : COLOR_BLACK;
 
     graphics_fill_rect(offset_x + x, offset_y + y, width, height, c);
 }
 
 void Arduboy::fillCircle(int x, int y, int radius, uint8_t color) {
-    int offset_x = (320 - ARDUBOY_SCREEN_WIDTH) / 2;
-    int offset_y = (240 - ARDUBOY_SCREEN_HEIGHT) / 2;
+    int offset_x = (display_get_width() - ARDUBOY_SCREEN_WIDTH) / 2;
+    int offset_y = (display_get_height() - ARDUBOY_SCREEN_HEIGHT) / 2;
     uint8_t c = color > 0 ? COLOR_GREEN : COLOR_BLACK;
 
     for (int dy = -radius; dy <= radius; dy++) {
