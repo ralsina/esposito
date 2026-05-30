@@ -947,7 +947,7 @@ static void execute_main_action(settings_action_t action) {
 static void draw_main_split_layout(void) {
     const int cols = text_mode_get_cols();
     const int rows = text_mode_get_rows();
-    const int left_width = 11;
+    const int left_width = 8;
     const int divider_col = left_width;
     const int right_x = left_width + 1;
     const int right_width = cols - right_x;
@@ -978,8 +978,9 @@ static void draw_main_split_layout(void) {
 
         char marker = section_index == selected_section ? '>' : ' ';
         char label_buf[10];
-        truncate_text(section_labels[section_index], label_buf, sizeof(label_buf), left_width - 2);
-        text_mode_printf_at_attr_bg(0, screen_y, color, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL, "%c%-7s", marker, label_buf);
+        int label_width = left_width - 1;
+        truncate_text(section_labels[section_index], label_buf, sizeof(label_buf), label_width);
+        text_mode_printf_at_attr_bg(0, screen_y, color, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL, "%c%-*s", marker, label_width, label_buf);
     }
 
     int option_count = 0;
@@ -1578,7 +1579,7 @@ void app_event(app_context_t *ctx, event_t *event) {
                     // Calculate layout dimensions (same as in draw_main_split_layout)
                     const int cols = text_mode_get_cols();
                     const int rows = text_mode_get_rows();
-                    const int left_width = 11;
+                    const int left_width = 8;
                     const int divider_col = left_width;
                     const int right_x = left_width + 1;
                     const int right_width = cols - right_x;
