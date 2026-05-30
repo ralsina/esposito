@@ -225,6 +225,12 @@ static void app_launcher_handle_key(char key) {
 void app_launcher_start(void) {
     ESP_LOGI(TAG, "Starting app launcher");
 
+    // Force-clear the display with a full-screen rectangle. fillScreen can
+    // leave artifacts on some configurations, so we use fillRect instead.
+    int disp_w = display_get_width();
+    int disp_h = display_get_height();
+    display_fill_rect(0, 0, disp_w, disp_h, 0x0000);
+
     // Ensure text mode is active (may have been left in graphics mode)
     text_mode_init();
     text_mode_clear(TEXT_COLOR_BLACK);

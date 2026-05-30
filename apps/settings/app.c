@@ -962,7 +962,7 @@ static void draw_main_split_layout(void) {
     ui_separator(1);
 
     for (int row = content_top; row <= content_bottom; row++) {
-        text_mode_print_at_attr(divider_col, row, "|", TEXT_COLOR_BLUE, TEXT_ATTR_LINE_DRAWING);
+        text_mode_print_at_attr(divider_col, row, "\xE2\x94\x82", TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
     }
 
     for (int row = 0; row < content_height; row++) {

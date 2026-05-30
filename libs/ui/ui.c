@@ -12,17 +12,17 @@ void ui_window(int x, int y, int w, int h, const char *title) {
     int y2 = y + h - 1;
 
     for (int cx = x; cx <= x2; cx++) {
-        text_mode_print_at_attr(cx, y, "-", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
-        text_mode_print_at_attr(cx, y2, "-", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+        text_mode_print_at_attr(cx, y, "\xE2\x94\x80", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+        text_mode_print_at_attr(cx, y2, "\xE2\x94\x80", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
     }
     for (int cy = y; cy <= y2; cy++) {
-        text_mode_print_at_attr(x, cy, "|", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
-        text_mode_print_at_attr(x2, cy, "|", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+        text_mode_print_at_attr(x, cy, "\xE2\x94\x82", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+        text_mode_print_at_attr(x2, cy, "\xE2\x94\x82", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
     }
-    text_mode_print_at_attr(x, y, "l", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
-    text_mode_print_at_attr(x2, y, "k", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
-    text_mode_print_at_attr(x, y2, "m", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
-    text_mode_print_at_attr(x2, y2, "j", TEXT_COLOR_CYAN, TEXT_ATTR_LINE_DRAWING);
+    text_mode_print_at_attr(x, y, "\xE2\x94\x8C", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr(x2, y, "\xE2\x94\x90", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr(x, y2, "\xE2\x94\x94", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr(x2, y2, "\xE2\x94\x98", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
 
     if (title && title[0]) {
         int tlen = (int)strlen(title);
@@ -35,7 +35,7 @@ void ui_window(int x, int y, int w, int h, const char *title) {
 void ui_separator(int y) {
     int cols = text_mode_get_cols();
     for (int x = 0; x < cols; x++) {
-        text_mode_print_at_attr(x, y, "-", TEXT_COLOR_BLUE, TEXT_ATTR_LINE_DRAWING);
+        text_mode_print_at_attr(x, y, "\xE2\x94\x80", TEXT_COLOR_BLUE, TEXT_ATTR_NORMAL);
     }
 }
 
@@ -94,7 +94,7 @@ int ui_text_input_handle(char key, char *buffer, int max_len) {
 }
 
 void ui_column_draw(int x, int y, int width, int height, const char *title, int active,
-                    const char **items, int count, int selected, int scroll_offset) {
+                    const char **items, int count, const uint8_t *item_colors, int selected, int scroll_offset) {
     if (width < 3 || height < 3) return;
 
     int list_rows = height - 2;
@@ -132,7 +132,7 @@ void ui_column_draw(int x, int y, int width, int height, const char *title, int 
             int max_text = list_width;
             if (max_text < 0) max_text = 0;
 
-            uint8_t fg = TEXT_COLOR_WHITE;
+            uint8_t fg = item_colors ? item_colors[index] : TEXT_COLOR_WHITE;
             uint8_t bg = TEXT_COLOR_BLACK;
             uint8_t attr = TEXT_ATTR_NORMAL;
 

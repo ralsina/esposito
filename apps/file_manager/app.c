@@ -69,6 +69,7 @@ static void on_rename_click(ui_button_t *button, void *user_data);
 static void on_copy_click(ui_button_t *button, void *user_data);
 static void on_delete_click(ui_button_t *button, void *user_data);
 static void on_exit_click(ui_button_t *button, void *user_data);
+static void on_open_click(ui_button_t *button, void *user_data);
 
 // Forward declarations for functions used by button callbacks
 static void start_new_file(void);
@@ -77,6 +78,7 @@ static void start_rename_selected(void);
 static void active_copy_to_other_pane(void);
 static void active_delete_selected(void);
 static void active_up_or_exit(void);
+static void active_open_selected(void);
 
 static void trim_spaces(char *text) {
     if (!text || !text[0]) {
@@ -249,6 +251,12 @@ static void on_exit_click(ui_button_t *button, void *user_data) {
     active_up_or_exit();
 }
 
+static void on_open_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    active_open_selected();
+}
+
 static void clear_pending_open(void) {
     state.pending_open_path[0] = '\0';
     state.pending_open_count = 0;
@@ -308,7 +316,7 @@ static void pane_allocate_display_list(fm_pane_t *pane) {
     
     for (int i = 0; i < pane->entry_count; i++) {
         const fm_entry_t *ent = &pane->entries[i];
-        size_t len = (ent->is_dir ? 4 : 4) + strlen(ent->name) + 1;
+        size_t len = strlen(ent->name) + 2;
         pane->display_list[i] = malloc(len);
         if (!pane->display_list[i]) {
             os_log(TAG, "display item alloc failed at %d: %zu bytes", i, len);
@@ -316,7 +324,7 @@ static void pane_allocate_display_list(fm_pane_t *pane) {
             pane_free_display_list(pane);
             return;
         }
-        snprintf(pane->display_list[i], len, "%s%s", ent->is_dir ? "[D] " : "    ", ent->name);
+        snprintf(pane->display_list[i], len, "%s%s", ent->name, ent->is_dir ? "/" : "");
     }
     pane->display_list[pane->entry_count] = NULL;
     pane->display_list_count = pane->entry_count;
@@ -501,6 +509,7 @@ static void active_mkdir(void) {
 
     pane_scan_directory(pane);
     set_status("Directory created");
+    render();
 }
 
 static void active_copy_to_other_pane(void) {
@@ -532,6 +541,7 @@ static void active_copy_to_other_pane(void) {
 
     pane_scan_directory(target_pane);
     set_status("Copied to other pane");
+    render();
 }
 
 static void active_open_with(void) {
@@ -641,6 +651,7 @@ static void active_delete_selected(void) {
 
     pane_scan_directory(pane);
     set_status(entry->is_dir ? "Directory deleted" : "File deleted");
+    render();
 }
 
 static void on_name_confirm(ui_text_input_widget_t *widget, void *user_data) {
@@ -753,8 +764,22 @@ static void draw_pane(int pane_index, int x, int width, int height) {
     snprintf(title, sizeof(title), "%c %s [%d/%d]", active ? '*' : ' ', path_display,
              selected_index < 0 ? 0 : selected_index + 1, pane->entry_count);
 
+    // Build per-item colors: BRIGHT_WHITE for dirs, WHITE for files
+    uint8_t *item_colors = NULL;
+    if (pane->entry_count > 0) {
+        item_colors = malloc(pane->entry_count);
+        if (item_colors) {
+            for (int entry_index = 0; entry_index < pane->entry_count; entry_index++) {
+                item_colors[entry_index] = pane->entries[entry_index].is_dir
+                    ? TEXT_COLOR_BRIGHT_WHITE : TEXT_COLOR_WHITE;
+            }
+        }
+    }
+
     ui_column_draw(x, 0, width, height, title, active,
-                   (const char **)pane->display_list, pane->entry_count, pane->selected, pane->scroll);
+                   (const char **)pane->display_list, pane->entry_count, item_colors, pane->selected, pane->scroll);
+
+    free(item_colors);
 }
 
 static void render(void) {
@@ -801,6 +826,7 @@ static void active_open_selected(void) {
         snprintf(pane->cwd, sizeof(pane->cwd), "%s", entry->path);
         pane_scan_directory(pane);
         set_status("Entered directory");
+        render();
         return;
     }
 
@@ -813,6 +839,7 @@ static void active_up_or_exit(void) {
         path_parent(pane->cwd, pane->cwd, sizeof(pane->cwd));
         pane_scan_directory(pane);
         set_status("Parent directory");
+        render();
         return;
     }
 
@@ -890,15 +917,16 @@ void app_init(app_context_t *ctx) {
     ui_text_input_set_callbacks(state.name_input, NULL, on_name_confirm, on_name_cancel, NULL);
 
     // Create action toolbar for touch mode
-    const char *toolbar_labels[] = {"New", "Dir", "Ren", "Cpy", "Del", "Exit"};
-    state.toolbar = ui_toolbar_create(rows - 1, 1, 6, toolbar_labels);
+    const char *toolbar_labels[] = {"New", "Dir", "Ren", "Cpy", "Del", "\xE2\x9C\x93", "\xE2\x9C\x98"};
+    state.toolbar = ui_toolbar_create(rows - 1, 1, 7, toolbar_labels);
     if (state.toolbar) {
         ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 0), on_new_file_click, NULL);
         ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 1), on_mkdir_click, NULL);
         ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 2), on_rename_click, NULL);
         ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 3), on_copy_click, NULL);
         ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 4), on_delete_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 5), on_exit_click, NULL);
+        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 5), on_open_click, NULL);
+        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 6), on_exit_click, NULL);
     }
 
     int config_ok = config_bind_app("file_manager");
@@ -975,9 +1003,6 @@ void app_event(app_context_t *ctx, event_t *event) {
                 // Select the touched entry and make this pane active
                 state.active_pane = (x_col < left_width) ? 0 : 1;
                 touched_pane->selected = entry_index;
-
-                // Open the entry on touch
-                active_open_selected();
                 render();
             }
         }

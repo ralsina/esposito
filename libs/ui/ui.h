@@ -52,7 +52,7 @@ int ui_text_input_handle(char key, char *buffer, int max_len);
 // selected: which item is currently selected (0-based)
 // scroll_offset: which item is at the top of the display
 void ui_column_draw(int x, int y, int width, int height, const char *title, int active,
-                    const char **items, int count, int selected, int scroll_offset);
+                    const char **items, int count, const uint8_t *item_colors, int selected, int scroll_offset);
 
 // Clear screen to black
 void ui_clear(void);

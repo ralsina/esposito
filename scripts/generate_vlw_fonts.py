@@ -174,6 +174,59 @@ def render_codepoint(face, codepoint):
     }
 
 
+def box_drawing_glyph(codepoint, advance, cell_height, ascent):
+    """Generate a synthetic box-drawing glyph bitmap.
+
+    Only handles the 6 light single-line box-drawing characters
+    used by the UI. Other codepoints return an empty glyph.
+    """
+    w = advance
+    h = cell_height
+    alpha = bytearray(w * h)
+
+    cx = w // 2
+    cy = h // 2
+
+    def set_pixel(x, y):
+        if 0 <= x < w and 0 <= y < h:
+            alpha[y * w + x] = 255
+
+    def hline(y, x1, x2):
+        for x in range(x1, x2 + 1):
+            set_pixel(x, y)
+
+    def vline(x, y1, y2):
+        for y in range(y1, y2 + 1):
+            set_pixel(x, y)
+
+    if codepoint == 0x2500:       # ─ light horizontal
+        hline(cy, 0, w - 1)
+    elif codepoint == 0x2502:     # │ light vertical
+        vline(cx, 0, h - 1)
+    elif codepoint == 0x250C:     # ┌ light down and right
+        vline(cx, cy, h - 1)
+        hline(cy, cx, w - 1)
+    elif codepoint == 0x2510:     # ┐ light down and left
+        vline(cx, cy, h - 1)
+        hline(cy, 0, cx)
+    elif codepoint == 0x2514:     # └ light up and right
+        vline(cx, 0, cy)
+        hline(cy, cx, w - 1)
+    elif codepoint == 0x2518:     # ┘ light up and left
+        vline(cx, 0, cy)
+        hline(cy, 0, cx)
+
+    return {
+        "unicode": codepoint,
+        "height": h,
+        "width": w,
+        "advance": advance,
+        "top_offset": ascent,
+        "left_offset": 0,
+        "bitmap": bytes(alpha),
+    }
+
+
 def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
     """Generate VLW binary data for the given font and size."""
     face = freetype.Face(str(ttf_path))
@@ -190,11 +243,28 @@ def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
         emoji_face.set_pixel_sizes(0, pixel_size)
 
     glyphs = []
+
+    # Compute font metrics from the main font
+    ascent = face.size.ascender >> 6
+    descent = -(face.size.descender >> 6)  # TFT_eSPI expects positive descent
+    cell_height = ascent + descent
+
+    # Compute modal advance for synthetic glyphs
+    face.load_char("0", freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_LIGHT)
+    modal_advance = face.glyph.advance.x >> 6
+
     for codepoint in CHARSET:
         glyph = render_codepoint(face, codepoint)
         if glyph:
             glyphs.append(glyph)
             continue
+
+        # Synthesize box-drawing characters that the font lacks
+        if 0x2500 <= codepoint < 0x2580:
+            glyph = box_drawing_glyph(codepoint, modal_advance, cell_height, ascent)
+            if glyph and glyph["bitmap"]:
+                glyphs.append(glyph)
+                continue
 
         # Try fallback font (DejaVu Sans Mono)
         if fallback_face:
@@ -213,10 +283,6 @@ def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
                 continue
 
     glyphs.sort(key=lambda g: g["unicode"])
-
-    # Compute font metrics from the main font
-    ascent = face.size.ascender >> 6
-    descent = -(face.size.descender >> 6)  # TFT_eSPI expects positive descent
 
     # Build VLW binary
     buf = bytearray()
