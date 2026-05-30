@@ -56,7 +56,8 @@ CHARSET = (
     + [0x25B2, 0x25BC]                  # ▲ ▼
     + [0x25C0, 0x25B6]                  # ◀ ▶
     + [0x2B07]                          # ⬇ (download)
-    + [0x21E9]                          # ⇩ (downwards white arrow)
+    + [0x21E7, 0x21E9]                  # ⇧ ⇩ (shift, download)
+    + [0x232B]                          # ⌫ (backspace)
 )
 
 # Font sizes to generate: (name, ttf_filename, pixel_size)

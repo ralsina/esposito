@@ -210,7 +210,7 @@ bool ui_osk_handle_event(app_context_t *ctx, event_t *event) {
                 else if (row == 1) row_button_count = 10; // QWERTY row  
                 else if (row == 2) row_button_count = 10; // ASDF row
                 else if (row == 3) row_button_count = 10; // ZXCV row
-                else if (row == 4) row_button_count = 5;  // Special row
+                else if (row == 4) row_button_count = 6;  // Special row
                 
                 // Check each button in this toolbar to see if it was the one hit
                 for (int col = 0; col < row_button_count; col++) {
@@ -223,7 +223,7 @@ bool ui_osk_handle_event(app_context_t *ctx, event_t *event) {
                             else if (r == 1) global_button_index += 10; // QWERTY
                             else if (r == 2) global_button_index += 10; // ASDF
                             else if (r == 3) global_button_index += 10; // ZXCV
-                            else if (r == 4) global_button_index += 5;  // Special
+                            else if (r == 4) global_button_index += 6;  // Special
                         }
                         global_button_index += col;
                         
@@ -583,7 +583,7 @@ static void update_button_label(osk_state_t *state, int button_index) {
             else if (row == 1) row_button_count = 10;
             else if (row == 2) row_button_count = 10;
             else if (row == 3) row_button_count = 10;
-            else if (row == 4) row_button_count = 5;
+            else if (row == 4) row_button_count = 6;
             
             for (int col = 0; col < row_button_count; col++) {
                 if (current_button_index == button_index) {
