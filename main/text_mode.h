@@ -101,6 +101,12 @@ bool text_mode_set_font(font_id_t font);
 // Apply user's configured font from settings (call after settings system is ready)
 bool text_mode_apply_configured_font(void);
 
+// Set the 16-color palette (array of 16 RGB565 values)
+void text_mode_set_palette(const uint16_t colors[16]);
+
+// Apply palette by index (0 = CGA, 1 = Dark, 2 = Solarized Dark, 3 = Solarized Light)
+void text_mode_apply_configured_palette(int index);
+
 // Recalculate grid for rotation changes (preserves current font)
 void text_mode_reinit_grid(void);
 

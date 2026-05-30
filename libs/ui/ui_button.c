@@ -15,7 +15,7 @@ ui_button_t* ui_button_create(int x, int y, int width, int height, const char *t
     button->y = y;
     button->width = width;
     button->height = height;
-    button->fg_color = TEXT_COLOR_WHITE;
+    button->fg_color = TEXT_COLOR_BRIGHT_WHITE;
     button->bg_color = TEXT_COLOR_BLUE;
     button->visible = true;
     button->enabled = true;
@@ -92,7 +92,7 @@ void ui_button_draw(ui_button_t *button) {
         int text_x = button->x + (button->width - display_cols) / 2;
         int text_y = button->y + (button->height - 1) / 2;
 
-        uint8_t text_attr = TEXT_ATTR_NORMAL;
+        uint8_t text_attr = TEXT_ATTR_BOLD;
         if (text_y == button->y) text_attr |= TEXT_ATTR_BORDER_TOP;
         if (text_y == button->y + button->height - 1) text_attr |= TEXT_ATTR_UNDERLINE;
         if (text_x == button->x) text_attr |= TEXT_ATTR_BORDER_LEFT;

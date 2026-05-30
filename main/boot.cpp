@@ -293,6 +293,10 @@ void boot_sequence(void) {
         // Apply font setting
         bool font_applied = text_mode_apply_configured_font();
         ESP_LOGI(TAG, "Font apply result: %s", font_applied ? "SUCCESS" : "FAILED");
+
+        // Apply color palette
+        int palette_index = os_settings_get_int("display/palette", 0);
+        text_mode_apply_configured_palette(palette_index);
     } else {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "SD card not available");
         // Continue anyway - SD card is optional

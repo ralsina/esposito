@@ -92,6 +92,8 @@ static const os_symtab_entry_t symtab[] = {
     {"text_mode_free_snapshot", text_mode_free_snapshot},
     {"text_mode_pixel_to_cell", text_mode_pixel_to_cell},
     {"text_mode_cell_to_pixel", text_mode_cell_to_pixel},
+    {"text_mode_set_palette",   text_mode_set_palette},
+    {"text_mode_apply_configured_palette", text_mode_apply_configured_palette},
     {"graphics_mode_init",        graphics_mode_init},
     {"graphics_mode_deinit",      graphics_mode_deinit},
     {"graphics_mode_is_active",   graphics_mode_is_active},

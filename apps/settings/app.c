@@ -100,6 +100,7 @@ typedef enum {
     ACTION_SET_ROTATION,
     ACTION_SET_BRIGHTNESS,
     ACTION_SET_SCREENSAVER_TIMEOUT,
+    ACTION_SET_PALETTE,
     ACTION_TOGGLE_SERIAL,
 } settings_action_t;
 
@@ -134,6 +135,7 @@ static const section_option_t display_options[] = {
     {"Rotation", ACTION_SET_ROTATION},
     {"Brightness", ACTION_SET_BRIGHTNESS},
     {"Screensaver", ACTION_SET_SCREENSAVER_TIMEOUT},
+    {"Palette", ACTION_SET_PALETTE},
 };
 
 static const section_option_t debug_options[] = {
@@ -157,6 +159,51 @@ static void on_main_left_click(ui_button_t *button, void *user_data);
 static void handle_main_key(char key);
 static void on_scan_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
 static void on_scan_back_click(ui_button_t *button, void *user_data);
+// Color palettes
+#define PALETTE_COUNT 4
+
+static const uint16_t palette_cga[16] = {
+    0x0000, 0x0010, 0x0400, 0x0410,
+    0x8000, 0x8010, 0x8400, 0x8410,
+    0x4208, 0x001F, 0x07E0, 0x07FF,
+    0xF800, 0xF81F, 0xFFE0, 0xFFFF,
+};
+
+static const uint16_t palette_cga_light[16] = {
+    0xFFBC, 0x0013, 0x0440, 0x0453,
+    0x8800, 0x8813, 0x8840, 0x0000,
+    0x8410, 0x001F, 0x07E0, 0x07FF,
+    0xF800, 0xF81F, 0xFFE0, 0xFFFF,
+};
+
+static const uint16_t palette_solarized_dark[16] = {
+    0x0146, 0x6B98, 0x84C0, 0x2D13,
+    0xD985, 0xD1B0, 0xB440, 0x84B2,
+    0x01A8, 0x245A, 0x07E0, 0x63D0,
+    0xEF5A, 0xCA42, 0x5B6E, 0x9514,
+};
+
+static const uint16_t palette_solarized_light[16] = {
+    0xFFBC, 0x6B98, 0x84C0, 0x2D13,
+    0xD985, 0xD1B0, 0xB440, 0x63D0,
+    0xEF5A, 0x245A, 0xCA42, 0x5B6E,
+    0x0146, 0x01A8, 0x01A8, 0x84B2,
+};
+
+static const char *palette_names[PALETTE_COUNT] = {
+    "CGA",
+    "CGA Light",
+    "Solarized Dark",
+    "Solarized Light",
+};
+
+static const uint16_t *palette_data[PALETTE_COUNT] = {
+    palette_cga,
+    palette_cga_light,
+    palette_solarized_dark,
+    palette_solarized_light,
+};
+
 static void build_scan_list_items(void);
 static void create_scan_list(void);
 static void render(void);
@@ -787,6 +834,15 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
             }
             break;
         }
+        case ACTION_SET_PALETTE: {
+            int index = os_settings_get_int("display/palette", 0);
+            if (index >= 0 && index < PALETTE_COUNT) {
+                snprintf(out, out_size, "%s", palette_names[index]);
+            } else {
+                snprintf(out, out_size, "CGA");
+            }
+            break;
+        }
         case ACTION_TOGGLE_SERIAL:
             snprintf(out, out_size, "%s", serial_log_output_is_enabled() ? "on" : "off");
             break;
@@ -929,6 +985,16 @@ static void execute_main_action(settings_action_t action) {
             } else {
                 snprintf(status_msg, sizeof(status_msg), "Screensaver: off");
             }
+            set_status(status_msg);
+            render();
+            break;
+        }
+        case ACTION_SET_PALETTE: {
+            int current = os_settings_get_int("display/palette", 0);
+            int next = (current + 1) % PALETTE_COUNT;
+            os_settings_set_int("display/palette", next);
+            text_mode_set_palette(palette_data[next]);
+            snprintf(status_msg, sizeof(status_msg), "Palette: %s", palette_names[next]);
             set_status(status_msg);
             render();
             break;

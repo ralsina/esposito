@@ -16,7 +16,7 @@ extern "C" {
 
 static const char *TAG = "text_mode";
 
-static const uint16_t color_palette[16] = {
+static uint16_t color_palette[16] = {
     0x0000, 0x0010, 0x0400, 0x0410, 0x8000, 0x8010, 0x8400, 0x8410,
     0x4208, 0x001F, 0x07E0, 0x07FF, 0xF800, 0xF81F, 0xFFE0, 0xFFFF,
 };
@@ -225,6 +225,60 @@ static void update_cell(int x, int y) {
     if (cell->attributes & TEXT_ATTR_BORDER_RIGHT) {
         display_fill_rect(px + font_width - 1, py, 1, font_height, fg);
     }
+}
+
+void text_mode_set_palette(const uint16_t colors[16]) {
+    if (!colors) return;
+    memcpy(color_palette, colors, sizeof(color_palette));
+    graphics_set_palette(colors, 16);
+    if (grid && initialized) {
+        for (int y = 0; y < grid_rows; y++) {
+            for (int x = 0; x < grid_cols; x++) {
+                update_cell(x, y);
+            }
+        }
+    }
+}
+
+static const uint16_t palette_cga[16] = {
+    0x0000, 0x0010, 0x0400, 0x0410,
+    0x8000, 0x8010, 0x8400, 0x8410,
+    0x4208, 0x001F, 0x07E0, 0x07FF,
+    0xF800, 0xF81F, 0xFFE0, 0xFFFF,
+};
+
+static const uint16_t palette_cga_light[16] = {
+    0xFFBC, 0x0013, 0x0440, 0x0453,
+    0x8800, 0x8813, 0x8840, 0x0000,
+    0x8410, 0x001F, 0x07E0, 0x07FF,
+    0xF800, 0xF81F, 0xFFE0, 0xFFFF,
+};
+
+static const uint16_t palette_solarized_dark[16] = {
+    0x0146, 0x6B98, 0x84C0, 0x2D13,
+    0xD985, 0xD1B0, 0xB440, 0x84B2,
+    0x01A8, 0x245A, 0x07E0, 0x63D0,
+    0xEF5A, 0xCA42, 0x5B6E, 0x9514,
+};
+
+static const uint16_t palette_solarized_light[16] = {
+    0xFFBC, 0x6B98, 0x84C0, 0x2D13,
+    0xD985, 0xD1B0, 0xB440, 0x63D0,
+    0xEF5A, 0x245A, 0xCA42, 0x5B6E,
+    0x0146, 0x01A8, 0x01A8, 0x84B2,
+};
+
+static const uint16_t *all_palettes[] = {
+    palette_cga, palette_cga_light, palette_solarized_dark, palette_solarized_light,
+};
+
+#define NUM_PALETTES (sizeof(all_palettes) / sizeof(all_palettes[0]))
+
+void text_mode_apply_configured_palette(int index) {
+    if (index < 0 || index >= (int)NUM_PALETTES) {
+        index = 0;
+    }
+    text_mode_set_palette(all_palettes[index]);
 }
 
 static bool init_grid(font_id_t font) {
