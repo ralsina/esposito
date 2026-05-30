@@ -27,7 +27,9 @@ static bool g_active = false;
 void graphics_mode_init(uint8_t *buffer, size_t buffer_size) {
     ESP_LOGI(TAG, "graphics_mode_init: entering, buffer=%p size=%u", buffer, buffer_size);
 
-    size_t required = (size_t)GFX_SCREEN_WIDTH * GFX_SCREEN_HEIGHT / 2;
+    int buf_w = display_get_width();
+    int buf_h = display_get_height();
+    size_t required = (size_t)buf_w * buf_h / 2;
     if (!buffer || buffer_size < required) {
         ESP_LOGE(TAG, "graphics_mode_init: buffer too small (need %u, got %u)", required, buffer_size);
         return;
@@ -48,20 +50,17 @@ void graphics_mode_init(uint8_t *buffer, size_t buffer_size) {
     }
 
     g_sprite->setColorDepth(4);
-    ESP_LOGI(TAG, "graphics_mode_init: setBuffer %dx%d bpp=4", GFX_SCREEN_WIDTH, GFX_SCREEN_HEIGHT);
-    g_sprite->setBuffer(buffer, GFX_SCREEN_WIDTH, GFX_SCREEN_HEIGHT, 4);
+    ESP_LOGI(TAG, "graphics_mode_init: setBuffer %dx%d bpp=4", buf_w, buf_h);
+    g_sprite->setBuffer(buffer, buf_w, buf_h, 4);
 
-    // Create palette for 4bpp mode
     g_sprite->createPalette();
 
     g_active = true;
 
-    // Set default palette
     for (int i = 0; i < 16; i++) {
         g_sprite->setPaletteColor(i, default_palette[i]);
     }
 
-    // Clear to black (palette index 0)
     g_sprite->fillSprite(0);
     ESP_LOGI(TAG, "graphics_mode_init: flushing to display");
     graphics_flush();
@@ -130,7 +129,7 @@ void *graphics_mode_get_buffer(void) {
 }
 
 size_t graphics_mode_get_buffer_size(void) {
-    return (size_t)GFX_SCREEN_WIDTH * GFX_SCREEN_HEIGHT / 2;
+    return (size_t)display_get_width() * display_get_height() / 2;
 }
 
 bool graphics_mode_is_active(void) {

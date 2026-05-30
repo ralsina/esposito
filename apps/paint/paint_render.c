@@ -19,9 +19,14 @@ void paint_render_set_palette(void) {
     graphics_set_palette(paint_palette, PAINT_COLORS);
 }
 
+static int get_button_width(void) {
+    return display_get_width() / PAINT_BUTTON_COUNT;
+}
+
 static void paint_draw_button(int index, const char *label, bool active, uint8_t color) {
-    int x = index * PAINT_BUTTON_W;
-    int w = PAINT_BUTTON_W;
+    int bw = get_button_width();
+    int x = index * bw;
+    int w = bw;
     if (x + w > display_get_width()) {
         w = display_get_width() - x;
     }

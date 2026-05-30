@@ -243,11 +243,16 @@ static void render_rect_from_canvas(const paint_state_t *state, int x0, int y0, 
     }
 }
 
+static int get_button_width(void) {
+    return display_get_width() / PAINT_BUTTON_COUNT;
+}
+
 static void handle_toolbar_touch(paint_state_t *state, int x, void (*launch_app_list)(void)) {
     preview_restore_previous(state);
     state->preview_active = false;
 
-    int button = x / PAINT_BUTTON_W;
+    int bw = get_button_width();
+    int button = x / bw;
     if (button < 0) {
         return;
     }
