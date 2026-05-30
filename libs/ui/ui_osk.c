@@ -139,7 +139,7 @@ bool ui_osk_input_text(
     int screen_rows = text_mode_get_rows();
     state->title_y = 0;
     state->input_y = 1;
-    state->keyboard_start_y = 3;
+    state->keyboard_start_y = 4;
     state->input_display_width = text_mode_get_cols();
 
     // Clear screen
