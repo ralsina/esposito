@@ -2,7 +2,7 @@
 #include "text_mode.h"
 #include "ui.h"
 #include "app_config.h"
-#include "app_launcher.h"
+
 #include "app_manifest.h"
 #include "ui_button.h"
 #include "hardware.h"
@@ -843,7 +843,7 @@ static void active_up_or_exit(void) {
         return;
     }
 
-    app_launcher_start();
+    os_load_app("launcher");
 }
 
 static void save_state(void) {

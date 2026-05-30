@@ -10,7 +10,6 @@
 #include <string.h>
 
 static const char *TAG = "settings";
-extern void app_launcher_start(void);
 
 typedef enum {
     STATE_MAIN,
@@ -336,7 +335,7 @@ static void set_status(const char *msg) {
 static void on_main_exit_click(ui_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
-    app_launcher_start();
+    os_load_app("launcher");
 }
 
 static void on_main_up_click(ui_button_t *button, void *user_data) {

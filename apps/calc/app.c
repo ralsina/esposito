@@ -13,8 +13,6 @@
 
 // Declare external functions
 extern float strtof(const char *str, char **endptr);
-extern void app_launcher_start(void);
-extern bool app_launcher_is_active(void);
 
 #define MAX_DISPLAY 20
 #define NUM_TOOLBARS 5
@@ -173,7 +171,7 @@ void button_percent(ui_button_t *button, void *user_data) {
 }
 
 void button_exit(ui_button_t *button, void *user_data) {
-    app_launcher_start();
+    os_load_app("launcher");
 }
 
 static void set_button_callback(ui_button_t *btn, const char *label) {
@@ -276,9 +274,6 @@ void app_event(app_context_t *ctx, event_t *event) {
             if (toolbars[i] && ui_toolbar_handle_touch(toolbars[i], event)) {
                 break;
             }
-        }
-        if (!app_launcher_is_active()) {
-            redraw_all();
         }
     } else if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         char key = event->keyboard.key;

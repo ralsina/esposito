@@ -1,4 +1,4 @@
-#include "app_launcher.h"
+
 #include "hardware.h"
 #include "os_core.h"
 #include "text_mode.h"
@@ -162,7 +162,7 @@ void app_event(app_context_t *ctx, event_t *event) {
     }
 
     if (event->keyboard.key == 27 || event->keyboard.key == 'q' || event->keyboard.key == 'Q') {
-        app_launcher_start();
+        os_load_app("launcher");
         return;
     }
 

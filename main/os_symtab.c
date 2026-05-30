@@ -2,6 +2,7 @@
 #include "app_heap.h"
 #include "app_config.h"
 #include "app_manifest.h"
+#include "app_loader.h"
 #include "os_core.h"
 #include "hardware.h"
 #include "app_launcher.h"
@@ -63,6 +64,7 @@ static const os_symtab_entry_t symtab[] = {
     {"os_get_current_app",      os_get_current_app},
     {"app_launcher_start",      app_launcher_start},
     {"app_launcher_is_active",  app_launcher_is_active},
+    {"app_loader_scan",         app_loader_scan},
     {"text_mode_init",          text_mode_init},
     {"text_mode_init_ex",       text_mode_init_ex},
     {"text_mode_set_font",      text_mode_set_font},

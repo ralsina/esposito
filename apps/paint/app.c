@@ -10,9 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern void app_launcher_start(void);
-
 static paint_state_t state;
+
+static void go_to_launcher(void) { os_load_app("launcher"); }
 
 void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_TOUCH | EVENT_TOUCH_CONTINUOUS;
@@ -86,7 +86,7 @@ void app_event(app_context_t *ctx, event_t *event) {
     }
 
     if (event->type == EVENT_TOUCH || event->type == EVENT_TOUCH_CONTINUOUS) {
-        paint_tools_handle_touch(&state, event->touch.x, event->touch.y, event->touch.pressed, app_launcher_start);
+        paint_tools_handle_touch(&state, event->touch.x, event->touch.y, event->touch.pressed, go_to_launcher);
     }
 }
 

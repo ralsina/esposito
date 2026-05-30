@@ -1,6 +1,6 @@
 #include "os_core.h"
 #include "app_config.h"
-#include "app_launcher.h"
+
 #include "text_mode.h"
 #include "ui.h"
 
@@ -312,12 +312,12 @@ static void ensure_selection_visible(int list_rows) {
 
 static void picker_return(int canceled) {
     if (canceled && picker.cancel_to_launcher) {
-        app_launcher_start();
+        os_load_app("launcher");
         return;
     }
 
     if (!picker.return_app[0] || !os_load_app(picker.return_app)) {
-        app_launcher_start();
+        os_load_app("launcher");
     }
 }
 

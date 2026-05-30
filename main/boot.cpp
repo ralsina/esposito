@@ -3,7 +3,7 @@
 #include "os_core.h"
 #include "app_heap.h"
 #include "app_loader.h"
-#include "app_launcher.h"
+
 #include "app_config.h"
 #include "text_mode.h"
 #include "esp_log.h"
@@ -341,7 +341,7 @@ void boot_sequence(void) {
 
     // If no last app was loaded (or crash loop), start the launcher
     if (os_get_current_app() == NULL) {
-        app_launcher_start();
+        os_load_app("launcher");
     }
 
     // For now, just say we're ready

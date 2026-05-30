@@ -2,7 +2,7 @@
 #include "app_heap.h"
 #include "app_config.h"
 #include "app_loader.h"
-#include "app_launcher.h"
+
 #include "app_manifest.h"
 #include "elf_loader.h"
 #include "hardware.h"
@@ -565,7 +565,6 @@ void os_event_loop(void) {
         }
 
         if (current_app &&
-            !app_launcher_is_active() &&
             (current_app->subscriptions & EVENT_TIMER) &&
             current_app->timer_interval_ms > 0) {
             TickType_t now = xTaskGetTickCount();
@@ -586,8 +585,7 @@ void os_event_loop(void) {
 
         // Poll keyboard always so global OS shortcuts cannot be disabled by apps.
         if (keyboard_read_event(&event)) {
-            bool wants_keyboard = app_launcher_is_active() ||
-                                  (current_app && (current_app->subscriptions & EVENT_KEYBOARD));
+            bool wants_keyboard = current_app && (current_app->subscriptions & EVENT_KEYBOARD);
             bool is_ctrl_esc = (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
                                 event.keyboard.key == 27 &&
                                 (event.keyboard.modifiers & MODIFIER_CTRL));
@@ -636,14 +634,14 @@ void os_event_loop(void) {
             bool wants_touch_edge = (current_app && (current_app->subscriptions & EVENT_TOUCH));
             bool wants_touch_stream = (current_app && (current_app->subscriptions & EVENT_TOUCH_CONTINUOUS));
 
-            if (wants_touch_edge || wants_touch_stream || app_launcher_is_active()) {
+            if (wants_touch_edge || wants_touch_stream) {
                 uint16_t x, y;
                 bool pressed;
                 if (touchscreen_get_position(&x, &y, &pressed)) {
                     last_touch_x = x;
                     last_touch_y = y;
 
-                    if (pressed && !touch_was_pressed && (wants_touch_edge || app_launcher_is_active())) {
+                    if (pressed && !touch_was_pressed && wants_touch_edge) {
                         event.type = EVENT_TOUCH;
                         event.touch.x = x;
                         event.touch.y = y;
@@ -743,7 +741,7 @@ void os_event_loop(void) {
                         ESP_LOGI(TAG, "ctrl-esc: history file NOT FOUND");
                     }
                 }
-                app_launcher_start();
+                os_load_app("launcher");
                 continue;
             }
 
@@ -755,12 +753,6 @@ void os_event_loop(void) {
                 if (!terminal_mode_save_screenshot(terminal_mode_default())) {
                     text_mode_save_screenshot();
                 }
-                continue;
-            }
-
-            // If launcher is active, handle keys there
-            if (app_launcher_is_active()) {
-                app_launcher_handle_event(&event);
                 continue;
             }
 
@@ -821,8 +813,8 @@ void os_event_loop(void) {
         }
 
         // Auto-restart launcher if no app is running
-        if (current_app == NULL && !app_launcher_is_active()) {
-            app_launcher_start();
+        if (current_app == NULL) {
+            os_load_app("launcher");
         }
 
         // Small delay to prevent watchdog

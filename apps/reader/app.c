@@ -7,12 +7,13 @@
 #include "reader_startup.h"
 #include "serial_rx.h"
 #include "hardware.h"
-extern void app_launcher_start(void);
 #include <string.h>
 
 static reader_state_t state;
 static int bold_pending = 0;
 static int underline_pending = 0;
+
+static void go_to_launcher(void) { os_load_app("launcher"); }
 
 void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH | EVENT_SERIAL;
@@ -34,7 +35,7 @@ void app_event(app_context_t *ctx, event_t *event) {
         }
         return;
     }
-    reader_events_handle_event(&state, event, &bold_pending, &underline_pending, app_launcher_start);
+    reader_events_handle_event(&state, event, &bold_pending, &underline_pending, go_to_launcher);
 }
 
 void app_checkpoint(app_context_t *ctx) {
