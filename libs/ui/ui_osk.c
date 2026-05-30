@@ -718,34 +718,27 @@ static void create_keyboard_layout(osk_state_t *state) {
     int available_rows = screen_rows - state->keyboard_start_y;
     int total_keyboard_rows = 5; // 5 keyboard rows (4 main + 1 special)
 
-    // Calculate button height to fit available space with vertical gaps
-    int vertical_gap = 1; // 1-row gap between toolbars
-    int total_gap_rows = (total_keyboard_rows - 1) * vertical_gap; // Total gap space
+    // Try with gaps first, remove them if the keyboard doesn't fit
+    int vertical_gap = 1;
+    int total_gap_rows = (total_keyboard_rows - 1) * vertical_gap;
     
-    // Calculate button height - distribute available space among toolbars
     int button_height = available_rows / total_keyboard_rows;
-    if (button_height < 1) {
-        button_height = 1; // Minimum height for touch
-    }
+    if (button_height < 1) button_height = 1;
     
-    // If we have plenty of space, make buttons taller
-    if (button_height == 1 && available_rows > total_keyboard_rows) {
-        button_height = available_rows / total_keyboard_rows;
-    }
-    
-    // Calculate total space needed by keyboard
     int total_keyboard_space = (total_keyboard_rows * button_height) + total_gap_rows;
-    
-    // Position keyboard so last toolbar is flush to bottom of screen
     int keyboard_start_y = screen_rows - total_keyboard_space;
+    
     if (keyboard_start_y < state->keyboard_start_y) {
-        keyboard_start_y = state->keyboard_start_y; // Ensure we don't overlap input area
-        // Recalculate button height if we don't have enough space
-        button_height = (available_rows - total_gap_rows) / total_keyboard_rows;
+        // Not enough room with gaps — remove them
+        vertical_gap = 0;
+        total_gap_rows = 0;
+        button_height = available_rows / total_keyboard_rows;
         if (button_height < 1) button_height = 1;
-        // Recalculate total space with new button height
-        total_keyboard_space = (total_keyboard_rows * button_height) + total_gap_rows;
+        total_keyboard_space = total_keyboard_rows * button_height;
         keyboard_start_y = screen_rows - total_keyboard_space;
+        if (keyboard_start_y < state->keyboard_start_y) {
+            keyboard_start_y = state->keyboard_start_y;
+        }
     }
 
 // Define keyboard rows using toolbars - remove duplicated buttons, let toolbars handle width
@@ -767,16 +760,16 @@ static void create_keyboard_layout(osk_state_t *state) {
 
     // Create toolbar for each row with vertical gaps
     state->keyboard_bars[0] = ui_toolbar_create(current_y, button_height, 10, row1_labels);
-    current_y += button_height + 1; // Add vertical gap after each row
+    current_y += button_height + vertical_gap;
 
     state->keyboard_bars[1] = ui_toolbar_create(current_y, button_height, 10, row2_labels);
-    current_y += button_height + 1; // Add vertical gap after each row
+    current_y += button_height + vertical_gap;
 
     state->keyboard_bars[2] = ui_toolbar_create(current_y, button_height, 10, row3_labels);
-    current_y += button_height + 1; // Add vertical gap after each row
+    current_y += button_height + vertical_gap;
 
     state->keyboard_bars[3] = ui_toolbar_create(current_y, button_height, 10, row4_labels);
-    current_y += button_height + 1; // Add vertical gap after each row
+    current_y += button_height + vertical_gap;
 
     // Last row doesn't need gap after it
     state->keyboard_bars[4] = ui_toolbar_create(current_y, button_height, 6, row5_labels);
