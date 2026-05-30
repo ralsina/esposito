@@ -52,6 +52,9 @@ void graphics_mode_deinit(void);
 // Returns true if graphics mode is currently active.
 bool graphics_mode_is_active(void);
 
+// Save current graphics buffer as PPM screenshot. Returns true on success.
+bool graphics_mode_save_screenshot(void);
+
 #ifdef __cplusplus
 }
 #endif

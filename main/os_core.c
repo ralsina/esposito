@@ -9,6 +9,7 @@
 #include "hardware_config.h"
 #include "text_mode.h"
 #include "terminal_mode.h"
+#include "graphics_mode.h"
 #include "touchscreen.h"
 #include "wifi.h"
 #include "esp_http_client.h"
@@ -750,7 +751,9 @@ void os_event_loop(void) {
                 event.keyboard.key == 27 &&  // ESC key
                 (event.keyboard.modifiers & MODIFIER_FN)) {
                 ESP_LOGI(TAG, "Screenshot triggered (Fn+ESC)");
-                if (!terminal_mode_save_screenshot(terminal_mode_default())) {
+                if (graphics_mode_is_active()) {
+                    graphics_mode_save_screenshot();
+                } else if (!terminal_mode_save_screenshot(terminal_mode_default())) {
                     text_mode_save_screenshot();
                 }
                 continue;

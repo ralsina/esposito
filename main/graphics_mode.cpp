@@ -2,9 +2,12 @@
 #include "hardware.h"
 #include "lovgfx_config.h"
 #include "hardware_config.h"
+#include "os_core.h"
 #include <lgfx/v1/LGFXBase.hpp>
 #include <lgfx/v1/LGFX_Sprite.hpp>
 #include <esp_log.h>
+#include <stdio.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <algorithm>
 
@@ -16,6 +19,8 @@ static const uint16_t default_palette[16] = {
     0x0000, 0x0010, 0x0400, 0x0410, 0x8000, 0x8010, 0x8400, 0x8410,
     0x4208, 0x001F, 0x07E0, 0x07FF, 0xF800, 0xF81F, 0xFFE0, 0xFFFF,
 };
+
+static uint16_t current_palette[16];
 
 static const int GFX_SCREEN_WIDTH = BOARD_SCREEN_WIDTH;
 static const int GFX_SCREEN_HEIGHT = BOARD_SCREEN_HEIGHT;
@@ -59,6 +64,7 @@ void graphics_mode_init(uint8_t *buffer, size_t buffer_size) {
 
     for (int i = 0; i < 16; i++) {
         g_sprite->setPaletteColor(i, default_palette[i]);
+        current_palette[i] = default_palette[i];
     }
 
     g_sprite->fillSprite(0);
@@ -83,6 +89,7 @@ void graphics_set_palette(const uint16_t *colors, int count) {
     if (count > 16) count = 16;
     for (int i = 0; i < count; i++) {
         g_sprite->setPaletteColor(i, colors[i]);
+        current_palette[i] = colors[i];
     }
 }
 
@@ -134,4 +141,66 @@ size_t graphics_mode_get_buffer_size(void) {
 
 bool graphics_mode_is_active(void) {
     return g_active;
+}
+
+static uint16_t get_palette_color(uint8_t index) {
+    return current_palette[index & 0x0F];
+}
+
+bool graphics_mode_save_screenshot(void) {
+    if (!g_active || !g_sprite) return false;
+
+    int width = display_get_width();
+    int height = display_get_height();
+    int buf_w = g_sprite->width();
+    uint8_t *buf = (uint8_t *)g_sprite->getBuffer();
+    if (!buf) return false;
+
+    mkdir("/sdcard/screenshots", 0777);
+
+    char path[72];
+    int num = 0;
+    FILE *existing;
+    do {
+        snprintf(path, sizeof(path), "/sdcard/screenshots/shot_%03d.ppm", num);
+        existing = fopen(path, "r");
+        if (existing) {
+            fclose(existing);
+            num++;
+        }
+    } while (existing && num < 1000);
+    if (num >= 1000) return false;
+
+    FILE *fppm = fopen(path, "wb");
+    if (!fppm) return false;
+
+    fprintf(fppm, "P6\n%d %d\n255\n", width, height);
+
+    uint8_t *row_buf = (uint8_t *)malloc((size_t)width * 3);
+    if (!row_buf) {
+        fclose(fppm);
+        return false;
+    }
+
+    for (int y = 0; y < height; y++) {
+        uint8_t *p = row_buf;
+        for (int x = 0; x < width; x++) {
+            int index = y * buf_w + x;
+            uint8_t val = buf[index / 2];
+            uint8_t cidx = (index & 1) ? (val & 0x0F) : ((val >> 4) & 0x0F);
+            uint16_t rgb565 = get_palette_color(cidx);
+            uint8_t r = (rgb565 >> 8) & 0xF8; r |= r >> 5;
+            uint8_t g = (rgb565 >> 3) & 0xFC; g |= g >> 6;
+            uint8_t b = (rgb565 << 3) & 0xF8; b |= b >> 5;
+            *p++ = r;
+            *p++ = g;
+            *p++ = b;
+        }
+        fwrite(row_buf, 1, (size_t)width * 3, fppm);
+    }
+
+    free(row_buf);
+    fclose(fppm);
+    ESP_LOGI(TAG, "Screenshot saved: %s", path);
+    return true;
 }
