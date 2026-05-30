@@ -26,10 +26,8 @@ static char app_display_names[APP_LOADER_MAX_APPS][64]; // human-readable (for d
 #define HEADER_ROW 1
 #define APPS_START_ROW 4
 
-// Button widgets
-static ui_button_t *btn_up = NULL;
-static ui_button_t *btn_open = NULL;
-static ui_button_t *btn_down = NULL;
+// Toolbar for bottom buttons
+static ui_toolbar_t *toolbar = NULL;
 
 // List widget for app list
 static ui_list_widget_t *app_list = NULL;
@@ -109,7 +107,7 @@ static void app_launcher_show_static(void) {
 
     // Create or update list widget
     if (!app_list) {
-        int list_height = rows - 6; // Leave room for buttons and margins
+        int list_height = rows - 6; // Leave room for toolbar and margins
         app_list = ui_list_create(1, 1, cols - 2, list_height);
         ui_list_set_title(app_list, "App Launcher");
         ui_list_set_colors(app_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
@@ -139,70 +137,22 @@ static void app_launcher_show_static(void) {
         ui_list_draw(app_list);
     }
 
-    // Create button widgets if they don't exist
-    if (!btn_up || !btn_open || !btn_down) {
-        int btn_h = 3;  // 3 rows tall
-        int btn_row = rows - btn_h - 1;  // Position at bottom
-
-        // Calculate button layout based on actual screen width
-        int button_count = 3;
-        int total_gap = 2 * (button_count - 1);  // 2 columns gap between each button
-        int available_width = cols - 4;  // 2 columns margin on each side
-        int btn_w = (available_width - total_gap) / button_count;
-
-        // Ensure minimum button width
-        if (btn_w < 8) btn_w = 8;
-
-        // Center the button group on screen
-        int total_button_width = (btn_w * button_count) + total_gap;
-        int start_x = (cols - total_button_width) / 2;
-        if (start_x < 1) start_x = 1;
-
-        int btn_up_x = start_x;
-        int btn_open_x = btn_up_x + btn_w + 2;  // 2 columns gap
-        int btn_down_x = btn_open_x + btn_w + 2;
-
-        btn_up = ui_button_create(btn_up_x, btn_row, btn_w, btn_h, "\xE2\x96\xB2");
-        ui_button_set_callback(btn_up, on_launcher_up_click, NULL);
-
-        btn_open = ui_button_create(btn_open_x, btn_row, btn_w, btn_h, "\xE2\x9C\x93");
-        ui_button_set_callback(btn_open, on_launcher_open_click, NULL);
-
-        btn_down = ui_button_create(btn_down_x, btn_row, btn_w, btn_h, "\xE2\x96\xBC");
-        ui_button_set_callback(btn_down, on_launcher_down_click, NULL);
-    } else {
-        // Update button positions if screen size changed (e.g., font change or rotation)
-        int btn_h = 3;
-        int btn_row = rows - btn_h - 1;
-
-        // Calculate button layout based on actual screen width
-        int button_count = 3;
-        int total_gap = 2 * (button_count - 1);
-        int available_width = cols - 4;
-        int btn_w = (available_width - total_gap) / button_count;
-        if (btn_w < 8) btn_w = 8;
-
-        int total_button_width = (btn_w * button_count) + total_gap;
-        int start_x = (cols - total_button_width) / 2;
-        if (start_x < 1) start_x = 1;
-
-        btn_up->x = start_x;
-        btn_up->y = btn_row;
-        btn_up->width = btn_w;
-
-        btn_open->x = start_x + btn_w + 2;
-        btn_open->y = btn_row;
-        btn_open->width = btn_w;
-
-        btn_down->x = start_x + (btn_w + 2) * 2;
-        btn_down->y = btn_row;
-        btn_down->width = btn_w;
+    // Create toolbar at bottom
+    if (toolbar) {
+        ui_toolbar_destroy(toolbar);
+        toolbar = NULL;
     }
 
-    // Draw buttons
-    ui_button_draw(btn_up);
-    ui_button_draw(btn_open);
-    ui_button_draw(btn_down);
+    int btn_h = 3;
+    int btn_row = rows - btn_h - 1;
+    const char *toolbar_labels[] = {"\xE2\x96\xB2", "\xE2\x9C\x93", "\xE2\x96\xBC"};
+    toolbar = ui_toolbar_create(btn_row, btn_h, 3, toolbar_labels);
+    if (toolbar) {
+        ui_button_set_callback(ui_toolbar_get_button(toolbar, 0), on_launcher_up_click, NULL);
+        ui_button_set_callback(ui_toolbar_get_button(toolbar, 1), on_launcher_open_click, NULL);
+        ui_button_set_callback(ui_toolbar_get_button(toolbar, 2), on_launcher_down_click, NULL);
+        ui_toolbar_draw(toolbar);
+    }
 }
 
 static void app_launcher_show(void) {
@@ -340,9 +290,7 @@ void app_launcher_handle_event(event_t *event) {
             return; // List widget handled the touch
         }
 
-        // Try button widgets
-        if (btn_up && ui_button_handle_touch(btn_up, event)) return;
-        if (btn_open && ui_button_handle_touch(btn_open, event)) return;
-        if (btn_down && ui_button_handle_touch(btn_down, event)) return;
+        // Try toolbar
+        if (toolbar && ui_toolbar_handle_touch(toolbar, event)) return;
     }
 }
