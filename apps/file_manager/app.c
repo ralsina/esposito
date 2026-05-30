@@ -53,12 +53,7 @@ typedef struct {
     char pending_edit_path[FM_MAX_PATH];
     char pending_name[FM_MAX_NAME];
     ui_text_input_widget_t *name_input;
-    ui_button_t *btn_new_file;
-    ui_button_t *btn_mkdir;
-    ui_button_t *btn_rename;
-    ui_button_t *btn_copy;
-    ui_button_t *btn_delete;
-    ui_button_t *btn_exit;
+    ui_toolbar_t *toolbar;
 } file_manager_t;
 
 static const char *TAG = "file_manager";
@@ -786,13 +781,8 @@ static void render(void) {
         ui_label(1, rows - 1, "W/S move A/D switch Enter open M rename N file K dir C copy X del", TEXT_COLOR_BRIGHT_BLACK);
     } else {
         ui_status_bar(rows - 2, state.status, "");
-        // Draw action buttons
-        ui_button_draw(state.btn_new_file);
-        ui_button_draw(state.btn_mkdir);
-        ui_button_draw(state.btn_rename);
-        ui_button_draw(state.btn_copy);
-        ui_button_draw(state.btn_delete);
-        ui_button_draw(state.btn_exit);
+        // Draw action toolbar
+        ui_toolbar_draw(state.toolbar);
     }
 
     text_mode_flush();
@@ -899,34 +889,17 @@ void app_init(app_context_t *ctx) {
     ui_text_input_set_hints(state.name_input, "Type name  Enter Confirm", "ESC Cancel");
     ui_text_input_set_callbacks(state.name_input, NULL, on_name_confirm, on_name_cancel, NULL);
 
-    // Create action buttons for touch mode
-    int button_y = rows - 1;
-    int button_width = 6;
-    int gap = 1;
-    int x = 0;
-
-    state.btn_new_file = ui_button_create(x, button_y, button_width, 1, "New");
-    ui_button_set_callback(state.btn_new_file, on_new_file_click, NULL);
-    x += button_width + gap;
-
-    state.btn_mkdir = ui_button_create(x, button_y, button_width, 1, "Dir");
-    ui_button_set_callback(state.btn_mkdir, on_mkdir_click, NULL);
-    x += button_width + gap;
-
-    state.btn_rename = ui_button_create(x, button_y, button_width, 1, "Ren");
-    ui_button_set_callback(state.btn_rename, on_rename_click, NULL);
-    x += button_width + gap;
-
-    state.btn_copy = ui_button_create(x, button_y, button_width, 1, "Cpy");
-    ui_button_set_callback(state.btn_copy, on_copy_click, NULL);
-    x += button_width + gap;
-
-    state.btn_delete = ui_button_create(x, button_y, button_width, 1, "Del");
-    ui_button_set_callback(state.btn_delete, on_delete_click, NULL);
-    x += button_width + gap;
-
-    state.btn_exit = ui_button_create(x, button_y, button_width, 1, "Exit");
-    ui_button_set_callback(state.btn_exit, on_exit_click, NULL);
+    // Create action toolbar for touch mode
+    const char *toolbar_labels[] = {"New", "Dir", "Ren", "Cpy", "Del", "Exit"};
+    state.toolbar = ui_toolbar_create(rows - 1, 1, 6, toolbar_labels);
+    if (state.toolbar) {
+        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 0), on_new_file_click, NULL);
+        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 1), on_mkdir_click, NULL);
+        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 2), on_rename_click, NULL);
+        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 3), on_copy_click, NULL);
+        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 4), on_delete_click, NULL);
+        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 5), on_exit_click, NULL);
+    }
 
     int config_ok = config_bind_app("file_manager");
     char left_selected[FM_MAX_PATH];
@@ -972,14 +945,9 @@ void app_event(app_context_t *ctx, event_t *event) {
         int x_col = event->touch.x / cw;
         int y_col = event->touch.y / ch;
 
-        // Handle button touches when no keyboard
+        // Handle toolbar touches when no keyboard
         if (!keyboard_is_available()) {
-            if (ui_button_handle_touch(state.btn_new_file, event)) return;
-            if (ui_button_handle_touch(state.btn_mkdir, event)) return;
-            if (ui_button_handle_touch(state.btn_rename, event)) return;
-            if (ui_button_handle_touch(state.btn_copy, event)) return;
-            if (ui_button_handle_touch(state.btn_delete, event)) return;
-            if (ui_button_handle_touch(state.btn_exit, event)) return;
+            if (ui_toolbar_handle_touch(state.toolbar, event)) return;
         }
 
         // Handle pane touches
@@ -1096,30 +1064,10 @@ void app_close(app_context_t *ctx) {
         state.name_input = NULL;
     }
 
-    // Clean up buttons
-    if (state.btn_new_file) {
-        ui_button_destroy(state.btn_new_file);
-        state.btn_new_file = NULL;
-    }
-    if (state.btn_mkdir) {
-        ui_button_destroy(state.btn_mkdir);
-        state.btn_mkdir = NULL;
-    }
-    if (state.btn_rename) {
-        ui_button_destroy(state.btn_rename);
-        state.btn_rename = NULL;
-    }
-    if (state.btn_copy) {
-        ui_button_destroy(state.btn_copy);
-        state.btn_copy = NULL;
-    }
-    if (state.btn_delete) {
-        ui_button_destroy(state.btn_delete);
-        state.btn_delete = NULL;
-    }
-    if (state.btn_exit) {
-        ui_button_destroy(state.btn_exit);
-        state.btn_exit = NULL;
+    // Clean up toolbar
+    if (state.toolbar) {
+        ui_toolbar_destroy(state.toolbar);
+        state.toolbar = NULL;
     }
 
     for (int pane_index = 0; pane_index < FM_PANES; pane_index++) {

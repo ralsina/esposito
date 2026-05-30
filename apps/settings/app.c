@@ -73,11 +73,7 @@ static void on_font_size_down_click(ui_button_t *button, void *user_data);
 static void on_font_size_ok_click(ui_button_t *button, void *user_data);
 static void on_font_size_cancel_click(ui_button_t *button, void *user_data);
 
-static ui_button_t *main_exit_btn;
-static ui_button_t *main_up_btn;
-static ui_button_t *main_down_btn;
-static ui_button_t *main_set_btn;
-static ui_button_t *main_left_btn;
+static ui_toolbar_t *main_toolbar;
 
 typedef enum {
     MAIN_FOCUS_LEFT,
@@ -403,25 +399,9 @@ static void rebuild_layout_widgets(void) {
         ui_toolbar_destroy(font_size_toolbar);
         font_size_toolbar = NULL;
     }
-    if (main_exit_btn) {
-        ui_button_destroy(main_exit_btn);
-        main_exit_btn = NULL;
-    }
-    if (main_up_btn) {
-        ui_button_destroy(main_up_btn);
-        main_up_btn = NULL;
-    }
-    if (main_down_btn) {
-        ui_button_destroy(main_down_btn);
-        main_down_btn = NULL;
-    }
-    if (main_set_btn) {
-        ui_button_destroy(main_set_btn);
-        main_set_btn = NULL;
-    }
-    if (main_left_btn) {
-        ui_button_destroy(main_left_btn);
-        main_left_btn = NULL;
+    if (main_toolbar) {
+        ui_toolbar_destroy(main_toolbar);
+        main_toolbar = NULL;
     }
 
     ssid_input = ui_text_input_create(0, rows - 4, cols, 4);
@@ -490,29 +470,17 @@ static void rebuild_layout_widgets(void) {
         }
     }
 
+    // Create main screen toolbar
     {
-        const char *btn_labels[] = {"\xE2\x97\x80", "\xE2\x96\xBC", "\xE2\x96\xB2", "\xE2\x9C\x93"};
-        const int btn_count = 4;
-        const int btn_w = 5;
-        const int gap = 1;
-        const int total_w = btn_count * btn_w + (btn_count - 1) * gap;
-        int start_x = cols - total_w;
-        int btn_y = rows - 3;
-
-        main_left_btn = ui_button_create(start_x, btn_y, btn_w, 3, btn_labels[0]);
-        ui_button_set_callback(main_left_btn, on_main_left_click, NULL);
-
-        main_down_btn = ui_button_create(start_x + (btn_w + gap), btn_y, btn_w, 3, btn_labels[1]);
-        ui_button_set_callback(main_down_btn, on_main_down_click, NULL);
-
-        main_up_btn = ui_button_create(start_x + 2 * (btn_w + gap), btn_y, btn_w, 3, btn_labels[2]);
-        ui_button_set_callback(main_up_btn, on_main_up_click, NULL);
-
-        main_set_btn = ui_button_create(start_x + 3 * (btn_w + gap), btn_y, btn_w, 3, btn_labels[3]);
-        ui_button_set_callback(main_set_btn, on_main_set_click, NULL);
-
-        main_exit_btn = ui_button_create(0, btn_y, 5, 3, "\xE2\x9C\x98");
-        ui_button_set_callback(main_exit_btn, on_main_exit_click, NULL);
+        const char *toolbar_labels[] = {"\xE2\x9C\x98", "\xE2\x97\x80", "\xE2\x96\xBC", "\xE2\x96\xB2", "\xE2\x9C\x93"};
+        main_toolbar = ui_toolbar_create(rows - 3, 3, 5, toolbar_labels);
+        if (main_toolbar) {
+            ui_button_set_callback(ui_toolbar_get_button(main_toolbar, 0), on_main_exit_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(main_toolbar, 1), on_main_left_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(main_toolbar, 2), on_main_down_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(main_toolbar, 3), on_main_up_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(main_toolbar, 4), on_main_set_click, NULL);
+        }
     }
 }
 
@@ -1062,11 +1030,7 @@ static void draw_main_split_layout(void) {
 static void draw_main(void) {
     ui_clear();
     draw_main_split_layout();
-    ui_button_draw(main_exit_btn);
-    ui_button_draw(main_left_btn);
-    ui_button_draw(main_down_btn);
-    ui_button_draw(main_up_btn);
-    ui_button_draw(main_set_btn);
+    ui_toolbar_draw(main_toolbar);
 }
 
 static void draw_scan_results(void) {
@@ -1253,25 +1217,9 @@ void app_close(app_context_t *ctx) {
         ui_toolbar_destroy(font_size_toolbar);
         font_size_toolbar = NULL;
     }
-    if (main_exit_btn) {
-        ui_button_destroy(main_exit_btn);
-        main_exit_btn = NULL;
-    }
-    if (main_up_btn) {
-        ui_button_destroy(main_up_btn);
-        main_up_btn = NULL;
-    }
-    if (main_down_btn) {
-        ui_button_destroy(main_down_btn);
-        main_down_btn = NULL;
-    }
-    if (main_set_btn) {
-        ui_button_destroy(main_set_btn);
-        main_set_btn = NULL;
-    }
-    if (main_left_btn) {
-        ui_button_destroy(main_left_btn);
-        main_left_btn = NULL;
+    if (main_toolbar) {
+        ui_toolbar_destroy(main_toolbar);
+        main_toolbar = NULL;
     }
     if (scan_list) {
         ui_list_destroy(scan_list);
@@ -1624,19 +1572,7 @@ void app_event(app_context_t *ctx, event_t *event) {
                 }
                 break;
             case STATE_MAIN:
-                if (ui_button_handle_touch(main_exit_btn, event)) {
-                    return;
-                }
-                if (ui_button_handle_touch(main_left_btn, event)) {
-                    return;
-                }
-                if (ui_button_handle_touch(main_down_btn, event)) {
-                    return;
-                }
-                if (ui_button_handle_touch(main_up_btn, event)) {
-                    return;
-                }
-                if (ui_button_handle_touch(main_set_btn, event)) {
+                if (ui_toolbar_handle_touch(main_toolbar, event)) {
                     return;
                 }
                 {
