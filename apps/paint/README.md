@@ -1,5 +1,7 @@
 # Esposito Paint
 
+![Paint screenshot](paint.png)
+
 A touch-first pixel paint app for Esposito OS on ESP32/CYD2USB.
 
 The app uses a 16-color indexed canvas and is designed to be fast on-device, including live line/rectangle previews while dragging.
