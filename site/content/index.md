@@ -10,6 +10,7 @@
 </section>
 
 {{% tag section class="features-section" %}}
+{{% tag div class="grid" %}}
 {{% card %}}
 🗞 As seen on:
 
@@ -19,7 +20,6 @@
 * [FabScene (Japanese)](https://fabscene.com/new/make/esp-osito-cyd-os/)
 
 {{% /card %}}
-{{% tag div class="grid" %}}
 
 {{% card %}}
 ### 💸 [Cheap](#Cheap) 
@@ -100,14 +100,13 @@ Yes, **there is a Free [Bookshop](/books.html)** with 100 titles (I am not Bezos
 {{% /tag %}}
 
 It can have as many apps installed as you want and will fit in your SD card. They start in milliseconds, they restore their
-state so even without multitasking you can actually switch apps faster than on "good" hardware. There are also graphical
-apps like [paint](https://github.com/ralsina/esposito/tree/main/apps/paint), but I can't screenshot them yet.
-
-It even runs **Game Boy games** at 40-60 FPS using [Peanut-GB](https://github.com/deltabeard/Peanut-GB):
-
-{{% figure src="peanut_gb.png" caption="Yes, this is a Game Boy emulator on a $5 microcontroller" link="https://github.com/ralsina/esposito/tree/main/apps/peanut_gb" %}}
+state so even without multitasking you can actually switch apps faster than on "good" hardware. 
 
 {{% tag div class="grid" %}}
+{{% card %}}
+{{% figure src="peanut_gb.png" caption="Game Boy emulation!" link="https://github.com/ralsina/esposito/tree/main/apps/peanut_gb" %}}
+{{% /card %}}
+
 {{% card %}}
 {{% figure src="filemanager.png" caption="File Manager" link="https://github.com/ralsina/esposito/tree/main/apps/filemanager" %}}
 {{% /card %}}
@@ -125,6 +124,9 @@ It even runs **Game Boy games** at 40-60 FPS using [Peanut-GB](https://github.co
 {{% /card %}}
 {{% card %}}
 {{% figure src="lali.png" caption="AI Chat Buddy" link="https://github.com/ralsina/esposito/tree/main/apps/lali" %}}
+{{% /card %}}
+{{% card %}}
+{{% figure src="paint.png" caption="Paint app" link="https://github.com/ralsina/esposito/tree/main/apps/paint" %}}
 {{% /card %}}
 {{% card %}}
 {{% figure src="calc.png" caption="Calculator" link="https://github.com/ralsina/esposito/tree/main/apps/calc" %}}
