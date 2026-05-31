@@ -64,7 +64,7 @@ static void boot_report_app_memory(void) {
 static void boot_apply_log_output_setting(void) {
     bool enabled = serial_log_output_is_enabled();
     if (config_bind_app("settings")) {
-        enabled = config_get_bool("serial_log_output", false);
+        enabled = appcfg_get_bool("serial_log_output", false);
         config_unbind_app();
     } else {
         ESP_LOGW(TAG, "Settings config unavailable; keeping serial log output enabled");
@@ -165,8 +165,8 @@ static bool boot_check_crash_loop(void) {
         return false;
     }
 
-    int boot_count = config_get_int("system/boot_count", 0);
-    time_t last_boot = (time_t)config_get_int("system/last_boot_time", 0);
+    int boot_count = appcfg_get_int("system/boot_count", 0);
+    time_t last_boot = (time_t)appcfg_get_int("system/last_boot_time", 0);
     double elapsed = difftime(now, last_boot);
 
     ESP_LOGI(TAG, "Boot check: count=%d, elapsed=%.0fs", boot_count, elapsed);
@@ -179,8 +179,8 @@ static bool boot_check_crash_loop(void) {
         if (boot_count >= 3) {
             ESP_LOGE(TAG, "Crash loop detected! Clearing last app.");
             config_delete("system/last_app");
-            config_set_int("system/boot_count", 0);
-            config_set_int("system/last_boot_time", 0);
+            appcfg_set_int("system/boot_count", 0);
+            appcfg_set_int("system/last_boot_time", 0);
             crash_loop = true;
         }
     } else {
@@ -188,8 +188,8 @@ static bool boot_check_crash_loop(void) {
     }
 
     if (!crash_loop) {
-        config_set_int("system/boot_count", boot_count);
-        config_set_int("system/last_boot_time", (int)now);
+        appcfg_set_int("system/boot_count", boot_count);
+        appcfg_set_int("system/last_boot_time", (int)now);
     }
 
     config_unbind_app();
@@ -202,7 +202,7 @@ static void boot_auto_load_last_app(void) {
     }
 
     char last_app[64] = {0};
-    size_t len = config_get_string("system/last_app", "", last_app, sizeof(last_app));
+    size_t len = appcfg_get_string("system/last_app", "", last_app, sizeof(last_app));
     config_unbind_app();
 
     if (len == 0 || last_app[0] == '\0') {

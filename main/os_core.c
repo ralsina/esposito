@@ -29,6 +29,7 @@
 
 static const char *TAG = "os_core";
 
+
 // Screensaver state
 static int64_t screensaver_last_activity = 0;
 static bool screensaver_active = false;
@@ -240,7 +241,7 @@ bool os_open_app_with_file(const char *app_name, const char *file_path) {
         return false;
     }
 
-    bool ok = config_set_string(OS_STARTUP_FILE_KEY, file_path);
+    bool ok = appcfg_set_string(OS_STARTUP_FILE_KEY, file_path);
     config_unbind_app();
     if (!ok) {
         return false;
@@ -299,7 +300,7 @@ size_t os_settings_get_string(const char *key_path,
         return strlen(out);
     }
 
-    size_t len = config_get_string(key_path, default_value, out, out_size);
+    size_t len = appcfg_get_string(key_path, default_value, out, out_size);
     config_unbind_app();
     return len;
 }
@@ -313,7 +314,7 @@ bool os_settings_set_string(const char *key_path, const char *value) {
         return false;
     }
 
-    bool ok = config_set_string(key_path, value ? value : "");
+    bool ok = appcfg_set_string(key_path, value ? value : "");
     config_unbind_app();
     return ok;
 }
@@ -327,7 +328,7 @@ int os_settings_get_int(const char *key_path, int default_value) {
         return default_value;
     }
 
-    int value = config_get_int(key_path, default_value);
+    int value = appcfg_get_int(key_path, default_value);
     config_unbind_app();
     return value;
 }
@@ -341,7 +342,7 @@ bool os_settings_set_int(const char *key_path, int value) {
         return false;
     }
 
-    bool ok = config_set_int(key_path, value);
+    bool ok = appcfg_set_int(key_path, value);
     config_unbind_app();
     return ok;
 }
@@ -355,7 +356,7 @@ bool os_settings_get_bool(const char *key_path, bool default_value) {
         return default_value;
     }
 
-    bool value = config_get_bool(key_path, default_value);
+    bool value = appcfg_get_bool(key_path, default_value);
     config_unbind_app();
     return value;
 }
@@ -369,7 +370,7 @@ bool os_settings_set_bool(const char *key_path, bool value) {
         return false;
     }
 
-    bool ok = config_set_bool(key_path, value);
+    bool ok = appcfg_set_bool(key_path, value);
     config_unbind_app();
     return ok;
 }
@@ -534,7 +535,7 @@ size_t os_consume_startup_file(char *out, size_t out_size) {
         return 0;
     }
 
-    size_t len = config_get_string(OS_STARTUP_FILE_KEY, "", out, out_size);
+    size_t len = appcfg_get_string(OS_STARTUP_FILE_KEY, "", out, out_size);
     if (len > 0 && out[0]) {
         config_delete(OS_STARTUP_FILE_KEY);
     }

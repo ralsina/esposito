@@ -24,5 +24,13 @@ CONFIG_SPIFFS_USE_MAGIC_LENGTH=y
 # Main task stack size
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
-# Disable Bluetooth to free memory
-CONFIG_BT_ENABLED=n
+# mbedTLS dynamic buffers (allocate SSL I/O on-demand, saves ~20KB peak per session)
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+
+# WiFi memory saving: fewer static RX buffers, no IRAM opt
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=4
+CONFIG_ESP_WIFI_RX_MGMT_BUF_NUM_DEF=3
+CONFIG_ESP_WIFI_MGMT_SBUF_NUM=16
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+CONFIG_ESP_PHY_IRAM_OPT=n

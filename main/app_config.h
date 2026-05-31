@@ -20,19 +20,31 @@ bool config_delete(const char *key_path);
 
 char *config_read_all_alloc(const char *key_path, size_t *out_len);
 void config_free(void *ptr);
+void appcfg_free(void *ptr);
 
-int config_get_int(const char *key_path, int default_value);
-float config_get_float(const char *key_path, float default_value);
+int  config_get_int(const char *key_path, int default_value);
+int  appcfg_get_int(const char *key_path, int default_value);
+float  config_get_float(const char *key_path, float default_value);
+float  appcfg_get_float(const char *key_path, float default_value);
 bool config_get_bool(const char *key_path, bool default_value);
+bool appcfg_get_bool(const char *key_path, bool default_value);
 size_t config_get_string(const char *key_path,
+                         const char *default_value,
+                         char *out,
+                         size_t out_size);
+size_t appcfg_get_string(const char *key_path,
                          const char *default_value,
                          char *out,
                          size_t out_size);
 
 bool config_set_int(const char *key_path, int value);
+bool appcfg_set_int(const char *key_path, int value);
 bool config_set_float(const char *key_path, float value);
+bool appcfg_set_float(const char *key_path, float value);
 bool config_set_bool(const char *key_path, bool value);
+bool appcfg_set_bool(const char *key_path, bool value);
 bool config_set_string(const char *key_path, const char *value);
+bool appcfg_set_string(const char *key_path, const char *value);
 
 #ifdef __cplusplus
 }

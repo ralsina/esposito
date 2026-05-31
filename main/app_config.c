@@ -233,7 +233,7 @@ char *config_read_all_alloc(const char *key_path, size_t *out_len) {
     return buffer;
 }
 
-void config_free(void *ptr) {
+void appcfg_free(void *ptr) {
     app_free(ptr);
 }
 
@@ -256,7 +256,7 @@ static bool read_small_text(const char *key_path, char *buffer, size_t buffer_si
     return true;
 }
 
-int config_get_int(const char *key_path, int default_value) {
+int appcfg_get_int(const char *key_path, int default_value) {
     char buffer[32];
     char *end_ptr = NULL;
 
@@ -271,7 +271,7 @@ int config_get_int(const char *key_path, int default_value) {
     return (int)value;
 }
 
-float config_get_float(const char *key_path, float default_value) {
+float appcfg_get_float(const char *key_path, float default_value) {
     char buffer[64];
     char *end_ptr = NULL;
 
@@ -286,7 +286,7 @@ float config_get_float(const char *key_path, float default_value) {
     return value;
 }
 
-bool config_get_bool(const char *key_path, bool default_value) {
+bool appcfg_get_bool(const char *key_path, bool default_value) {
     char buffer[16];
 
     if (!read_small_text(key_path, buffer, sizeof(buffer))) {
@@ -302,7 +302,7 @@ bool config_get_bool(const char *key_path, bool default_value) {
     return default_value;
 }
 
-size_t config_get_string(const char *key_path,
+size_t appcfg_get_string(const char *key_path,
                          const char *default_value,
                          char *out,
                          size_t out_size) {
@@ -324,7 +324,7 @@ size_t config_get_string(const char *key_path,
     return nread;
 }
 
-bool config_set_string(const char *key_path, const char *value) {
+bool appcfg_set_string(const char *key_path, const char *value) {
     FILE *fp = config_open_write(key_path);
     if (!fp) {
         return false;
@@ -337,18 +337,18 @@ bool config_set_string(const char *key_path, const char *value) {
     return ok;
 }
 
-bool config_set_int(const char *key_path, int value) {
+bool appcfg_set_int(const char *key_path, int value) {
     char buffer[32];
     snprintf(buffer, sizeof(buffer), "%d", value);
-    return config_set_string(key_path, buffer);
+    return appcfg_set_string(key_path, buffer);
 }
 
-bool config_set_float(const char *key_path, float value) {
+bool appcfg_set_float(const char *key_path, float value) {
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "%.9g", value);
-    return config_set_string(key_path, buffer);
+    return appcfg_set_string(key_path, buffer);
 }
 
-bool config_set_bool(const char *key_path, bool value) {
-    return config_set_string(key_path, value ? "true" : "false");
+bool appcfg_set_bool(const char *key_path, bool value) {
+    return appcfg_set_string(key_path, value ? "true" : "false");
 }
