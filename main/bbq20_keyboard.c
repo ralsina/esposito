@@ -345,12 +345,11 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
 
                     event->raw_key_code = key_code;
                     event->key_code = key_code;
-                    event->modifiers = bbq20_get_modifiers();  // Use current modifier state
+                    event->modifiers = bbq20_get_modifiers();
                     event->pressed = (actual_state == BBQ10_STATE_PRESS || actual_state == BBQ10_STATE_LONG_PRESS);
 
                     char ascii = bbq20_key_to_ascii(key_code, key_state);
                     if (ascii) {
-                        // For control characters (0x00-0x1F), show them as '^X' format in logs
                         if (ascii < 0x20) {
                             ESP_LOGD(TAG, "🎹 BBQ20 REAL key: ^%c (code:0x%02X state:0x%02X mods:0x%02X)",
                                     ascii + 0x40, key_code, key_state, event->modifiers);
@@ -359,6 +358,14 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
                                     ascii, key_code, key_state, event->modifiers);
                         }
                         event->key_code = (uint8_t)ascii;
+                        return true;
+                    } else if (actual_state == BBQ10_STATE_RELEASE &&
+                               (key_code == 10 || key_code == 8 ||
+                                key_code == BBQ20_KEY_ESCAPE ||
+                                (key_code >= 32 && key_code <= 126))) {
+                        ESP_LOGD(TAG, "🎹 BBQ20 REAL key release: %c (code:0x%02X)",
+                                key_code, key_code);
+                        event->key_code = key_code;
                         return true;
                     } else {
                         ESP_LOGD(TAG, "🎹 BBQ20: Key mapped to NULL ASCII");

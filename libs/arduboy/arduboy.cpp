@@ -259,8 +259,6 @@ void Arduboy::initInput() {
 
 void Arduboy::updateInput() {
     previousButtonState = currentButtonState;
-    currentButtonState = g_pending_button_presses;
-    g_pending_button_presses = 0;
 }
 
 void Arduboy::setAppContext(app_context_t *ctx) {
@@ -288,7 +286,9 @@ void arduboy_handle_key_event(char key, bool pressed) {
         default: return;
     }
     if (pressed) {
-        g_pending_button_presses |= button;
+        arduboy.currentButtonState |= button;
+    } else {
+        arduboy.currentButtonState &= ~button;
     }
 }
 
