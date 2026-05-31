@@ -107,6 +107,7 @@ static const os_symtab_entry_t symtab[] = {
     {"graphics_flush",            graphics_flush},
     {"graphics_mode_get_buffer",  graphics_mode_get_buffer},
     {"graphics_mode_get_buffer_size", graphics_mode_get_buffer_size},
+    {"graphics_blit_scaled",       graphics_blit_scaled},
     {"printf",                  printf},
     {"puts",                    puts},
     {"sprintf",                 sprintf},

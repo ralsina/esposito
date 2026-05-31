@@ -55,6 +55,10 @@ bool graphics_mode_is_active(void);
 // Save current graphics buffer as PPM screenshot. Returns true on success.
 bool graphics_mode_save_screenshot(void);
 
+// Blit a 4bpp source buffer scaled by an integer factor into the active sprite.
+// src_w/src_h are the source dimensions, dst_x/dst_y are the destination offset, scale is the integer scale factor.
+void graphics_blit_scaled(const uint8_t *src, int src_w, int src_h, int dst_x, int dst_y, int scale);
+
 #ifdef __cplusplus
 }
 #endif

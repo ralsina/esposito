@@ -204,3 +204,16 @@ bool graphics_mode_save_screenshot(void) {
     ESP_LOGI(TAG, "Screenshot saved: %s", path);
     return true;
 }
+
+void graphics_blit_scaled(const uint8_t *src, int src_w, int src_h, int dst_x, int dst_y, int scale) {
+    if (!g_active || !g_sprite || !src || scale < 1) return;
+    for (int sy = 0; sy < src_h; sy++) {
+        int dy = dst_y + sy * scale;
+        for (int sx = 0; sx < src_w; sx++) {
+            int idx = sy * src_w + sx;
+            uint8_t val = src[idx / 2];
+            uint8_t c = (idx & 1) ? (val & 0x0F) : ((val >> 4) & 0x0F);
+            g_sprite->fillRect(dst_x + sx * scale, dy, scale, scale, c);
+        }
+    }
+}
