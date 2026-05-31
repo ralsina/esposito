@@ -15,6 +15,7 @@ A simple operating system for ESP32 Cheap Yellow Display (CYD) with dynamic app 
 - Touchscreen and keyboard support (BBQ20)
 - Multiple color palettes (CGA, CGA Light, Solarized Dark, Solarized Light)
 - Arduboy game compatibility layer
+- Game Boy (DMG) emulation via Peanut-GB (40-60 FPS)
 - Switchable fonts (Hack, IBM Plex Mono, Inconsolata, Ioskeley, Kode Mono, Nova)
 - WiFi connectivity with HTTP/HTTPS support
 
@@ -76,6 +77,7 @@ esposito/
 - [apps/kilo/README.md](apps/kilo/README.md)
 - [apps/lali/README.md](apps/lali/README.md)
 - [apps/paint/README.md](apps/paint/README.md)
+- [apps/peanut_gb/README.md](apps/peanut_gb/README.md)
 - [apps/reader/README.md](apps/reader/README.md)
 - [apps/settings/README.md](apps/settings/README.md)
 - [apps/snake/README.md](apps/snake/README.md)

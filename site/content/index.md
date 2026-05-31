@@ -103,6 +103,10 @@ It can have as many apps installed as you want and will fit in your SD card. The
 state so even without multitasking you can actually switch apps faster than on "good" hardware. There are also graphical
 apps like [paint](https://github.com/ralsina/esposito/tree/main/apps/paint), but I can't screenshot them yet.
 
+It even runs **Game Boy games** at 40-60 FPS using [Peanut-GB](https://github.com/deltabeard/Peanut-GB):
+
+{{% figure src="peanut_gb.png" caption="Yes, this is a Game Boy emulator on a $5 microcontroller" link="https://github.com/ralsina/esposito/tree/main/apps/peanut_gb" %}}
+
 {{% tag div class="grid" %}}
 {{% card %}}
 {{% figure src="filemanager.png" caption="File Manager" link="https://github.com/ralsina/esposito/tree/main/apps/filemanager" %}}
