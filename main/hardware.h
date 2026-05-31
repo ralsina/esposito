@@ -68,6 +68,11 @@ void timer_set_interval(uint32_t interval_ms);
 // Backlight control
 void display_set_backlight(uint8_t brightness);  // 0-255
 
+void display_start_write(void);
+void display_end_write(void);
+void display_set_window(int x, int y, int w, int h);
+void display_push_pixels(const uint16_t *data, int count);
+
 // RGB LED control
 void led_set_rgb(uint8_t r, uint8_t g, uint8_t b);
 

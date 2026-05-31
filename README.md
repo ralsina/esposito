@@ -2,6 +2,10 @@
 
 A simple operating system for ESP32 Cheap Yellow Display (CYD) with dynamic app loading.
 
+**Website: https://esposito.ralsina.me**
+
+![Esposito in action](https://esposito.ralsina.me/reader2.png)
+
 ## Features
 
 - Dynamic app loading from SD card
@@ -9,14 +13,19 @@ A simple operating system for ESP32 Cheap Yellow Display (CYD) with dynamic app 
 - Palm-style app lifecycle (checkpoint/save state)
 - Single-tasking, single-app model
 - Touchscreen and keyboard support (BBQ20)
+- Multiple color palettes (CGA, CGA Light, Solarized Dark, Solarized Light)
+- Arduboy game compatibility layer
+- Switchable fonts (Hack, IBM Plex Mono, Inconsolata, Ioskeley, Kode Mono, Nova)
+- WiFi connectivity with HTTP/HTTPS support
 
 ## Architecture
 
 - **Framework**: ESP-IDF
+- **Display**: LovyanGFX on ILI9341 (320x240), text mode and graphics mode
 - **App Storage**: SD card filesystem
 - **Event System**: Central event queue with app subscriptions
-- **Display**: Full screen control per app
-- **Licensing**: Apps are dynamically loaded libraries
+- **App Loading**: ELF binaries loaded dynamically from SD card
+- **Input**: BBQ20 keyboard (I2C) + resistive touchscreen
 
 ## App Interface
 
@@ -59,11 +68,13 @@ esposito/
 
 ## App READMEs
 
-- [apps/README.md](apps/README.md)
+- [apps/breakout/README.md](apps/breakout/README.md)
+- [apps/calc/README.md](apps/calc/README.md)
 - [apps/clock/README.md](apps/clock/README.md)
 - [apps/file_manager/README.md](apps/file_manager/README.md)
 - [apps/file_picker/README.md](apps/file_picker/README.md)
 - [apps/kilo/README.md](apps/kilo/README.md)
+- [apps/lali/README.md](apps/lali/README.md)
 - [apps/paint/README.md](apps/paint/README.md)
 - [apps/reader/README.md](apps/reader/README.md)
 - [apps/settings/README.md](apps/settings/README.md)

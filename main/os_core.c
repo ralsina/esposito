@@ -548,6 +548,28 @@ void os_post_event(event_t *event) {
     event_queue_push(event);
 }
 
+// Process one iteration of event sources (timer, keyboard, etc.)
+// and dispatch one queued event if available.
+// Called by delay() to allow event processing during tight loops.
+void os_process_one_event_iteration(void) {
+    extern app_context_t *current_app;
+
+    event_t event;
+
+    // Pop and dispatch one event from the queue
+    if (event_queue_pop(&event)) {
+        ESP_LOGD(TAG, "Processing event type=%d", event.type);
+
+        // Deliver to current app if subscribed
+        if (current_app && (current_app->subscriptions & event.type)) {
+            if (current_app->event_fn) {
+                ESP_LOGD(TAG, "Delivering event to app %s", current_app->name);
+                current_app->event_fn(current_app, &event);
+            }
+        }
+    }
+}
+
 // Main event loop
 void os_event_loop(void) {
     ESP_LOGI(TAG, "Starting event loop");

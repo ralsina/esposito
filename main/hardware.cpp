@@ -542,6 +542,26 @@ void display_set_backlight(uint8_t brightness) {
     display_tft->setBrightness(brightness);
 }
 
+void display_start_write(void) {
+    if (!display_initialized || !display_tft) return;
+    display_tft->startWrite();
+}
+
+void display_end_write(void) {
+    if (!display_initialized || !display_tft) return;
+    display_tft->endWrite();
+}
+
+void display_set_window(int x, int y, int w, int h) {
+    if (!display_initialized || !display_tft) return;
+    display_tft->setWindow(x, y, x + w - 1, y + h - 1);
+}
+
+void display_push_pixels(const uint16_t *data, int count) {
+    if (!display_initialized || !display_tft || !data || count <= 0) return;
+    display_tft->pushPixels(data, count);
+}
+
 void led_set_rgb(uint8_t r, uint8_t g, uint8_t b) {
     static bool led_initialized = false;
     if (!led_initialized) {

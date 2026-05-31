@@ -14,8 +14,13 @@ extern "C" {
     void free(void *ptr);
 }
 
+static bool g_exit_requested = false;
+
 #ifdef COLOR_BLACK
 #undef COLOR_BLACK
+#endif
+#ifdef COLOR_WHITE
+#undef COLOR_WHITE
 #endif
 #ifdef COLOR_GREEN
 #undef COLOR_GREEN
@@ -64,17 +69,26 @@ static bool get_pixel(int x, int y) {
     return c == COLOR_WHITE;
 }
 
-static void draw_char(int x, int y, char c, int size) {
+static void draw_char(int x, int y, char c, int size, bool fg_color, bool bg_color) {
     unsigned char glyph = static_cast<unsigned char>(c);
     const unsigned char *bitmap = &arduboy_font[glyph * ARDUBOY_FONT_WIDTH];
+    bool draw_bg = (fg_color != bg_color);
 
-    for (int col = 0; col < ARDUBOY_FONT_WIDTH; col++) {
-        unsigned char column_bits = bitmap[col];
+    for (int col = 0; col < ARDUBOY_FONT_WIDTH + 1; col++) {
+        unsigned char column_bits = (col < ARDUBOY_FONT_WIDTH) ? bitmap[col] : 0;
         for (int row = 0; row < 8; row++) {
-            if ((column_bits & (1 << row)) == 0) continue;
-            for (int py = 0; py < size; py++) {
-                for (int px = 0; px < size; px++) {
-                    set_pixel(x + col * size + px, y + row * size + py, true);
+            bool is_fg = (column_bits & (1 << row)) != 0;
+            if (is_fg) {
+                for (int py = 0; py < size; py++) {
+                    for (int px = 0; px < size; px++) {
+                        set_pixel(x + col * size + px, y + row * size + py, fg_color);
+                    }
+                }
+            } else if (draw_bg) {
+                for (int py = 0; py < size; py++) {
+                    for (int px = 0; px < size; px++) {
+                        set_pixel(x + col * size + px, y + row * size + py, bg_color);
+                    }
                 }
             }
         }
@@ -133,6 +147,8 @@ void Arduboy::begin() {
     textSize = 1;
     cursorX = 0;
     cursorY = 0;
+    textColor = 1;
+    textBackground = 1;
     currentButtonState = 0;
     previousButtonState = 0;
 
@@ -183,6 +199,8 @@ void Arduboy::setCursor(int x, int y) {
 void Arduboy::print(const char *text) {
     if (!text) return;
     int char_height = ARDUBOY_FONT_LINE_HEIGHT * textSize;
+    bool fg = textColor > 0;
+    bool bg = textBackground > 0;
     for (size_t i = 0; text[i] != '\0'; i++) {
         char c = text[i];
         if (c == '\n') {
@@ -190,7 +208,7 @@ void Arduboy::print(const char *text) {
             cursorY += char_height;
             continue;
         }
-        draw_char(cursorX, cursorY, c, textSize);
+        draw_char(cursorX, cursorY, c, textSize, fg, bg);
         cursorX += glyph_advance(c, textSize);
         if (cursorX >= ARDUBOY_SCREEN_WIDTH) {
             cursorX = 0;
@@ -258,12 +276,118 @@ void Arduboy::initInput() {
 }
 
 void Arduboy::updateInput() {
-    previousButtonState = currentButtonState;
 }
 
 void Arduboy::setAppContext(app_context_t *ctx) {
     g_app_ctx = ctx;
     g_last_frame_time = 0;
+}
+
+void Arduboy::setTextColor(uint8_t color) {
+    textColor = color;
+}
+
+void Arduboy::setTextBackground(uint8_t color) {
+    textBackground = color;
+}
+
+void Arduboy::drawSlowXYBitmap(int x, int y, const uint8_t *bitmap, int w, int h, uint8_t color) {
+    if (!bitmap) return;
+    bool c = color > 0;
+    int byte_width = (w + 7) / 8;
+    for (int yi = 0; yi < h; yi++) {
+        for (int xi = 0; xi < w; xi++) {
+            if (bitmap[yi * byte_width + xi / 8] & (0x80 >> (xi & 7))) {
+                set_pixel(x + xi, y + yi, c);
+            }
+        }
+    }
+}
+
+void Arduboy::drawFastHLine(int x, int y, int w, uint8_t color) {
+    bool c = color > 0;
+    for (int i = 0; i < w; i++) {
+        set_pixel(x + i, y, c);
+    }
+}
+
+void Arduboy::drawFastVLine(int x, int y, int h, uint8_t color) {
+    bool c = color > 0;
+    for (int i = 0; i < h; i++) {
+        set_pixel(x, y + i, c);
+    }
+}
+
+void Arduboy::pollButtons() {
+    previousButtonState = currentButtonState;
+
+    // Synchronous polling: read keyboard hardware directly (like real Arduboy)
+    event_t ev;
+    while (keyboard_read_event(&ev)) {
+        if (ev.type == EVENT_KEYBOARD) {
+            // Check for OS shortcut: Ctrl+ESC (exit to launcher)
+            if (ev.keyboard.pressed && ev.keyboard.key == 27 &&
+                (ev.keyboard.modifiers & MODIFIER_CTRL)) {
+                os_load_app("launcher");
+                break;
+            }
+
+            // Map WASD/ML to Arduboy buttons
+            uint8_t button = 0;
+            switch (ev.keyboard.key) {
+                case 'w': case 'W': button = UP_BUTTON; break;
+                case 's': case 'S': button = DOWN_BUTTON; break;
+                case 'a': case 'A': button = LEFT_BUTTON; break;
+                case 'd': case 'D': button = RIGHT_BUTTON; break;
+                case 'm': case 'M': button = A_BUTTON; break;
+                case 'l': case 'L': button = B_BUTTON; break;
+                default: break;
+            }
+            if (button != 0) {
+                if (ev.keyboard.pressed) {
+                    currentButtonState |= button;
+                } else {
+                    currentButtonState &= ~button;
+                }
+            }
+        }
+    }
+}
+
+bool Arduboy::exitRequested() {
+    return g_exit_requested;
+}
+
+bool Arduboy::anyPressed(uint8_t buttons) {
+    return (currentButtonState & buttons) != 0;
+}
+
+bool Arduboy::justPressed(uint8_t buttons) {
+    return ((currentButtonState & buttons) != 0) && ((previousButtonState & buttons) == 0);
+}
+
+void Arduboy::initRandomSeed() {
+}
+
+void Sprites::drawOverwrite(int x, int y, const uint8_t *sprite, uint8_t frame) {
+    if (!sprite) return;
+    int width = sprite[0];
+    int height = sprite[1];
+    int bytes_per_col = (height + 7) / 8;
+    const uint8_t *frame_data = sprite + 2 + frame * width * bytes_per_col;
+
+    for (int col = 0; col < width; col++) {
+        for (int byte_row = 0; byte_row < bytes_per_col; byte_row++) {
+            uint8_t data = frame_data[col * bytes_per_col + byte_row];
+            for (int bit = 0; bit < 8; bit++) {
+                int py = byte_row * 8 + bit;
+                if (py >= height) break;
+                if (data & (0x80 >> bit)) {
+                    set_pixel(x + col, y + py, true);
+                }
+            }
+        }
+    }
 }
 
 void arduboy_call_setup(void) {

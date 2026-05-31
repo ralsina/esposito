@@ -3,13 +3,11 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
+#include "arduino_compat.h"
 #include "arduboy_tunes.h"
 
-// Forward declaration
 typedef struct app_context app_context_t;
 
-// Arduboy button constants
 #define LEFT_BUTTON   (1 << 0)
 #define RIGHT_BUTTON  (1 << 1)
 #define UP_BUTTON     (1 << 2)
@@ -17,34 +15,35 @@ typedef struct app_context app_context_t;
 #define A_BUTTON      (1 << 4)
 #define B_BUTTON      (1 << 5)
 
-// Arduboy display constants
 #define WIDTH  128
 #define HEIGHT 64
 
-// C++ Arduboy class (mimics original Arduino API)
 class Arduboy {
 public:
-    // Frame timing
     uint8_t frameRate;
     uint32_t frameStartTime;
     bool nextFrameReady;
 
-    // Display state
     uint8_t textSize;
     int cursorX;
     int cursorY;
+    uint8_t textColor;
+    uint8_t textBackground;
 
-    // Input state
     uint8_t currentButtonState;
     uint8_t previousButtonState;
 
-    // Initialization state
     bool initialized;
 
-    // Arduboy compatibility members
     ArduboyTunes tunes;
 
-    // Core API methods (that match original Arduboy class)
+    struct Audio {
+        bool enabled;
+        void on() { enabled = true; }
+        void off() { enabled = false; }
+        Audio() : enabled(false) {}
+    } audio;
+
     void begin();
     void clear();
     void display();
@@ -52,6 +51,8 @@ public:
     bool nextFrame();
     void setTextSize(uint8_t size);
     void setCursor(int x, int y);
+    void setTextColor(uint8_t color);
+    void setTextBackground(uint8_t color);
     void print(const char *text);
     void print(int val);
     void drawPixel(int x, int y, uint8_t color);
@@ -61,13 +62,25 @@ public:
     bool pressed(uint8_t buttons);
     bool notPressed(uint8_t buttons);
 
-    // Helper functions for Esposito integration
+    void drawSlowXYBitmap(int x, int y, const uint8_t *bitmap, int w, int h, uint8_t color);
+    void drawFastHLine(int x, int y, int w, uint8_t color);
+    void drawFastVLine(int x, int y, int h, uint8_t color);
+    void pollButtons();
+    bool anyPressed(uint8_t buttons);
+    bool justPressed(uint8_t buttons);
+    void initRandomSeed();
+
     void initInput();
     void updateInput();
     void setAppContext(app_context_t *ctx);
+    bool exitRequested();
 };
 
-// Helper functions for Esposito integration
+class Sprites {
+public:
+    static void drawOverwrite(int x, int y, const uint8_t *sprite, uint8_t frame);
+};
+
 void arduboy_call_setup(void);
 void arduboy_call_loop(void);
 void arduboy_handle_key_event(char key, bool pressed);

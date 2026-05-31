@@ -79,7 +79,16 @@ if [ -d "$IDF_PATH" ]; then
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_common/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_system/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_timer/include"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/include"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/include/freertos"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/portable/xtensa/include"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/portable/xtensa/include/freertos"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/config/include"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/config/include/freertos"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/config/xtensa/include"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/esp_additions"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/esp_additions/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/heap/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/log/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/newlib/platform_include"
@@ -92,6 +101,7 @@ if [ -d "$IDF_PATH" ]; then
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/xtensa/esp32/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_app_format/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/soc/esp32/include"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_hw_support/etm/include"
 fi
 
 # Collect all .c and .cpp source files in the app directory

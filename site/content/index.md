@@ -10,6 +10,15 @@
 </section>
 
 {{% tag section class="features-section" %}}
+{{% card %}}
+🗞 As seen on:
+
+* [Hackaday](https://hackaday.com/2026/05/29/esp-osito-eschews-retrocomputing-for-modern-code-on-modern-equivalent-hardware/)
+* [Hackster](https://www.hackster.io/news/the-cyd-gets-an-operating-system-a77bf82a4862.amp)
+* [Reddit!](https://www.reddit.com/r/esp32/comments/1to40ky/esposito_a_os_for_esp32_that_treats_it_like_a/)
+* [FabScene (Japanese)](https://fabscene.com/new/make/esp-osito-cyd-os/)
+
+{{% /card %}}
 {{% tag div class="grid" %}}
 
 {{% card %}}

@@ -1,5 +1,5 @@
 ---
-title: News for May 27, 2026
+title: ESP-Osito News for May 27, 2026
 date: 2026-05-27 17:01:15 -03:00
 ---
 

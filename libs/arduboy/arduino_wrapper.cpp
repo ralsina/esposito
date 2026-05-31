@@ -21,8 +21,8 @@ void app_init(app_context_t *ctx) {
     g_app_ctx = ctx;
     arduboy.setAppContext(ctx);
 
-    // Subscribe to timer and keyboard events
-    ctx->subscriptions = EVENT_TIMER | EVENT_KEYBOARD | EVENT_TOUCH;
+    // Subscribe to timer and touch events (keyboard handled by pollButtons polling)
+    ctx->subscriptions = EVENT_TIMER | EVENT_TOUCH;
 
     // Set frame rate (default 60 FPS, will be overridden by game)
     ctx->timer_interval_ms = 16; // ~60 FPS
@@ -46,8 +46,7 @@ void app_event(app_context_t *ctx, event_t *event) {
             break;
 
         case EVENT_KEYBOARD:
-            // Handle keyboard input
-            arduboy_handle_key_event(event->keyboard.key, event->keyboard.pressed);
+            // Keyboard events handled by pollButtons() polling, not events
             break;
 
         case EVENT_TOUCH:
