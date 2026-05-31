@@ -21,6 +21,7 @@
 #include <time.h>
 #include <math.h>
 #include <ctype.h>
+#include "esp_timer.h"
 
 static const os_symtab_entry_t symtab[] = {
     {"display_clear",           display_clear},
@@ -46,6 +47,16 @@ static const os_symtab_entry_t symtab[] = {
     {"display_end_write",            display_end_write},
     {"display_set_window",           display_set_window},
     {"display_push_pixels",          display_push_pixels},
+    {"display_create_sprite",        display_create_sprite},
+    {"sprite_set_palette_color",     sprite_set_palette_color},
+    {"sprite_draw_pixel",            sprite_draw_pixel},
+    {"sprite_write_row",             sprite_write_row},
+    {"sprite_push",                  sprite_push},
+    {"sprite_destroy",               sprite_destroy},
+    {"sprite_set_active",            sprite_set_active},
+    {"sprite_get_active",            sprite_get_active},
+    {"flash_rom_load",               flash_rom_load},
+    {"flash_rom_unload",             flash_rom_unload},
     {"led_set_rgb",                  led_set_rgb},
     {"keyboard_read_event",          keyboard_read_event},
     {"keyboard_set_backlight",       keyboard_set_backlight},
@@ -127,6 +138,7 @@ static const os_symtab_entry_t symtab[] = {
     {"strcpy",                  strcpy},
     {"strncpy",                 strncpy},
     {"strcat",                  strcat},
+    {"strdup",                  strdup},
     {"strchr",                  strchr},
     {"strrchr",                 strrchr},
     {"strstr",                  strstr},
@@ -205,6 +217,7 @@ static const os_symtab_entry_t symtab[] = {
     {"os_unload_app",           os_unload_app},
     {"fputc",                   fputc},
     {"keyboard_is_available",   keyboard_is_available},
+    {"esp_timer_get_time",           esp_timer_get_time},
     {"time",                    time},
     {"app_manifest_read",              app_manifest_read},
     {"app_manifest_get_display_name",  app_manifest_get_display_name},

@@ -5,10 +5,12 @@
 set -e
 
 LIBS=()
+OPT_LEVEL="-Os"
 
-while getopts "l:" opt; do
+while getopts "l:O:" opt; do
     case $opt in
         l) LIBS+=("$OPTARG") ;;
+        O) OPT_LEVEL="-O$OPTARG" ;;
         ?) exit 1 ;;
     esac
 done
@@ -176,7 +178,7 @@ echo "  Compiling..."
 $COMPILER \
     -nostdlib -nostartfiles \
     -ffreestanding \
-    -Os \
+    $OPT_LEVEL \
     -mlongcalls \
     -fsingle-precision-constant \
     -Wno-double-promotion \

@@ -26,6 +26,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <stdio.h>
 
 static const char *TAG = "os_core";
 
@@ -61,7 +63,7 @@ void os_log(const char *tag, const char *fmt, ...) {
 }
 
 #define MAX_EVENTS 32
-#define EVENT_QUEUE_SIZE 32
+#define EVENT_QUEUE_SIZE 64
 
 static event_t event_queue[EVENT_QUEUE_SIZE];
 static size_t event_queue_head = 0;
@@ -712,8 +714,8 @@ void os_event_loop(void) {
             }
         }
 
-        // Check if we have events in queue
-        if (event_queue_pop(&event)) {
+        // Drain all pending events from queue
+        while (event_queue_pop(&event)) {
             // Track activity on keyboard/touch events
             if (event.type == EVENT_KEYBOARD || event.type == EVENT_TOUCH) {
                 screensaver_last_activity = esp_timer_get_time();
@@ -771,11 +773,23 @@ void os_event_loop(void) {
 
             // Check for screenshot trigger (Fn+ESC)
             if (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
-                event.keyboard.key == 27 &&  // ESC key
+                event.keyboard.key == 27 &&
                 (event.keyboard.modifiers & MODIFIER_FN)) {
                 ESP_LOGI(TAG, "Screenshot triggered (Fn+ESC)");
                 if (graphics_mode_is_active()) {
                     graphics_mode_save_screenshot();
+                } else if (sprite_get_active()) {
+                    mkdir("/sdcard/screenshots", 0777);
+                    char path[72];
+                    int num = 0;
+                    FILE *existing;
+                    do {
+                        snprintf(path, sizeof(path), "/sdcard/screenshots/shot_%03d.ppm", num);
+                        existing = fopen(path, "r");
+                        if (existing) { fclose(existing); num++; }
+                    } while (existing && num < 1000);
+                    display_save_screenshot_ppm(path);
+                    ESP_LOGI(TAG, "Sprite screenshot saved: %s", path);
                 } else if (!terminal_mode_save_screenshot(terminal_mode_default())) {
                     text_mode_save_screenshot();
                 }

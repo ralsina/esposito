@@ -3,6 +3,7 @@
 #include "lovgfx_config.h"
 #include "bbq20_keyboard.h"
 #include "esp_log.h"
+#include "esp_partition.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <soc/rtc_cntl_reg.h>
@@ -562,6 +563,61 @@ void display_push_pixels(const uint16_t *data, int count) {
     display_tft->pushPixels(data, count);
 }
 
+void* display_create_sprite(int width, int height, int bpp) {
+    if (!display_initialized || !display_tft) return NULL;
+    LGFX_Sprite *sprite = new LGFX_Sprite(display_tft);
+    sprite->setColorDepth(bpp);
+    if (!sprite->createSprite(width, height)) {
+        delete sprite;
+        return NULL;
+    }
+    return sprite;
+}
+
+void sprite_set_palette_color(void *sprite_handle, int index, uint16_t rgb565) {
+    if (!sprite_handle) return;
+    LGFX_Sprite *sprite = static_cast<LGFX_Sprite*>(sprite_handle);
+    sprite->setPaletteColor(index, rgb565);
+}
+
+void sprite_draw_pixel(void *sprite_handle, int x, int y, int color_index) {
+    if (!sprite_handle) return;
+    LGFX_Sprite *sprite = static_cast<LGFX_Sprite*>(sprite_handle);
+    sprite->drawPixel(x, y, color_index);
+}
+
+void sprite_write_row(void *sprite_handle, int y, const uint8_t *indices, int width) {
+    if (!sprite_handle || !indices || width <= 0) return;
+    LGFX_Sprite *sprite = static_cast<LGFX_Sprite*>(sprite_handle);
+    for (int x = 0; x < width; x++) {
+        sprite->drawPixel(x, y, indices[x] & 0x03);
+    }
+}
+
+static void *g_active_sprite = NULL;
+
+void sprite_push(void *sprite_handle, int x, int y) {
+    if (!sprite_handle) return;
+    LGFX_Sprite *sprite = static_cast<LGFX_Sprite*>(sprite_handle);
+    sprite->pushSprite(x, y);
+}
+
+void sprite_destroy(void *sprite_handle) {
+    if (!sprite_handle) return;
+    LGFX_Sprite *sprite = static_cast<LGFX_Sprite*>(sprite_handle);
+    if (g_active_sprite == sprite_handle) g_active_sprite = NULL;
+    sprite->deleteSprite();
+    delete sprite;
+}
+
+void sprite_set_active(void *sprite_handle) {
+    g_active_sprite = sprite_handle;
+}
+
+void* sprite_get_active(void) {
+    return g_active_sprite;
+}
+
 void led_set_rgb(uint8_t r, uint8_t g, uint8_t b) {
     static bool led_initialized = false;
     if (!led_initialized) {
@@ -914,4 +970,100 @@ void serial_log_output_set_enabled(bool enabled) {
 
 bool serial_log_output_is_enabled(void) {
     return serial_log_output_enabled;
+}
+
+static const esp_partition_t *rom_part = NULL;
+static esp_partition_mmap_handle_t rom_mmap_handle;
+static const uint8_t *rom_flash_data = NULL;
+static size_t rom_flash_size = 0;
+
+const uint8_t* flash_rom_load(const char *path, size_t *out_size) {
+    flash_rom_unload();
+
+    rom_part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+                                         ESP_PARTITION_SUBTYPE_DATA_UNDEFINED,
+                                         "app_code");
+    if (!rom_part) {
+        ESP_LOGE(TAG, "flash_rom_load: app_code partition not found");
+        return NULL;
+    }
+
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        ESP_LOGE(TAG, "flash_rom_load: can't open %s", path);
+        return NULL;
+    }
+
+    fseek(f, 0, SEEK_END);
+    size_t rom_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if (rom_size < 0x150) {
+        ESP_LOGE(TAG, "flash_rom_load: ROM too small (%d bytes)", rom_size);
+        fclose(f);
+        return NULL;
+    }
+
+    size_t aligned_size = (rom_size + 0xFFF) & ~0xFFF;
+    uint32_t rom_offset = (rom_part->size - aligned_size) & ~0xFFF;
+
+    if (aligned_size > rom_part->size) {
+        ESP_LOGE(TAG, "flash_rom_load: ROM too large (%d > partition %d)",
+                 rom_size, rom_part->size);
+        fclose(f);
+        return NULL;
+    }
+
+    ESP_LOGI(TAG, "flash_rom_load: %d bytes at partition offset 0x%x (partition size %d)",
+             rom_size, rom_offset, rom_part->size);
+
+    esp_err_t err = esp_partition_erase_range(rom_part, rom_offset, aligned_size);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "flash_rom_load: erase failed: %s", esp_err_to_name(err));
+        fclose(f);
+        return NULL;
+    }
+
+    uint8_t buf[4096];
+    size_t written = 0;
+    while (written < rom_size) {
+        size_t to_read = rom_size - written;
+        if (to_read > sizeof(buf)) to_read = sizeof(buf);
+        size_t got = fread(buf, 1, to_read, f);
+        if (got == 0) break;
+        err = esp_partition_write(rom_part, rom_offset + written, buf, got);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "flash_rom_load: write failed at %d: %s", written, esp_err_to_name(err));
+            fclose(f);
+            return NULL;
+        }
+        written += got;
+    }
+    fclose(f);
+
+    ESP_LOGI(TAG, "flash_rom_load: wrote %d/%d bytes to flash", written, rom_size);
+
+    const void *ptr;
+    err = esp_partition_mmap(rom_part, rom_offset, aligned_size,
+                              ESP_PARTITION_MMAP_DATA, &ptr, &rom_mmap_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "flash_rom_load: mmap failed: %s", esp_err_to_name(err));
+        return NULL;
+    }
+
+    rom_flash_data = (const uint8_t*)ptr;
+    rom_flash_size = rom_size;
+    if (out_size) *out_size = rom_size;
+
+    ESP_LOGI(TAG, "flash_rom_load: mapped at %p, size %d", rom_flash_data, rom_flash_size);
+    return rom_flash_data;
+}
+
+void flash_rom_unload(void) {
+    if (rom_flash_data) {
+        ESP_LOGI(TAG, "flash_rom_unload: unmapping ROM");
+        esp_partition_munmap(rom_mmap_handle);
+        rom_flash_data = NULL;
+        rom_flash_size = 0;
+    }
 }

@@ -73,6 +73,19 @@ void display_end_write(void);
 void display_set_window(int x, int y, int w, int h);
 void display_push_pixels(const uint16_t *data, int count);
 
+void* display_create_sprite(int width, int height, int bpp);
+void sprite_set_palette_color(void *sprite, int index, uint16_t rgb565);
+void sprite_draw_pixel(void *sprite, int x, int y, int color_index);
+void sprite_write_row(void *sprite, int y, const uint8_t *indices, int width);
+void sprite_push(void *sprite, int x, int y);
+void sprite_destroy(void *sprite);
+
+void sprite_set_active(void *sprite);
+void* sprite_get_active(void);
+
+const uint8_t* flash_rom_load(const char *path, size_t *out_size);
+void flash_rom_unload(void);
+
 // RGB LED control
 void led_set_rgb(uint8_t r, uint8_t g, uint8_t b);
 
