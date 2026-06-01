@@ -24,6 +24,8 @@ static uint16_t color_palette[16] = {
 static text_cell_t *grid = NULL;
 static int grid_cols = TEXT_MODE_COLS;
 static int grid_rows = TEXT_MODE_ROWS;
+static int grid_stride = 0;
+static int grid_capacity = 0;
 static int font_width = TEXT_MODE_CHAR_WIDTH;
 static int font_height = TEXT_MODE_CHAR_HEIGHT;
 static font_id_t current_font = FONT_BOOT;
@@ -308,12 +310,17 @@ static bool init_grid(font_id_t font) {
         ESP_LOGE(TAG, "Failed to allocate grid: %dx%d", max_cols, max_rows);
         grid_cols = TEXT_MODE_COLS;
         grid_rows = TEXT_MODE_ROWS;
+        grid_stride = 0;
+        grid_capacity = 0;
         font_width = TEXT_MODE_CHAR_WIDTH;
         font_height = TEXT_MODE_CHAR_HEIGHT;
         current_font = FONT_BOOT;
         current_variant = FONT_VARIANT_REGULAR;
         return false;
     }
+
+    grid_stride = max_cols;
+    grid_capacity = max_cells;
 
     display_load_font(font, FONT_VARIANT_REGULAR);
 
@@ -442,8 +449,8 @@ bool text_mode_set_font(font_id_t font) {
 
     for (int y = 0; y < grid_rows; y++) {
         for (int x = 0; x < grid_cols; x++) {
-            int idx = y * 80 + x;
-            if (idx < 3200) {
+            int idx = y * grid_stride + x;
+            if (idx < grid_capacity) {
                 grid[idx].character = ' ';
                 grid[idx].color = TEXT_COLOR_WHITE;
                 grid[idx].bg_color = TEXT_COLOR_BLACK;
@@ -488,8 +495,8 @@ void text_mode_reinit_grid(void) {
     // Clear and reset grid
     for (int y = 0; y < grid_rows; y++) {
         for (int x = 0; x < grid_cols; x++) {
-            int idx = y * 80 + x;  // Use max columns for indexing
-            if (idx < 3200) {  // Safety check
+            int idx = y * grid_stride + x;
+            if (idx < grid_capacity) {
                 grid[idx].character = ' ';
                 grid[idx].color = TEXT_COLOR_WHITE;
                 grid[idx].bg_color = TEXT_COLOR_BLACK;

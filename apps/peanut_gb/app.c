@@ -19,8 +19,8 @@
 
 static const char *TAG = "peanut_gb";
 
-#define GB_SCREEN_X ((320 - 160) / 2)
-#define GB_SCREEN_Y ((240 - 144) / 2)
+#define GB_SCREEN_X ((display_get_width() - 160) / 2)
+#define GB_SCREEN_Y ((display_get_height() - 144) / 2)
 #define GB_WIDTH 160
 #define GB_HEIGHT 144
 
