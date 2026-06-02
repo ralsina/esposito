@@ -1,14 +1,16 @@
 #include "sd_card.h"
 #include "hardware_config.h"
 #include "esp_log.h"
-#include "esp_vfs_fat.h"
-#include "sdmmc_cmd.h"
-#include "driver/sdspi_host.h"
-#include "driver/spi_common.h"
 #include <string.h>
 #include <dirent.h>
 
 static const char *TAG = "sd_card_test";
+
+#if BOARD_HAS_SD_CARD
+#include "esp_vfs_fat.h"
+#include "sdmmc_cmd.h"
+#include "driver/sdspi_host.h"
+#include "driver/spi_common.h"
 
 static bool sd_card_mounted = false;
 
@@ -205,3 +207,36 @@ void sd_card_unmount(void) {
         ESP_LOGI(TAG, "SD card unmounted");
     }
 }
+
+#else // BOARD_HAS_SD_CARD
+
+bool sd_card_init(void) {
+    ESP_LOGI(TAG, "No SD card on this board");
+    return false;
+}
+
+bool sd_card_is_mounted(void) {
+    return false;
+}
+
+const char* sd_card_get_mount_point(void) { return "/sdcard"; }
+
+bool sd_card_list_files(const char *path) {
+    (void)path;
+    return false;
+}
+
+bool sd_card_read_file(const char *path, char *buffer, size_t max_len) {
+    (void)path; (void)buffer; (void)max_len;
+    return false;
+}
+
+bool sd_card_write_file(const char *path, const char *data) {
+    (void)path; (void)data;
+    return false;
+}
+
+void sd_card_unmount(void) {
+}
+
+#endif // BOARD_HAS_SD_CARD

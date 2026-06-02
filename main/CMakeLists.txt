@@ -1,3 +1,11 @@
+if(IDF_TARGET STREQUAL "esp32c3")
+    set(ARCH_DEPS riscv)
+    set(BOARD_PATH "${CMAKE_CURRENT_LIST_DIR}/../boards/elecrow_round")
+else()
+    set(ARCH_DEPS xtensa)
+    set(BOARD_PATH "${CMAKE_CURRENT_LIST_DIR}/../boards/cyd_2usb")
+endif()
+
 idf_component_register(
     SRCS "main.c"
         "app_heap.c"
@@ -20,8 +28,6 @@ idf_component_register(
         "graphics_mode.cpp"
         "wifi.cpp"
         "../fonts/fonts.cpp"
-    INCLUDE_DIRS "." ".." "../libs/ui" "../fonts" "../boards/cyd_2usb" "../managed_components/LovyanGFX/src/lgfx/utility"
-    REQUIRES spi_flash driver esp_app_format esp_common esp_hw_support esp_system heap log pthread xtensa spiffs esp_driver_spi cxx esp_driver_i2c esp_driver_sdspi esp_driver_uart fatfs wear_levelling esp_wifi esp_netif nvs_flash esp_event lwip esp_http_client mbedtls
+    INCLUDE_DIRS "." ".." "../libs/ui" "../fonts" "${BOARD_PATH}" "../managed_components/LovyanGFX/src/lgfx/utility"
+    REQUIRES spi_flash driver esp_app_format esp_common esp_hw_support esp_system heap log pthread ${ARCH_DEPS} spiffs esp_driver_spi cxx esp_driver_i2c esp_driver_sdspi esp_driver_uart fatfs wear_levelling esp_wifi esp_netif nvs_flash esp_event lwip esp_http_client mbedtls
 )
-
-

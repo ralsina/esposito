@@ -52,7 +52,29 @@
       "Bash(grep -E '\\\\.\\(sh|py|c\\)$')",
       "Bash(grep -E \"\\\\.\\(c|h|hpp|cpp\\)$\")",
       "Bash(git clean *)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(cp /home/ralsina/code/terminado/bt2i2c/src/fifo.c /home/ralsina/code/esposito/bt2i2c-improved/src/)",
+      "Bash(cp /home/ralsina/code/terminado/bt2i2c/src/fifo.h /home/ralsina/code/esposito/bt2i2c-improved/src/)",
+      "Bash(cp /home/ralsina/code/terminado/bt2i2c/src/pins.h /home/ralsina/code/esposito/bt2i2c-improved/src/)",
+      "Bash(rm -rf build)",
+      "Bash(mkdir build *)",
+      "Bash(cmake ..)",
+      "Bash(unset IDF_PATH)",
+      "Bash(unset IDF_COMPONENTS)",
+      "Read(//tmp/bt2i2c_build/**)",
+      "Bash(cmake /home/ralsina/code/esposito/bt2i2c-improved)",
+      "Bash(make bt2i2c_test)",
+      "Bash(./monitor.sh *)",
+      "Bash(cmake --build build)",
+      "Bash(elf2uf2 bt2i2c_test.elf bt2i2c_test.uf2)",
+      "Bash(cp bt2i2c_test.uf2 /home/ralsina/code/esposito/bt2i2c-improved/)",
+      "Bash(export PATH=\"/home/ralsina/code/terminado/bt2i2c/3rdparty/pico-sdk/tools/elf2uf2:$PATH\")",
+      "Bash(/home/ralsina/code/terminado/i2c_puppet/build/elf2uf2/elf2uf2 bt2i2c_test.elf bt2i2c_test.uf2)",
+      "Bash(cp /home/ralsina/code/terminado/bt2i2c/src/bt_keyboard.c /home/ralsina/code/esposito/bt2i2c-improved/src/)",
+      "Bash(cp /home/ralsina/code/terminado/bt2i2c/src/bt_keyboard.h /home/ralsina/code/esposito/bt2i2c-improved/src/)",
+      "Bash(cp /home/ralsina/code/terminado/bt2i2c/src/btstack_config.h /home/ralsina/code/esposito/bt2i2c-improved/src/)",
+      "Read(//tmp/bt2i2c_ble_build/**)",
+      "Bash(cmake --build .)"
     ]
   }
 }

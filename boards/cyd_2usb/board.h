@@ -38,9 +38,11 @@
 #define BOARD_I2C_FREQ 100000
 
 // Keyboard
+#define BOARD_HAS_BBQ20_KEYBOARD 1
 #define BOARD_HAS_KEYBOARD_BACKLIGHT 1
 
 // SD Card (VSPI bus, separate from display)
+#define BOARD_HAS_SD_CARD 1
 #define BOARD_SD_SPI_HOST SPI3_HOST
 #define BOARD_SD_MISO_PIN 19
 #define BOARD_SD_MOSI_PIN 23

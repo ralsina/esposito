@@ -1,19 +1,25 @@
 #include "hardware.h"
 #include "hardware_config.h"
 #include "lovgfx_config.h"
+#if BOARD_HAS_BBQ20_KEYBOARD
 #include "bbq20_keyboard.h"
+#endif
 #include "esp_log.h"
 #include "esp_partition.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <soc/rtc_cntl_reg.h>
 #include "fonts.h"
 #include <lgfx/v1/lgfx_fonts.hpp>
 #include <lgfx/utility/pgmspace.h>
 #include "driver/uart.h"
 #include "driver/gpio.h"
+#if defined(BOARD_LED_RED_PIN)
 #include "driver/ledc.h"
+#endif
 #include "driver/i2c_types.h"
+#if BOARD_BACKLIGHT_I2C_EXPANDER
+#include "driver/i2c_master.h"
+#endif
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -92,9 +98,65 @@ bool hardware_init(void) {
     return true;
 }
 
+#if BOARD_BACKLIGHT_I2C_EXPANDER
+static bool backlight_i2c_init(void) {
+    ESP_LOGI(TAG, "Initializing backlight via I2C IO expander (addr=0x%02X, pin=%d)",
+             BOARD_BACKLIGHT_I2C_ADDR, BOARD_BACKLIGHT_I2C_PIN);
+
+    i2c_master_bus_config_t bus_cfg = {};
+    bus_cfg.i2c_port = BOARD_I2C_PORT;
+    bus_cfg.sda_io_num = (gpio_num_t)BOARD_I2C_SDA;
+    bus_cfg.scl_io_num = (gpio_num_t)BOARD_I2C_SCL;
+    bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
+    bus_cfg.glitch_ignore_cnt = 7;
+    bus_cfg.flags.enable_internal_pullup = true;
+
+    i2c_master_bus_handle_t bus_handle;
+    esp_err_t ret = i2c_new_master_bus(&bus_cfg, &bus_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "I2C bus creation failed: %s", esp_err_to_name(ret));
+        return false;
+    }
+
+    i2c_device_config_t dev_cfg = {};
+    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dev_cfg.device_address = BOARD_BACKLIGHT_I2C_ADDR;
+    dev_cfg.scl_speed_hz = BOARD_I2C_FREQ;
+
+    i2c_master_dev_handle_t dev_handle;
+    ret = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "I2C device add failed: %s", esp_err_to_name(ret));
+        i2c_del_master_bus(bus_handle);
+        return false;
+    }
+
+    uint8_t val = (1 << BOARD_BACKLIGHT_I2C_PIN);
+    ret = i2c_master_transmit(dev_handle, &val, 1, pdMS_TO_TICKS(100));
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "I2C write to IO expander failed: %s", esp_err_to_name(ret));
+        i2c_master_bus_rm_device(dev_handle);
+        i2c_del_master_bus(bus_handle);
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Backlight enabled via IO expander pin %d", BOARD_BACKLIGHT_I2C_PIN);
+
+    i2c_master_bus_rm_device(dev_handle);
+    i2c_del_master_bus(bus_handle);
+    return true;
+}
+#endif
+
 // Display implementation using LovyanGFX
 bool display_init(void) {
-    ESP_LOGI(TAG, "Initializing ST7789 display with LovyanGFX");
+    ESP_LOGI(TAG, "Initializing display with LovyanGFX");
+
+#if BOARD_BACKLIGHT_I2C_EXPANDER
+    if (!backlight_i2c_init()) {
+        ESP_LOGW(TAG, "I2C backlight init failed, continuing anyway");
+    }
+#endif
 
     tft.begin();
     ESP_LOGI(TAG, "LovyanGFX begin() called");
@@ -619,6 +681,7 @@ void* sprite_get_active(void) {
 }
 
 void led_set_rgb(uint8_t r, uint8_t g, uint8_t b) {
+#if defined(BOARD_LED_RED_PIN)
     static bool led_initialized = false;
     if (!led_initialized) {
         ledc_timer_config_t timer = {};
@@ -659,6 +722,9 @@ void led_set_rgb(uint8_t r, uint8_t g, uint8_t b) {
     ledc_update_duty(BOARD_LED_LEDC_MODE, BOARD_LED_CH_RED);
     ledc_update_duty(BOARD_LED_LEDC_MODE, BOARD_LED_CH_GREEN);
     ledc_update_duty(BOARD_LED_LEDC_MODE, BOARD_LED_CH_BLUE);
+#else
+    (void)r; (void)g; (void)b;
+#endif
 }
 
 void keyboard_set_backlight(uint8_t brightness) {
@@ -799,16 +865,21 @@ bool display_save_screenshot_ppm(const char *path) {
 
 // Keyboard implementation for BBQ20 (based on terminado)
 bool keyboard_init(void) {
+#if BOARD_HAS_BBQ20_KEYBOARD
     ESP_LOGI(TAG, "Initializing BBQ20 keyboard driver");
 
     if (bbq20_keyboard_init()) {
         keyboard_initialized = true;
-        ESP_LOGI(TAG, "✅ BBQ20 keyboard driver ready");
+        ESP_LOGI(TAG, "BBQ20 keyboard driver ready");
         return true;
     } else {
-        ESP_LOGE(TAG, "❌ BBQ20 keyboard initialization failed");
+        ESP_LOGE(TAG, "BBQ20 keyboard initialization failed");
         return false;
     }
+#else
+    ESP_LOGI(TAG, "No keyboard on this board");
+    return false;
+#endif
 }
 
 bool keyboard_is_available(void) {
@@ -816,27 +887,28 @@ bool keyboard_is_available(void) {
 }
 
 void keyboard_deinit(void) {
+#if BOARD_HAS_BBQ20_KEYBOARD
     bbq20_keyboard_deinit();
+#endif
     keyboard_initialized = false;
 }
 
 bool keyboard_read_event(event_t *event) {
+#if BOARD_HAS_BBQ20_KEYBOARD
     static bool first_call = true;
 
-    // Initialize on first call
     if (first_call) {
-        ESP_LOGI(TAG, "🎹 BBQ20 keyboard polling started");
+        ESP_LOGI(TAG, "BBQ20 keyboard polling started");
         first_call = false;
     }
 
-    // Try to read from BBQ20 keyboard (real or fake fallback)
     bbq20_key_event_t bbq20_event;
 
     if (bbq20_read_key_event(&bbq20_event)) {
         event->type = EVENT_KEYBOARD;
         event->keyboard.key = (char)bbq20_event.key_code;
         event->keyboard.pressed = bbq20_event.pressed;
-        event->keyboard.modifiers = bbq20_event.modifiers;  // Include modifier state
+        event->keyboard.modifiers = bbq20_event.modifiers;
         event->keyboard.raw_key_code = bbq20_event.raw_key_code;
 
         ESP_LOGI(TAG,
@@ -849,7 +921,7 @@ bool keyboard_read_event(event_t *event) {
 
         return true;
     }
-
+#endif
     return false;
 }
 

@@ -16,6 +16,7 @@ static const char *TAG = "elf_loader";
 
 #define ELF_MAGIC 0x464C457F
 #define EM_XTENSA 94
+#define EM_RISCV  243
 #define ET_EXEC   2
 
 #define PT_LOAD   1
@@ -33,6 +34,18 @@ static const char *TAG = "elf_loader";
 #define R_XTENSA_32        1
 #define R_XTENSA_SLOT0_OP  7
 #define R_XTENSA_ASM_EXPAND 10
+
+#define R_RISCV_32         1
+#define R_RISCV_HI20       26
+#define R_RISCV_LO12_I     27
+#define R_RISCV_LO12_S     28
+#define R_RISCV_CALL       18
+
+#if CONFIG_IDF_TARGET_ESP32C3
+#define EXPECTED_RELOC_TYPE R_RISCV_32
+#else
+#define EXPECTED_RELOC_TYPE R_XTENSA_32
+#endif
 
 #define APP_PARTITION_LABEL "app_code"
 
@@ -329,7 +342,7 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
             r_sym = r_info >> 8;
             r_type = r_info & 0xFF;
 
-            if (r_type != R_XTENSA_32 || !rel_symtab || r_sym == 0) {
+            if (r_type != EXPECTED_RELOC_TYPE || !rel_symtab || r_sym == 0) {
                 continue;
             }
 
@@ -437,8 +450,15 @@ elf_handle_t *elf_loader_load(const char *path) {
     }
     const elf32_ehdr_t *ehdr = &ehdr_storage;
 
-    if (ehdr->e_magic != ELF_MAGIC || ehdr->e_machine != EM_XTENSA) {
-        ESP_LOGE(TAG, "Invalid ELF (magic=0x%x machine=%d)", ehdr->e_magic, ehdr->e_machine);
+    uint16_t expected_machine;
+#if CONFIG_IDF_TARGET_ESP32C3
+    expected_machine = EM_RISCV;
+#else
+    expected_machine = EM_XTENSA;
+#endif
+
+    if (ehdr->e_magic != ELF_MAGIC || ehdr->e_machine != expected_machine) {
+        ESP_LOGE(TAG, "Invalid ELF (magic=0x%x machine=%d, expected=%d)", ehdr->e_magic, ehdr->e_machine, expected_machine);
         fclose(fp);
         return NULL;
     }

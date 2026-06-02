@@ -5,6 +5,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+#if BOARD_HAS_TOUCHSCREEN
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 
@@ -26,6 +28,8 @@ static const uint16_t raw_y_range = BOARD_TOUCH_RAW_Y_RANGE;
 #define XPT2046_CMD_Y     0xD0
 
 static bool touchscreen_initialized = false;
+static uint16_t last_raw_x = 0;
+static uint16_t last_raw_y = 0;
 
 // GPIO bit-banging SPI (from witnessmenow XPT2046 driver)
 static void xpt2046_gpio_write_byte(uint8_t num) {
@@ -158,8 +162,6 @@ bool touchscreen_is_available(void) {
 
 bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
     static int poll_count = 0;
-    static uint16_t last_raw_x = 0;
-    static uint16_t last_raw_y = 0;
 
     if (!touchscreen_initialized) {
         ESP_LOGW(TAG, "Touchscreen not initialized!");
@@ -241,8 +243,32 @@ bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
 
 // Get last raw touch values for calibration/debugging
 void touchscreen_get_raw_values(uint16_t *raw_x, uint16_t *raw_y) {
-    extern uint16_t last_raw_x;
-    extern uint16_t last_raw_y;
     if (raw_x) *raw_x = last_raw_x;
     if (raw_y) *raw_y = last_raw_y;
 }
+
+#else // BOARD_HAS_TOUCHSCREEN
+
+static const char *TAG = "touchscreen";
+
+bool touchscreen_init(void) {
+    ESP_LOGI(TAG, "No touchscreen on this board");
+    return false;
+}
+
+bool touchscreen_is_available(void) {
+    return false;
+}
+
+bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
+    (void)x; (void)y;
+    if (pressed) *pressed = false;
+    return false;
+}
+
+void touchscreen_get_raw_values(uint16_t *raw_x, uint16_t *raw_y) {
+    if (raw_x) *raw_x = 0;
+    if (raw_y) *raw_y = 0;
+}
+
+#endif // BOARD_HAS_TOUCHSCREEN
