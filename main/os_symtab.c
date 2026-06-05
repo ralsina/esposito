@@ -81,6 +81,7 @@ static const os_symtab_entry_t symtab[] = {
     {"app_launcher_start",      app_launcher_start},
     {"app_launcher_is_active",  app_launcher_is_active},
     {"app_loader_scan",         app_loader_scan},
+    {"app_loader_get_count",    app_loader_get_count},
     {"text_mode_init",          text_mode_init},
     {"text_mode_init_ex",       text_mode_init_ex},
     {"text_mode_set_font",      text_mode_set_font},

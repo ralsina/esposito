@@ -8,8 +8,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 
 static const char *TAG = "settings";
+
+// External declarations for app management
+extern int app_loader_scan(char (*app_names)[64], int max_apps);
+extern int app_loader_get_count(void);
+typedef struct { char display_name[64]; char extensions[128]; bool show_in_launcher; } app_sd_manifest_t;
+extern bool app_manifest_read(const char *app_name, app_sd_manifest_t *out);
+extern int remove(const char *path);
+extern int mkdir(const char *path, int mode);
 
 typedef enum {
     STATE_MAIN,
@@ -20,6 +29,8 @@ typedef enum {
     STATE_ENTER_LOCATION,
     STATE_FONT_SELECTION,
     STATE_FONT_SIZE_SELECTION,
+    STATE_APP_LIST,
+    STATE_APP_DETAIL,
     STATE_MESSAGE,
 } app_state_t;
 
@@ -40,6 +51,20 @@ static ui_text_input_widget_t *ssid_input;
 static ui_text_input_widget_t *password_input;
 static ui_text_input_widget_t *timezone_input;
 static ui_text_input_widget_t *location_input;
+
+// App list management
+#define MAX_APPS 32
+static char app_list_names[MAX_APPS][64];
+static char app_list_display[MAX_APPS][64];
+static const char *app_list_items[MAX_APPS];
+static int app_list_count = 0;
+static int app_list_selected = 0;
+static ui_list_widget_t *app_list_widget;
+static ui_toolbar_t *app_list_toolbar;
+static ui_toolbar_t *app_detail_toolbar;
+static char app_detail_name[64];
+static app_sd_manifest_t app_detail_manifest;
+
 
 #define MAX_FONTS 64
 
@@ -84,6 +109,7 @@ typedef enum {
     SECTION_TIME,
     SECTION_DISPLAY,
     SECTION_DEBUG,
+    SECTION_APPS,
     SECTION_COUNT,
 } settings_section_t;
 
@@ -102,6 +128,7 @@ typedef enum {
     ACTION_SET_SCREENSAVER_TIMEOUT,
     ACTION_SET_PALETTE,
     ACTION_TOGGLE_SERIAL,
+    ACTION_LIST_APPS,
 } settings_action_t;
 
 typedef struct {
@@ -114,6 +141,7 @@ static const char *section_labels[SECTION_COUNT] = {
     "Time",
     "Display",
     "Debug",
+    "Apps",
 };
 
 static const section_option_t wifi_options[] = {
@@ -142,6 +170,10 @@ static const section_option_t debug_options[] = {
     {"Serial UART", ACTION_TOGGLE_SERIAL},
 };
 
+static const section_option_t apps_options[] = {
+    {"Manage Apps", ACTION_LIST_APPS},
+};
+
 static main_focus_t main_focus = MAIN_FOCUS_LEFT;
 static settings_section_t selected_section = SECTION_WIFI;
 static int section_option_selected[SECTION_COUNT] = {0};
@@ -159,6 +191,17 @@ static void on_main_left_click(ui_button_t *button, void *user_data);
 static void handle_main_key(char key);
 static void on_scan_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
 static void on_scan_back_click(ui_button_t *button, void *user_data);
+static void on_app_list_item_selected(ui_list_widget_t *list, int item_index, void *user_data);
+static void on_app_list_back_click(ui_button_t *button, void *user_data);
+static void on_app_list_up_click(ui_button_t *button, void *user_data);
+static void on_app_list_down_click(ui_button_t *button, void *user_data);
+static void on_app_list_select_click(ui_button_t *button, void *user_data);
+static void on_app_detail_back_click(ui_button_t *button, void *user_data);
+static void on_app_detail_reset_click(ui_button_t *button, void *user_data);
+static void on_app_detail_uninstall_click(ui_button_t *button, void *user_data);
+static void delete_dir_contents(const char *dir_path);
+static void uninstall_app(const char *app_name);
+static void reset_app_config(const char *app_name);
 // Color palettes
 #define PALETTE_COUNT 4
 
@@ -445,6 +488,18 @@ static void rebuild_layout_widgets(void) {
         ui_toolbar_destroy(font_size_toolbar);
         font_size_toolbar = NULL;
     }
+    if (app_list_widget) {
+        ui_list_destroy(app_list_widget);
+        app_list_widget = NULL;
+    }
+    if (app_list_toolbar) {
+        ui_toolbar_destroy(app_list_toolbar);
+        app_list_toolbar = NULL;
+    }
+    if (app_detail_toolbar) {
+        ui_toolbar_destroy(app_detail_toolbar);
+        app_detail_toolbar = NULL;
+    }
     if (main_toolbar) {
         ui_toolbar_destroy(main_toolbar);
         main_toolbar = NULL;
@@ -513,6 +568,41 @@ static void rebuild_layout_widgets(void) {
             ui_button_set_callback(ui_toolbar_get_button(font_size_toolbar, 1), on_font_size_down_click, NULL);
             ui_button_set_callback(ui_toolbar_get_button(font_size_toolbar, 2), on_font_size_ok_click, NULL);
             ui_button_set_callback(ui_toolbar_get_button(font_size_toolbar, 3), on_font_size_cancel_click, NULL);
+        }
+    }
+
+    // Create app list widget
+    {
+        int list_height = rows - 5;
+        app_list_widget = ui_list_create(1, 1, cols - 2, list_height);
+        ui_list_set_title(app_list_widget, "Installed Apps");
+        ui_list_set_border(app_list_widget, true);
+        ui_list_set_scrollbar(app_list_widget, true);
+        if (app_list_count > 0) {
+            ui_list_set_items(app_list_widget, app_list_items, app_list_count);
+            ui_list_set_selection(app_list_widget, app_list_selected);
+        }
+        ui_list_set_callbacks(app_list_widget, NULL, on_app_list_item_selected, NULL);
+    }
+
+    {
+        const char *toolbar_labels[] = {"\xE2\x9C\x98", "\xE2\x96\xB2", "\xE2\x96\xBC", "\xE2\x9C\x93"};
+        app_list_toolbar = ui_toolbar_create(rows - 4, 3, 4, toolbar_labels);
+        if (app_list_toolbar) {
+            ui_button_set_callback(ui_toolbar_get_button(app_list_toolbar, 0), on_app_list_back_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(app_list_toolbar, 1), on_app_list_up_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(app_list_toolbar, 2), on_app_list_down_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(app_list_toolbar, 3), on_app_list_select_click, NULL);
+        }
+    }
+
+    {
+        const char *toolbar_labels[] = {"\xE2\x9C\x98", "DEL", "Reset"};
+        app_detail_toolbar = ui_toolbar_create(rows - 4, 3, 3, toolbar_labels);
+        if (app_detail_toolbar) {
+            ui_button_set_callback(ui_toolbar_get_button(app_detail_toolbar, 0), on_app_detail_back_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(app_detail_toolbar, 1), on_app_detail_uninstall_click, NULL);
+            ui_button_set_callback(ui_toolbar_get_button(app_detail_toolbar, 2), on_app_detail_reset_click, NULL);
         }
     }
 
@@ -759,6 +849,9 @@ static const section_option_t *section_options(settings_section_t section, int *
         case SECTION_DEBUG:
             if (count_out) *count_out = (int)(sizeof(debug_options) / sizeof(debug_options[0]));
             return debug_options;
+        case SECTION_APPS:
+            if (count_out) *count_out = (int)(sizeof(apps_options) / sizeof(apps_options[0]));
+            return apps_options;
         default:
             return NULL;
     }
@@ -846,6 +939,11 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
         case ACTION_TOGGLE_SERIAL:
             snprintf(out, out_size, "%s", serial_log_output_is_enabled() ? "on" : "off");
             break;
+        case ACTION_LIST_APPS: {
+            int count = app_loader_get_count();
+            snprintf(out, out_size, "%d apps", count);
+            break;
+        }
         default:
             break;
     }
@@ -1004,6 +1102,27 @@ static void execute_main_action(settings_action_t action) {
             serial_log_output_set_enabled(enabled);
             os_settings_set_bool(SETTINGS_KEY_SERIAL_LOG, enabled);
             set_status(enabled ? "Serial log output enabled" : "Serial log output disabled");
+            render();
+            break;
+        }
+        case ACTION_LIST_APPS: {
+            app_list_count = app_loader_scan(app_list_names, MAX_APPS);
+            if (app_list_count > MAX_APPS) app_list_count = MAX_APPS;
+            for (int i = 0; i < app_list_count; i++) {
+                app_sd_manifest_t manifest;
+                if (app_manifest_read(app_list_names[i], &manifest)) {
+                    snprintf(app_list_display[i], sizeof(app_list_display[i]), "%s", manifest.display_name);
+                } else {
+                    snprintf(app_list_display[i], sizeof(app_list_display[i]), "%s", app_list_names[i]);
+                }
+                app_list_items[i] = app_list_display[i];
+            }
+            app_list_selected = 0;
+            if (app_list_widget) {
+                ui_list_set_items(app_list_widget, app_list_items, app_list_count);
+                ui_list_set_selection(app_list_widget, 0);
+            }
+            state = STATE_APP_LIST;
             render();
             break;
         }
@@ -1174,6 +1293,41 @@ static void render(void) {
             ui_list_draw(font_size_list);
             ui_toolbar_draw(font_size_toolbar);
             break;
+        case STATE_APP_LIST:
+            ui_clear();
+            if (app_list_count > 0 && app_list_widget) {
+                ui_list_draw(app_list_widget);
+            } else {
+                int cols = text_mode_get_cols();
+                ui_label_attr((cols - 16) / 2, 5, "No apps found", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+            }
+            if (app_list_toolbar) {
+                ui_toolbar_draw(app_list_toolbar);
+            }
+            break;
+        case STATE_APP_DETAIL: {
+            ui_clear();
+            int cols = text_mode_get_cols();
+            int row = 2;
+
+            ui_label_attr(2, row, "App Info", TEXT_COLOR_CYAN, TEXT_ATTR_BOLD);
+            row += 2;
+            text_mode_print_at(2, row, "Name: ");
+            text_mode_print_at(8, row, app_detail_name);
+            row++;
+            text_mode_print_at(2, row, "Display: ");
+            text_mode_print_at(11, row, app_detail_manifest.display_name);
+            row++;
+            if (app_detail_manifest.extensions[0]) {
+                text_mode_print_at(2, row, "Opens: ");
+                text_mode_print_at(9, row, app_detail_manifest.extensions);
+                row++;
+            }
+            if (app_detail_toolbar) {
+                ui_toolbar_draw(app_detail_toolbar);
+            }
+            break;
+        }
         case STATE_MESSAGE:
             draw_message();
             break;
@@ -1450,6 +1604,134 @@ static void on_scan_back_click(ui_button_t *button, void *user_data) {
     render();
 }
 
+static void on_app_list_item_selected(ui_list_widget_t *list, int item_index, void *user_data) {
+    (void)list;
+    (void)user_data;
+    if (item_index < 0 || item_index >= app_list_count) return;
+    app_list_selected = item_index;
+    snprintf(app_detail_name, sizeof(app_detail_name), "%s", app_list_names[item_index]);
+    app_manifest_read(app_detail_name, &app_detail_manifest);
+    state = STATE_APP_DETAIL;
+    render();
+}
+
+static void on_app_list_back_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    state = STATE_MAIN;
+    render();
+}
+
+static void on_app_list_up_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (app_list_count > 0 && app_list_widget) {
+        int sel = ui_list_get_selection(app_list_widget);
+        if (sel > 0) {
+            ui_list_set_selection(app_list_widget, sel - 1);
+            ui_list_draw(app_list_widget);
+            text_mode_flush();
+        }
+    }
+}
+
+static void on_app_list_down_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (app_list_count > 0 && app_list_widget) {
+        int sel = ui_list_get_selection(app_list_widget);
+        if (sel < app_list_count - 1) {
+            ui_list_set_selection(app_list_widget, sel + 1);
+            ui_list_draw(app_list_widget);
+            text_mode_flush();
+        }
+    }
+}
+
+static void on_app_list_select_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (app_list_widget) {
+        int sel = ui_list_get_selection(app_list_widget);
+        on_app_list_item_selected(app_list_widget, sel, NULL);
+    }
+}
+
+static void delete_dir_contents(const char *dir_path) {
+    DIR *dir = opendir(dir_path);
+    if (!dir) return;
+
+    char full_path[128];
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
+        remove(full_path);
+    }
+    closedir(dir);
+}
+
+static void uninstall_app(const char *app_name) {
+    char path[128];
+    snprintf(path, sizeof(path), "/sdcard/apps/%s", app_name);
+    delete_dir_contents(path);
+    remove(path);
+    set_status("App uninstalled");
+}
+
+static void reset_app_config(const char *app_name) {
+    char path[128];
+    snprintf(path, sizeof(path), "/sdcard/apps/%s/config", app_name);
+    delete_dir_contents(path);
+    remove(path);
+    mkdir(path, 0755);
+    set_status("App config reset");
+}
+
+static void on_app_detail_reset_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    reset_app_config(app_detail_name);
+    state = STATE_APP_LIST;
+    render();
+}
+
+static void on_app_detail_uninstall_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    uninstall_app(app_detail_name);
+
+    // Re-scan
+    app_list_count = app_loader_scan(app_list_names, MAX_APPS);
+    if (app_list_count > MAX_APPS) app_list_count = MAX_APPS;
+    for (int i = 0; i < app_list_count; i++) {
+        app_sd_manifest_t manifest;
+        if (app_manifest_read(app_list_names[i], &manifest)) {
+            snprintf(app_list_display[i], sizeof(app_list_display[i]), "%s", manifest.display_name);
+        } else {
+            snprintf(app_list_display[i], sizeof(app_list_display[i]), "%s", app_list_names[i]);
+        }
+        app_list_items[i] = app_list_display[i];
+    }
+    app_list_selected = 0;
+
+    if (app_list_widget) {
+        ui_list_set_items(app_list_widget, app_list_items, app_list_count);
+        ui_list_set_selection(app_list_widget, 0);
+    }
+
+    rebuild_layout_widgets();
+    state = STATE_APP_LIST;
+    render();
+}
+
+static void on_app_detail_back_click(ui_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    state = STATE_APP_LIST;
+    render();
+}
+
 static void handle_text_entry_event(event_t *event) {
     ui_text_input_widget_t *widget = NULL;
     if (state == STATE_ENTER_SSID) {
@@ -1569,6 +1851,30 @@ void app_event(app_context_t *ctx, event_t *event) {
                 }
                 render();
                 break;
+            case STATE_APP_LIST:
+                if (key == 27) { // ESC
+                    state = STATE_MAIN;
+                    render();
+                } else if (key == 'w' || key == 'W') {
+                    on_app_list_up_click(NULL, NULL);
+                } else if (key == 's' || key == 'S') {
+                    on_app_list_down_click(NULL, NULL);
+                } else if (key == '\n' || key == '\r') {
+                    if (app_list_widget) {
+                        int sel = ui_list_get_selection(app_list_widget);
+                        on_app_list_item_selected(app_list_widget, sel, NULL);
+                    }
+                }
+                break;
+            case STATE_APP_DETAIL:
+                if (key == 27) { // ESC
+                    on_app_detail_back_click(NULL, NULL);
+                } else if (key == 'd' || key == 'D') {
+                    on_app_detail_uninstall_click(NULL, NULL);
+                } else if (key == 'r' || key == 'R') {
+                    on_app_detail_reset_click(NULL, NULL);
+                }
+                break;
             case STATE_MESSAGE:
                 handle_message_key(key);
                 break;
@@ -1634,6 +1940,18 @@ void app_event(app_context_t *ctx, event_t *event) {
                 if (ui_list_handle_touch(font_size_list, event)) {
                     render();
                 } else if (ui_toolbar_handle_touch(font_size_toolbar, event)) {
+                    // handled by callbacks
+                }
+                break;
+            case STATE_APP_LIST:
+                if (app_list_widget && ui_list_handle_touch(app_list_widget, event)) {
+                    render();
+                } else if (app_list_toolbar && ui_toolbar_handle_touch(app_list_toolbar, event)) {
+                    // handled by callbacks
+                }
+                break;
+            case STATE_APP_DETAIL:
+                if (app_detail_toolbar && ui_toolbar_handle_touch(app_detail_toolbar, event)) {
                     // handled by callbacks
                 }
                 break;
