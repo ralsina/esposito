@@ -367,6 +367,12 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
                                 key_code, key_code);
                         event->key_code = key_code;
                         return true;
+                    } else if (key_code >= 0x80) {
+                        if (key_code == BT2I2C_KEY_ESC) {
+                            event->key_code = 27;
+                        }
+                        ESP_LOGD(TAG, "🎹 BBQ20: bt2i2c extended key: 0x%02X (state:0x%02X)", key_code, key_state);
+                        return true;
                     } else {
                         ESP_LOGD(TAG, "🎹 BBQ20: Key mapped to NULL ASCII");
                     }

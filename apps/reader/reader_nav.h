@@ -4,6 +4,7 @@
 #include "reader_state.h"
 #include "ui_text_input.h"
 
+int reader_compute_page_number(reader_state_t *state);
 void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underline_pending);
 void reader_nav_prev_page(reader_state_t *state, int *bold_pending, int *underline_pending);
 void reader_nav_start_goto(reader_state_t *state);

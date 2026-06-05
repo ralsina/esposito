@@ -40,13 +40,13 @@ void reader_save_current_book_progress(reader_state_t *state) {
         return;
     }
 
-    char offset_key[320];
-    char page_key[320];
-    reader_build_book_key(offset_key, sizeof(offset_key), KEY_BOOK_OFFSET_PREFIX, state->current_file);
-    reader_build_book_key(page_key, sizeof(page_key), KEY_BOOK_PAGE_PREFIX, state->current_file);
+    config_bind_app("reader");
 
-    config_set_int(offset_key, (int)state->page_cache.entries[state->page_cache.current].file_pos);
-    config_set_int(page_key, state->page_number);
+    char offset_key[320];
+    int offset = (int)state->page_cache.entries[state->page_cache.current].file_pos;
+    reader_build_book_key(offset_key, sizeof(offset_key), KEY_BOOK_OFFSET_PREFIX, state->current_file);
+
+    config_set_int(offset_key, offset);
     config_set_string(KEY_LAST_FILE, state->current_file);
 }
 
@@ -200,22 +200,18 @@ int reader_open_file(reader_state_t *state, const char *path) {
     state->page_cache.current = 0;
     state->page_number = 1;
 
+    config_bind_app("reader");
+
     char offset_key[320];
-    char page_key[320];
     reader_build_book_key(offset_key, sizeof(offset_key), KEY_BOOK_OFFSET_PREFIX, path);
-    reader_build_book_key(page_key, sizeof(page_key), KEY_BOOK_PAGE_PREFIX, path);
 
     int saved_offset = config_get_int(offset_key, 0);
-    int saved_page = config_get_int(page_key, 0);
 
     if (saved_offset > 0) {
         state->page_cache.entries[0].file_pos = (uint32_t)saved_offset;
         state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
-        state->page_cache.entries[0].screen_width = 0;  // Will be set when entering reading mode
+        state->page_cache.entries[0].screen_width = 0;
         state->page_cache.entries[0].content_rows = 0;
-    }
-    if (saved_page > 0) {
-        state->page_number = saved_page;
     }
 
     reader_toc_load_total_pages(state);

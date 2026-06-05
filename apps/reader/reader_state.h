@@ -13,7 +13,6 @@
 #define KEY_LAST_FILE "reader_last_file"
 #define KEY_LEGACY_LAST_FILE "reader_file"
 #define KEY_BOOK_OFFSET_PREFIX "reader_off"
-#define KEY_BOOK_PAGE_PREFIX "reader_page"
 
 typedef enum {
     MODE_FILE_LIST,
@@ -82,14 +81,6 @@ typedef struct {
     // List widgets
     ui_list_widget_t *toc_list;
     ui_list_widget_t *file_list;
-
-    // Button coordinates for file list (temporary, until file list uses widgets)
-    int btn_up_x;
-    int btn_open_x;
-    int btn_down_x;
-    int btn_exit_x;
-    int btn_row;
-    int btn_w;
 
     // Function pointer to launch app list (for exit button)
     void (*launch_app_list)(void);

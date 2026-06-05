@@ -276,6 +276,13 @@ void reader_events_enter_reading_mode(reader_state_t *state, int *bold_pending, 
         state->page_cache.entries[0].content_rows = state->content_rows;
     }
 
+    // If restored from a saved offset (file_pos > 0), compute the page number
+    // by scanning from the beginning. Page number depends on font/screen size and
+    // may differ from the previous session.
+    if (state->page_cache.entries[0].file_pos > 0 && state->page_number == 1) {
+        state->page_number = reader_compute_page_number(state);
+    }
+
     load_current_page(state, bold_pending, underline_pending);
     reader_view_draw_reading_page(state, bold_pending, underline_pending);
 }
@@ -470,19 +477,6 @@ static void handle_toc_key(reader_state_t *state, char key, int *bold_pending, i
     // Fall back to button handling for other keys if needed
 }
 
-static void handle_toc_touch(reader_state_t *state, const event_t *event, int *bold_pending, int *underline_pending) {
-    int char_width = text_mode_get_char_width();
-    int x_col = event->touch.x / char_width;
-    if (x_col >= state->btn_up_x && x_col < state->btn_up_x + state->btn_w) {
-        toc_move_selection(state, -1);
-    } else if (x_col >= state->btn_open_x && x_col < state->btn_open_x + state->btn_w) {
-        toc_jump_to_selected(state, bold_pending, underline_pending);
-    } else if (x_col >= state->btn_down_x && x_col < state->btn_down_x + state->btn_w) {
-        toc_move_selection(state, 1);
-    } else if (x_col >= state->btn_exit_x && x_col < state->btn_exit_x + state->btn_w) {
-        toc_return_to_reading(state, bold_pending, underline_pending);
-    }
-}
 
 static char normalize_key_for_dispatch(const event_t *event) {
     char key = event->keyboard.key;
@@ -625,9 +619,12 @@ static void dispatch_touch(reader_state_t *state, const event_t *event, int *bol
             return;
         }
 
-        // TOC mode button handling (legacy coordinate-based)
+        // TOC mode button handling
         if (state->mode == MODE_TOC) {
-            handle_toc_touch(state, event, bold_pending, underline_pending);
+            if (state->btn_up && ui_button_handle_touch(state->btn_up, event)) return;
+            if (state->btn_open && ui_button_handle_touch(state->btn_open, event)) return;
+            if (state->btn_down && ui_button_handle_touch(state->btn_down, event)) return;
+            if (state->btn_exit && ui_button_handle_touch(state->btn_exit, event)) return;
         }
         return;
     }

@@ -69,6 +69,47 @@ static int scan_one_page(FILE *file, rendered_line_t *lines, int max_lines, int 
     return renderer.line_count;
 }
 
+int reader_compute_page_number(reader_state_t *state) {
+    uint32_t target_offset = state->page_cache.entries[state->page_cache.current].file_pos;
+    if (target_offset == 0 || !state->file) {
+        return 1;
+    }
+
+    // Use TOC to skip ahead — find the closest heading before the target offset
+    int start_page = 1;
+    long start_offset = 0;
+    if (state->toc && state->toc_count > 0) {
+        for (int i = state->toc_count - 1; i >= 0; i--) {
+            if (state->toc[i].file_offset <= target_offset) {
+                start_page = state->toc[i].page_number;
+                start_offset = (long)state->toc[i].file_offset;
+                break;
+            }
+        }
+    }
+
+    fseek(state->file, start_offset, SEEK_SET);
+    int page = start_page;
+    while (1) {
+        long current_pos = ftell(state->file);
+        if (current_pos >= (long)target_offset) {
+            return page;
+        }
+        long next_pos;
+        if (scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &next_pos) == 0) {
+            return page;
+        }
+        if (next_pos <= current_pos) {
+            return page;
+        }
+        if ((long)target_offset < next_pos) {
+            return page;
+        }
+        fseek(state->file, next_pos, SEEK_SET);
+        page++;
+    }
+}
+
 static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pending, int *underline_pending) {
     if (target < 1) {
         return;
