@@ -89,5 +89,7 @@ site/.croupier
 site/.kvstore/
 site/output/
 site/assets/books
+site/assets/firmware.bin
+site/assets/version.txt
 .antigravitycli/
 F2.md
