@@ -18,6 +18,7 @@ extern "C" {
     #include "sd_card.h"
     #include "touchscreen.h"
     #include "wifi.h"
+    #include "ota_update.h"
 }
 
 extern "C" bool font_cache_init(void);
@@ -72,30 +73,31 @@ static void boot_apply_log_output_setting(void) {
     serial_log_output_set_enabled(enabled);
 }
 
+static int boot_display_row = 0;
+
 void boot_display_progress(boot_stage_t stage, bool success, const char *message) {
-    // Update boot status
     boot_status.stage = stage;
     boot_status.stage_name = boot_stage_names[stage];
     boot_status.success = success;
     boot_status.error_message = message;
 
-    // Log to serial
     if (success) {
-        ESP_LOGI(TAG, "✓ %s", boot_status.stage_name);
-        if (message) {
-            ESP_LOGI(TAG, "  %s", message);
-        }
+        ESP_LOGI(TAG, "  %s", boot_status.stage_name);
     } else {
-        ESP_LOGE(TAG, "✗ %s", boot_status.stage_name);
-        if (message) {
-            ESP_LOGE(TAG, "  ERROR: %s", message);
-        }
+        ESP_LOGE(TAG, "  ERROR: %s", boot_status.stage_name);
     }
 
-    // Display on screen (if display is working)
     if (stage >= BOOT_STAGE_DISPLAY_INIT) {
-        // TODO: Update boot screen on display
-        // For now, just show progress via serial
+        if (boot_display_row > 0 && boot_display_row < TEXT_MODE_ROWS - 1) {
+            uint16_t color = success ? TEXT_COLOR_GREEN : TEXT_COLOR_RED;
+            const char *marker = success ? " OK" : " FAIL";
+            text_mode_print_at_color(TEXT_MODE_COLS - 5, boot_display_row, marker, color);
+        }
+        if (message && boot_display_row < TEXT_MODE_ROWS - 2) {
+            boot_display_row++;
+            text_mode_print_at_color(2, boot_display_row, message, TEXT_COLOR_WHITE);
+        }
+        text_mode_flush();
     }
 }
 
@@ -143,11 +145,9 @@ void boot_display_splash(void) {
     // Draw version in cyan below title
     text_mode_print_at_color((TEXT_MODE_COLS - 11) / 2, 3, "v0.1.0-alpha", TEXT_COLOR_CYAN);
 
-    // Draw status in yellow
-    text_mode_print_at_color((TEXT_MODE_COLS - 16) / 2, 5, "System booting...", TEXT_COLOR_YELLOW);
-
-    // Show immediate boot status (no delay loop)
-    text_mode_print_at_color(2, 7, "Booting...", TEXT_COLOR_GREEN);
+    // Set starting row for progress messages
+    boot_display_row = 5;
+    text_mode_print_at_color(2, boot_display_row, "Booting...", TEXT_COLOR_YELLOW);
 
     ESP_LOGI(TAG, "Splash screen displayed");
 }
@@ -272,35 +272,24 @@ void boot_sequence(void) {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Keyboard ready");
     }
 
-    // Stage 4.5: SD Card
+    // Stage 4.5: SD Card (required - all apps live on SD)
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting SD card init");
 
-    if (sd_card_init()) {
-        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "SD card ready");
-
-        // Now that SD card is mounted, apply user's configured display settings
-        ESP_LOGI(TAG, "==== Applying configured display settings ====");
-
-        // Apply rotation setting
-        display_apply_saved_rotation();
-
-        // Apply backlight brightness setting
-        display_apply_saved_backlight();
-
-        // Scan SD card for font packs and build the font registry
-        font_cache_init();
-
-        // Apply font setting
-        bool font_applied = text_mode_apply_configured_font();
-        ESP_LOGI(TAG, "Font apply result: %s", font_applied ? "SUCCESS" : "FAILED");
-
-        // Apply color palette
-        int palette_index = os_settings_get_int("display/palette", 0);
-        text_mode_apply_configured_palette(palette_index);
-    } else {
-        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "SD card not available");
-        // Continue anyway - SD card is optional
+    if (!sd_card_init()) {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "SD card required!");
+        text_mode_print_at_color(2, boot_display_row + 2, "Insert SD card and reboot.", TEXT_COLOR_YELLOW);
+        text_mode_print_at_color(2, boot_display_row + 3, "No apps available without SD.", TEXT_COLOR_YELLOW);
+        text_mode_flush();
+        ESP_LOGE(TAG, "SD card not available - halting boot");
+        while (1) { vTaskDelay(1000 / portTICK_PERIOD_MS); }
     }
+    boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "SD card ready");
+
+    ota_recovery_check();
+
+    ESP_LOGI(TAG, "==== Applying configured display settings ====");
+    display_apply_saved_rotation();
+    display_apply_saved_backlight();
 
     // Stage 4.6: WiFi
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting WiFi init");
@@ -333,17 +322,30 @@ void boot_sequence(void) {
     boot_display_progress(BOOT_STAGE_APP_LOADER_INIT, true, "App loader ready");
     boot_report_app_memory();
 
-    // Stage 6: Crash-loop check and auto-load last app
-    boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, "Checking boot state");
+    font_cache_init();
+    text_mode_apply_configured_font();
+
+    int palette_index = os_settings_get_int("display/palette", 0);
+    text_mode_apply_configured_palette(palette_index);
 
     bool crash_loop = boot_check_crash_loop();
     if (crash_loop) {
         ESP_LOGW(TAG, "Crash loop detected, starting launcher instead of last app");
     } else {
+        char last_app[64] = {0};
+        size_t len = 0;
+        if (config_bind_app("settings")) {
+            len = appcfg_get_string("system/last_app", "", last_app, sizeof(last_app));
+            config_unbind_app();
+        }
+        if (len > 0 && last_app[0] != '\0') {
+            char msg[80];
+            snprintf(msg, sizeof(msg), "Starting %s...", last_app);
+            boot_display_progress(BOOT_STAGE_LOAD_DEFAULT_APP, true, msg);
+        }
         boot_auto_load_last_app();
     }
 
-    // If no last app was loaded (or crash loop), start the launcher
     if (os_get_current_app() == NULL) {
         os_load_app("launcher");
     }

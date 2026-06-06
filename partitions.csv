@@ -1,8 +1,10 @@
 # Esposito OS Partition Table
-# Name,   Type, SubType, Offset,  Length,   Flags
-nvs,      data, nvs,     0x9000,  0x6000,
-phy_init, data, phy,     0xf000,  0x1000,
-factory,  app,  factory, 0x10000, 0x200000,
-storage,  data, spiffs,  0x210000, 0x20000,
-fontcache, data, undefined, 0x230000, 0x40000,
-app_code, data, undefined, 0x270000, 0x190000,
+# Name,     Type, SubType,  Offset,    Length
+nvs,        data, nvs,      0x9000,    0x6000,
+phy_init,   data, phy,      0xf000,    0x1000,
+factory,    app,  factory,  0x10000,   0x200000,
+otadata,    data, ota,      0x210000,  0x2000,
+storage,    data, spiffs,   0x212000,  0x8000,
+fontcache,  data, ,         0x21a000,  0x30000,
+app_code,   data, ,         0x24a000,  0x150000,
+update,     app,  ota_0,    0x3a0000,  0x60000,

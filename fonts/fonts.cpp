@@ -18,11 +18,11 @@ static const char *TAG = "fonts";
 // The name "boot 6" keeps it distinct from SD-loaded fonts
 static const font_info_t boot_font_info = {
     .id = FONT_BOOT,
-    .name = "boot 6",
+    .name = "boot 10",
     .family = "boot",
-    .size = 6,
+    .size = 10,
     .char_width = 6,
-    .char_height = 10,
+    .char_height = 13,
 };
 
 // Static initial table so font_table is always valid (even before SD init)
@@ -361,12 +361,12 @@ const uint8_t *font_get_variant_data(font_id_t id, font_variant_t variant, size_
     if (id == FONT_BOOT) {
         // Return the embedded boot font VLW data
         if (variant == FONT_VARIANT_REGULAR) {
-            if (out_size) *out_size = sizeof(hack_6);
-            return (const uint8_t *)hack_6;
+            if (out_size) *out_size = sizeof(hack_10);
+            return (const uint8_t *)hack_10;
         }
         // Fallback to regular for missing variants
-        if (out_size) *out_size = sizeof(hack_6);
-        return (const uint8_t *)hack_6;
+        if (out_size) *out_size = sizeof(hack_10);
+        return (const uint8_t *)hack_10;
     }
 
     // For SD fonts, ensure the font is cached in the flash partition

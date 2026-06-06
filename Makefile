@@ -1,7 +1,7 @@
 # Esposito OS - Makefile
 # Convenience targets for building, flashing, and monitoring
 
-.PHONY: all build flash monitor clean help size test
+.PHONY: all build stub flash flash-stub monitor clean help size test release
 
 # Default target
 all: build
@@ -11,10 +11,29 @@ build:
 	@echo "Building Esposito OS..."
 	. /opt/esp-idf/export.sh && idf.py build
 
-# Flash to device (assumes /dev/ttyUSB0)
-flash: build
-	@echo "Flashing Esposito OS to /dev/ttyUSB0..."
-	. /opt/esp-idf/export.sh && idf.py -p /dev/ttyUSB0 flash
+# Build the update stub
+stub:
+	@echo "Building update stub..."
+	. /opt/esp-idf/export.sh && $(MAKE) -C stub build
+
+# Flash main firmware + stub to device (assumes /dev/ttyUSB0)
+flash: build stub
+	@echo "Flashing Esposito OS + update stub to /dev/ttyUSB0..."
+	. /opt/esp-idf/export.sh && python -m esptool --chip esp32 -b 460800 \
+		--before default_reset --after hard_reset \
+		write_flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
+		0x1000 build/bootloader/bootloader.bin \
+		0x8000 build/partition_table/partition-table.bin \
+		0x10000 build/esposito.bin \
+		0x210000 build/ota_data_initial.bin \
+		0x3a0000 stub/build/esposito_stub.bin
+
+# Flash only the stub binary (for quick stub updates)
+flash-stub: stub
+	@echo "Flashing update stub only to /dev/ttyUSB0..."
+	. /opt/esp-idf/export.sh && python -m esptool --chip esp32 -b 460800 \
+		--before default_reset --after hard_reset \
+		write_flash 0x3a0000 stub/build/esposito_stub.bin
 
 # Monitor serial output
 monitor:
@@ -34,6 +53,7 @@ flash-monitor: flash
 clean:
 	@echo "Cleaning build files..."
 	. /opt/esp-idf/export.sh && idf.py fullclean
+	$(MAKE) -C stub clean
 
 # Show binary size information
 size: build
@@ -45,31 +65,45 @@ menuconfig:
 	@echo "Opening configuration menu..."
 	. /opt/esp-idf/export.sh && idf.py menuconfig
 
-# Target-specific flash (alternative ports)
-flash-ttyacm0: build
-	. /opt/esp-idf/export.sh && idf.py -p /dev/ttyACM0 flash
-
-# Build firmware + all apps, copy to SD card, flash
-test:
-	@echo "Building firmware + apps and flashing..."
+# Build firmware + stub + all apps, copy to SD card, flash
+test: build stub
+	@echo "Building firmware + stub + apps and flashing..."
 	. /opt/esp-idf/export.sh && scripts/build_test.sh
+
+# Build firmware and copy to site/assets for OTA
+release: build
+	@echo "Preparing release assets..."
+	cp build/esposito.bin site/firmware.bin
+	@echo "v0.1" > site/version.txt
+	@echo "Release assets ready in site/"
+	@echo "  firmware.bin: $$(wc -c < build/esposito.bin) bytes"
+	@echo "  version.txt: v0.1"
 
 # Help target
 help:
 	@echo "Esposito OS - Available Targets:"
 	@echo "================================="
-	@echo "make build        - Build the project"
-	@echo "make flash        - Flash to /dev/ttyUSB0"
-	@echo "make monitor      - Monitor serial output"
-	@echo "make flash-monitor- Flash and then monitor (separate terminals)"
-	@echo "make clean        - Clean build files"
-	@echo "make size         - Show binary size"
-	@echo "make menuconfig   - Open ESP-IDF configuration menu"
-	@echo "make test         - Build firmware + all apps, copy to SD card, flash"
-	@echo "make help         - Show this help message"
+	@echo "make build         - Build firmware"
+	@echo "make stub          - Build update stub"
+	@echo "make flash         - Build + flash firmware, bootloader, partition table, otadata, and stub"
+	@echo "make flash-stub    - Flash only the update stub (quick update)"
+	@echo "make monitor       - Monitor serial output"
+	@echo "make flash-monitor - Flash and then monitor (separate terminals)"
+	@echo "make clean         - Clean build files"
+	@echo "make size          - Show binary size"
+	@echo "make menuconfig    - Open ESP-IDF configuration menu"
+	@echo "make test          - Build firmware + stub + all apps, copy to SD card, flash"
+	@echo "make release       - Build firmware, copy firmware.bin + version.txt to site/assets"
+	@echo "make help          - Show this help message"
 	@echo ""
-	@echo "Quick Start:"
-	@echo "1. Connect ESP32 CYD via USB"
-	@echo "2. Run: make flash"
-	@echo "3. In another terminal: make monitor"
-	@echo "4. Press RESET button to see boot sequence"
+	@echo "Flash layout:"
+	@echo "  0x0000  Bootloader"
+	@echo "  0x0800  Partition table"
+	@echo "  0x1000  Bootloader (from idf.py)"
+	@echo "  0x8000  Partition table"
+	@echo "  0x10000 Factory (main firmware)"
+	@echo "  0x210000 OTA data"
+	@echo "  0x212000 Storage (SPIFFS)"
+	@echo "  0x21A000 Font cache"
+	@echo "  0x24A000 App code (dynamic apps)"
+	@echo "  0x3A0000 Update stub"
