@@ -19,6 +19,9 @@ typedef struct { char display_name[64]; char extensions[128]; bool show_in_launc
 extern bool app_manifest_read(const char *app_name, app_sd_manifest_t *out);
 extern int remove(const char *path);
 extern int mkdir(const char *path, int mode);
+extern const char *ota_firmware_version(void);
+extern bool ota_check_for_update(char *latest_version, size_t max_len);
+extern void ota_apply_update(void);
 
 typedef enum {
     STATE_MAIN,
@@ -110,6 +113,7 @@ typedef enum {
     SECTION_DISPLAY,
     SECTION_DEBUG,
     SECTION_APPS,
+    SECTION_SYSTEM,
     SECTION_COUNT,
 } settings_section_t;
 
@@ -129,6 +133,8 @@ typedef enum {
     ACTION_SET_PALETTE,
     ACTION_TOGGLE_SERIAL,
     ACTION_LIST_APPS,
+    ACTION_CHECK_UPDATE,
+    ACTION_APPLY_UPDATE,
 } settings_action_t;
 
 typedef struct {
@@ -142,6 +148,7 @@ static const char *section_labels[SECTION_COUNT] = {
     "Display",
     "Debug",
     "Apps",
+    "System",
 };
 
 static const section_option_t wifi_options[] = {
@@ -172,6 +179,11 @@ static const section_option_t debug_options[] = {
 
 static const section_option_t apps_options[] = {
     {"Manage Apps", ACTION_LIST_APPS},
+};
+
+static const section_option_t system_options[] = {
+    {"Version", ACTION_CHECK_UPDATE},
+    {"Update Firmware", ACTION_APPLY_UPDATE},
 };
 
 static main_focus_t main_focus = MAIN_FOCUS_LEFT;
@@ -852,6 +864,9 @@ static const section_option_t *section_options(settings_section_t section, int *
         case SECTION_APPS:
             if (count_out) *count_out = (int)(sizeof(apps_options) / sizeof(apps_options[0]));
             return apps_options;
+        case SECTION_SYSTEM:
+            if (count_out) *count_out = (int)(sizeof(system_options) / sizeof(system_options[0]));
+            return system_options;
         default:
             return NULL;
     }
@@ -944,6 +959,12 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
             snprintf(out, out_size, "%d apps", count);
             break;
         }
+        case ACTION_CHECK_UPDATE:
+            snprintf(out, out_size, "%s", ota_firmware_version());
+            break;
+        case ACTION_APPLY_UPDATE:
+            snprintf(out, out_size, "");
+            break;
         default:
             break;
     }
@@ -1103,6 +1124,28 @@ static void execute_main_action(settings_action_t action) {
             os_settings_set_bool(SETTINGS_KEY_SERIAL_LOG, enabled);
             set_status(enabled ? "Serial log output enabled" : "Serial log output disabled");
             render();
+            break;
+        }
+        case ACTION_CHECK_UPDATE: {
+            set_status("Checking for update...");
+            render();
+            char latest[64];
+            bool has_update = ota_check_for_update(latest, sizeof(latest));
+            if (has_update) {
+                set_status("Update available");
+            } else {
+                set_status("Already up to date");
+            }
+            render();
+            break;
+        }
+        case ACTION_APPLY_UPDATE: {
+            state = STATE_MESSAGE;
+            set_status("Downloading and flashing...");
+            render();
+            text_mode_flush();
+
+            ota_apply_update();
             break;
         }
         case ACTION_LIST_APPS: {

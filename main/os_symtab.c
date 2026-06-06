@@ -12,6 +12,7 @@
 #include "fonts.h"
 #include "wifi.h"
 #include "os_printf.h"
+#include "ota_update.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -223,6 +224,9 @@ static const os_symtab_entry_t symtab[] = {
     {"app_manifest_read",              app_manifest_read},
     {"app_manifest_get_display_name",  app_manifest_get_display_name},
     {"app_manifest_find_apps_for_ext", app_manifest_find_apps_for_ext},
+    {"ota_firmware_version",    ota_firmware_version},
+    {"ota_check_for_update",    ota_check_for_update},
+    {"ota_apply_update",        ota_apply_update},
 
     // Standard C library functions
     {"rand",                    rand},
