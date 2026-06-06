@@ -51,6 +51,42 @@ idf.py build
 idf.py flash
 ```
 
+## Firmware Updates (OTA and SD Card)
+
+Esposito supports two firmware update paths.
+
+### 1) OTA update from the device UI
+
+Use the Settings app:
+
+1. Open Settings.
+2. Go to System.
+3. Use Check Update to compare current and latest versions.
+4. Use Update Firmware to download and apply the update.
+
+Notes:
+
+- OTA download is resumable and can continue across interrupted HTTP transfers.
+- The updater validates the downloaded image before applying it.
+
+### 2) Manual update via SD card
+
+You can also update firmware by placing a firmware image on the SD card.
+
+1. Copy the firmware binary to:
+
+	/sdcard/system/firmware.bin
+
+2. Reboot the device.
+
+At boot, Esposito checks for that file. If present, it launches the update stub,
+applies the image, and then returns to normal boot.
+
+Tips:
+
+- Ensure the file is a valid ESP32 app image (starts with ESP image magic 0xE9).
+- Keep only the firmware you want to apply in that location.
+
 ## Hardware
 
 - ESP32 Cheap Yellow Display (2USB version)
