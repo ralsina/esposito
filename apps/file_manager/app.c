@@ -108,7 +108,7 @@ enum {
 };
 
 // Storage for app names returned by manifest lookup (static to avoid stack pressure)
-static char manifest_app_bufs[FM_OPEN_WITH_MAX][64];
+static char manifest_app_bufs[FM_OPEN_WITH_MAX][256];
 
 static int ascii_tolower(int ch) {
     if (ch >= 'A' && ch <= 'Z') {

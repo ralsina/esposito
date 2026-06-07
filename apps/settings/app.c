@@ -13,9 +13,9 @@
 static const char *TAG = "settings";
 
 // External declarations for app management
-extern int app_loader_scan(char (*app_names)[64], int max_apps);
+extern int app_loader_scan(char (*app_names)[256], int max_apps);
 extern int app_loader_get_count(void);
-typedef struct { char display_name[64]; char extensions[128]; bool show_in_launcher; } app_sd_manifest_t;
+typedef struct { char display_name[256]; char extensions[128]; bool show_in_launcher; } app_sd_manifest_t;
 extern bool app_manifest_read(const char *app_name, app_sd_manifest_t *out);
 extern int remove(const char *path);
 extern int mkdir(const char *path, int mode);
@@ -57,8 +57,8 @@ static ui_text_input_widget_t *location_input;
 
 // App list management
 #define MAX_APPS 32
-static char app_list_names[MAX_APPS][64];
-static char app_list_display[MAX_APPS][64];
+static char app_list_names[MAX_APPS][256];
+static char app_list_display[MAX_APPS][256];
 static const char *app_list_items[MAX_APPS];
 static int app_list_count = 0;
 static int app_list_selected = 0;

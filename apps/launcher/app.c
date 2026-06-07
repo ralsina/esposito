@@ -10,13 +10,13 @@ static const char *TAG = "launcher";
 
 #define APP_LOADER_MAX_APPS 32
 
-extern int app_loader_scan(char (*app_names)[64], int max_apps);
+extern int app_loader_scan(char (*app_names)[256], int max_apps);
 extern bool app_manifest_get_display_name(const char *app_name, char *display_name, size_t max_len);
 
 static int app_launcher_selected = 0;
 static int app_count = 0;
-static char app_names[APP_LOADER_MAX_APPS][64];
-static char app_display_names[APP_LOADER_MAX_APPS][64];
+static char app_names[APP_LOADER_MAX_APPS][256];
+static char app_display_names[APP_LOADER_MAX_APPS][256];
 
 #define HEADER_ROW 1
 #define APPS_START_ROW 4

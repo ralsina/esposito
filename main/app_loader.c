@@ -123,6 +123,6 @@ bool app_loader_load(const char *app_name) {
 }
 
 int app_loader_get_count(void) {
-    char names[APP_LOADER_MAX_APPS][APP_LOADER_MAX_NAME_LEN];
+    static char names[APP_LOADER_MAX_APPS][APP_LOADER_MAX_NAME_LEN];
     return app_loader_scan(names, APP_LOADER_MAX_APPS);
 }
