@@ -799,16 +799,9 @@ static void render(void) {
     draw_pane(0, 0, left_width, pane_height);
     draw_pane(1, left_width, right_width, pane_height);
 
-    // Show keyboard hints only if keyboard is available
-    bool has_keyboard = keyboard_is_available();
-    if (has_keyboard) {
-        ui_status_bar(rows - 2, state.status, "R reload Tab pane Esc up/exit");
-        ui_label(1, rows - 1, "W/S move A/D switch Enter open M rename N file K dir C copy X del", TEXT_COLOR_BRIGHT_BLACK);
-    } else {
-        ui_status_bar(rows - 2, state.status, "");
-        // Draw action toolbar
-        ui_toolbar_draw(state.toolbar);
-    }
+    // Show action toolbar and status
+    ui_status_bar(rows - 2, state.status, "");
+    ui_toolbar_draw(state.toolbar);
 
     text_mode_flush();
 }
@@ -973,10 +966,8 @@ void app_event(app_context_t *ctx, event_t *event) {
         int x_col = event->touch.x / cw;
         int y_col = event->touch.y / ch;
 
-        // Handle toolbar touches when no keyboard
-        if (!keyboard_is_available()) {
-            if (ui_toolbar_handle_touch(state.toolbar, event)) return;
-        }
+        // Handle toolbar touches
+        if (ui_toolbar_handle_touch(state.toolbar, event)) return;
 
         // Handle pane touches
         int cols = text_mode_get_cols();
