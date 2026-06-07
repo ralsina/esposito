@@ -200,6 +200,9 @@ static void display_task(void *pvParameters) {
                 // Set pivot to top-left corner before pushing
                 sprite_set_pivot(display_sprite[ready_buffer], 0.0, 0.0);
 
+                // Mark this sprite as active for screenshots
+                sprite_set_active(display_sprite[ready_buffer]);
+
                 // Push the complete frame with hardware scaling
                 sprite_push_rotated_zoom(display_sprite[ready_buffer], gb_screen_x, gb_screen_y, 0.0, SCALE_FACTOR, SCALE_FACTOR);
 
@@ -639,6 +642,9 @@ static bool start_emulator(const char *path) {
             sprite_set_palette_color(display_sprite[i], c, color);
         }
     }
+
+    // Set first sprite as active for screenshots
+    sprite_set_active(display_sprite[0]);
 
     frame_ready_semaphore = os_semaphore_create();
     frame_done_semaphore = os_semaphore_create();
