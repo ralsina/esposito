@@ -128,6 +128,25 @@ bool os_settings_set_bool(const char *key_path, bool value);
 void os_unload_app(void);
 app_context_t *os_get_current_app(void);
 void os_set_current_app(app_context_t *app);
+
+// Task and synchronization API for apps
+typedef void (*os_task_func_t)(void *parameter);
+
+typedef struct {
+    void *handle;
+} os_task_handle_t;
+
+typedef struct {
+    void *handle;
+} os_semaphore_handle_t;
+
+os_task_handle_t *os_task_create(os_task_func_t task_func, const char *name, int stack_size, int priority, int core_id);
+void os_task_delete(os_task_handle_t *task);
+os_semaphore_handle_t *os_semaphore_create(void);
+void os_semaphore_give(os_semaphore_handle_t *sem);
+bool os_semaphore_take(os_semaphore_handle_t *sem, int timeout_ms);
+void os_semaphore_delete(os_semaphore_handle_t *sem);
+
 #ifdef __cplusplus
 }
 #endif

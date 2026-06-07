@@ -6,6 +6,7 @@ set -e
 
 LIBS=()
 OPT_LEVEL="-Os"
+EXTRA_CFLAGS=""
 
 while getopts "l:O:" opt; do
     case $opt in
@@ -36,6 +37,12 @@ else
 fi
 APP_NAME="$(basename "$APP_DIR")"
 OUTPUT_DIR="${2:-build/apps}"
+
+# Add performance optimizations for peanut_gb
+if [[ "$APP_NAME" == "peanut_gb" ]]; then
+    EXTRA_CFLAGS="-fjump-tables -ftree-switch-conversion -fno-strict-aliasing"
+    echo "  Enabling jump table optimizations for peanut_gb"
+fi
 TOOLCHAIN_PREFIX="${TOOLCHAIN_PREFIX:-xtensa-esp32-elf}"
 
 FIRMWARE_ELF="build/esposito.elf"
@@ -179,6 +186,7 @@ $COMPILER \
     -nostdlib -nostartfiles \
     -ffreestanding \
     $OPT_LEVEL \
+    $EXTRA_CFLAGS \
     -mlongcalls \
     -fsingle-precision-constant \
     -Wno-double-promotion \

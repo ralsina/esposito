@@ -27,6 +27,10 @@ if [ -f "$SYMTAB_C" ]; then
             symbol_function="${BASH_REMATCH[2]}"
             # Clean up whitespace and trailing commas
             symbol_function=$(echo "$symbol_function" | tr -d '[:space:],')
+            # Normalize provider expressions like (void*)foo or &foo to foo
+            if [[ "$symbol_function" =~ ([A-Za-z_][A-Za-z0-9_]*)$ ]]; then
+                symbol_function="${BASH_REMATCH[1]}"
+            fi
             SYMBOLS+=("$symbol_name:$symbol_function")
         fi
     done < "$SYMTAB_C"

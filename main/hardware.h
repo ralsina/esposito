@@ -78,6 +78,8 @@ void sprite_set_palette_color(void *sprite, int index, uint16_t rgb565);
 void sprite_draw_pixel(void *sprite, int x, int y, int color_index);
 void sprite_write_row(void *sprite, int y, const uint8_t *indices, int width);
 void sprite_push(void *sprite, int x, int y);
+void sprite_push_rotated_zoom(void *sprite, int x, int y, float angle, float scale_x, float scale_y);
+void sprite_set_pivot(void *sprite, float pivot_x, float pivot_y);
 void sprite_destroy(void *sprite);
 
 void sprite_set_active(void *sprite);

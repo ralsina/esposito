@@ -1,7 +1,10 @@
 #define ENABLE_SOUND 0
 #define ENABLE_LCD 1
 
-#include "peanut_gb.h"
+#include <stdint.h>
+#include <stddef.h>
+
+#include "walnut_cgb.h"
 
 #include "os_core.h"
 #include "hardware.h"
@@ -19,10 +22,13 @@
 
 static const char *TAG = "peanut_gb";
 
-#define GB_SCREEN_X ((display_get_width() - 160) / 2)
-#define GB_SCREEN_Y ((display_get_height() - 144) / 2)
 #define GB_WIDTH 160
 #define GB_HEIGHT 144
+
+// Calculate best scaling factor based on screen size
+static float SCALE_FACTOR = 1.0;
+static int gb_screen_x = 0;
+static int gb_screen_y = 0;
 
 #define MAX_ROMS 128
 #define ROMS_DIR "/sdcard/roms"
@@ -38,16 +44,31 @@ static size_t rom_size = 0;
 
 static uint8_t *rom_bank0 = NULL;
 
-static uint8_t *sram_data = NULL;
-static size_t sram_size = 0;
-static bool sram_dirty = false;
+// SD card-based save game support (no RAM allocation)
+static char sram_path[270] = {0};
+static bool sram_enabled = false;
 
-static void *gb_sprite = NULL;
+static void *display_sprite[2] = {NULL, NULL};  // Double buffering: two sprites (160x144 each)
+static volatile int write_buffer_index = 0;     // Which buffer Core 0 is writing to
+static volatile int read_buffer_index = 0;     // Which buffer Core 1 is reading/pushing
+static volatile bool buffer_ready[2] = {false, false};  // Is each buffer ready to push?
+static volatile int current_line = 0;           // Current line being written by Core 0
+static volatile bool frame_complete = false;   // Frame complete flag
+static volatile int rendered_frame_count = 0;  // Frame counter incremented by display task
+static volatile int total_frame_count = 0;     // Total frames attempted by emulator
+static volatile int skipped_frame_count = 0;    // Frames skipped by frame skip mechanism
 static uint8_t joypad_state = 0xFF;
 
 #define GB_FPS 60
 #define GB_FRAME_US (1000000 / GB_FPS)
 static int64_t last_frame_time = 0;
+static int64_t fps_report_time = 0;  // Track time for FPS reporting
+
+// Dual-core rendering
+static os_task_handle_t *display_task_handle = NULL;
+static os_semaphore_handle_t *frame_ready_semaphore = NULL;
+static os_semaphore_handle_t *frame_done_semaphore = NULL;
+static volatile bool display_task_running = false;
 
 typedef struct {
     char **names;
@@ -60,22 +81,60 @@ static rom_list_t *rom_list_data = NULL;
 static ui_list_widget_t *rom_list_widget = NULL;
 static ui_toolbar_t *rom_toolbar = NULL;
 
+// ROM read callback - 8-bit
 static uint8_t gb_rom_read_cb(struct gb_s *gb_ctx, const uint_fast32_t addr) {
     if (addr >= rom_size) return 0xFF;
     if (addr < ROM_BANK_SIZE) return rom_bank0[addr];
     return rom_data[addr];
 }
 
+// ROM read callback - 16-bit with alignment check for ESP32
+static uint16_t gb_rom_read16_cb(struct gb_s *gb_ctx, const uint_fast32_t addr) {
+    const uint8_t *src;
+    if (addr >= rom_size) return 0xFFFF;
+    if (addr < ROM_BANK_SIZE) {
+        src = rom_bank0 + addr;
+    } else {
+        src = rom_data + addr;
+    }
+    // Alignment check for ESP32 compatibility
+    if ((uintptr_t)src & 1) {
+        // Fallback to safe 8-bit reads when not aligned
+        return ((uint16_t)src[0]) | ((uint16_t)src[1] << 8);
+    }
+    return *(uint16_t *)src;
+}
+
+// ROM read callback - 32-bit with alignment check for ESP32
+static uint32_t gb_rom_read32_cb(struct gb_s *gb_ctx, const uint_fast32_t addr) {
+    const uint8_t *src;
+    if (addr >= rom_size) return 0xFFFFFFFF;
+    if (addr < ROM_BANK_SIZE) {
+        src = rom_bank0 + addr;
+    } else {
+        src = rom_data + addr;
+    }
+    // Alignment check: ESP32 flash/PSRAM require 32-bit alignment
+    if ((uintptr_t)src & 3) {
+        // Fallback to safe 8-bit reads when not aligned
+        return ((uint32_t)src[0]) |
+               ((uint32_t)src[1] << 8) |
+               ((uint32_t)src[2] << 16) |
+               ((uint32_t)src[3] << 24);
+    }
+    return *(uint32_t *)src;
+}
+
 static uint8_t gb_cart_ram_read_cb(struct gb_s *gb_ctx, const uint_fast32_t addr) {
-    if (!sram_data || addr >= sram_size) return 0xFF;
-    return sram_data[addr];
+    // SRAM reads from SD card file (currently returns 0xFF - no save support)
+    return 0xFF;
 }
 
 static void gb_cart_ram_write_cb(struct gb_s *gb_ctx, const uint_fast32_t addr,
                                   const uint8_t val) {
-    if (!sram_data || addr >= sram_size) return;
-    sram_data[addr] = val;
-    sram_dirty = true;
+    // SRAM writes to SD card file (currently noop - no save support)
+    (void)addr;
+    (void)val;
 }
 
 static void gb_error_cb(struct gb_s *gb_ctx, const enum gb_error_e err,
@@ -85,30 +144,82 @@ static void gb_error_cb(struct gb_s *gb_ctx, const enum gb_error_e err,
 
 static void gb_lcd_draw_line_cb(struct gb_s *gb_ctx, const uint8_t *pixels,
                                  const uint_fast8_t line) {
-    if (!gb_sprite || line >= GB_HEIGHT) return;
-    sprite_write_row(gb_sprite, line, pixels, GB_WIDTH);
+    if (line >= GB_HEIGHT) return;
+
+    // Check if this frame is being skipped (frame 0 of each pair when frame_skip is enabled)
+    if (gb_ctx->direct.frame_skip && !gb_ctx->display.frame_skip_count) {
+        if (line == 0) {
+            skipped_frame_count++;
+            os_log(TAG, "Frame SKIP (total skipped: %d/%d)", skipped_frame_count, total_frame_count);
+        }
+        return;  // Skip rendering this frame
+    }
+
+    // Count first line of each frame as a frame start
+    if (line == 0) {
+        total_frame_count++;
+    }
+
+    // Wait if the write buffer is still being pushed (Core 1 hasn't flipped yet)
+    while (buffer_ready[write_buffer_index]) {
+        os_semaphore_take(frame_done_semaphore, 1);
+    }
+
+    // Write scanline directly to sprite buffer (Core 0 - emulation only)
+    void *sprite = display_sprite[write_buffer_index];
+    for (int x = 0; x < GB_WIDTH; x++) {
+        sprite_draw_pixel(sprite, x, line, pixels[x]);
+    }
+
+    current_line = line;
+    frame_complete = (line == GB_HEIGHT - 1);
+
+    // If frame complete, mark buffer as ready and signal display task
+    if (frame_complete) {
+        buffer_ready[write_buffer_index] = true;
+        os_semaphore_give(frame_ready_semaphore);
+    }
+}
+
+static void display_task(void *pvParameters) {
+    (void)pvParameters;
+
+    while (display_task_running) {
+        // Wait for a complete frame to be ready
+        if (os_semaphore_take(frame_ready_semaphore, -1)) {
+            // Find which buffer is ready
+            int ready_buffer = -1;
+            for (int i = 0; i < 2; i++) {
+                if (buffer_ready[i]) {
+                    ready_buffer = i;
+                    break;
+                }
+            }
+
+            if (ready_buffer >= 0 && display_sprite[ready_buffer]) {
+                // Set pivot to top-left corner before pushing
+                sprite_set_pivot(display_sprite[ready_buffer], 0.0, 0.0);
+
+                // Push the complete frame with hardware scaling
+                sprite_push_rotated_zoom(display_sprite[ready_buffer], gb_screen_x, gb_screen_y, 0.0, SCALE_FACTOR, SCALE_FACTOR);
+
+                // Mark buffer as available for Core 0
+                buffer_ready[ready_buffer] = false;
+
+                // Signal Core 0 that it can continue rendering
+                os_semaphore_give(frame_done_semaphore);
+
+                rendered_frame_count++;
+            }
+        }
+    }
 }
 
 static char rom_path[270];
 
+// SRAM save support disabled - would use SD card storage
 static void save_sram(void) {
-    if (!sram_dirty || !sram_data || sram_size == 0) return;
-
-    char sram_path[270];
-    snprintf(sram_path, sizeof(sram_path), "%s.sav", rom_path);
-    FILE *f = fopen(sram_path, "wb");
-    if (!f) {
-        os_log(TAG, "Failed to save SRAM: %s", sram_path);
-        return;
-    }
-    size_t written = fwrite(sram_data, 1, sram_size, f);
-    fclose(f);
-    if (written != sram_size) {
-        os_log(TAG, "SRAM write short: %d/%d", written, sram_size);
-    } else {
-        os_log(TAG, "SRAM saved: %d bytes", sram_size);
-    }
-    sram_dirty = false;
+    // TODO: Implement SD card-based save game support
 }
 
 #define STATE_MAGIC 0x47534E50
@@ -138,9 +249,7 @@ static void save_state(void) {
     };
     fwrite(&header, sizeof(header), 1, f);
     fwrite(gb, sizeof(struct gb_s), 1, f);
-    if (sram_data && sram_size > 0) {
-        fwrite(sram_data, 1, sram_size, f);
-    }
+    // SRAM save support disabled
     fclose(f);
     os_log(TAG, "State saved: %d bytes", (int)sizeof(struct gb_s));
 }
@@ -195,10 +304,7 @@ static bool load_state(void) {
     gb->direct.priv = saved_ptrs.direct.priv;
     gb->direct.joypad = joypad_state;
 
-    if (sram_data && sram_size > 0) {
-        fread(sram_data, 1, sram_size, f);
-        sram_dirty = true;
-    }
+    // SRAM load support disabled
 
     fclose(f);
     os_log(TAG, "State loaded");
@@ -206,13 +312,39 @@ static bool load_state(void) {
 }
 
 static void cleanup_emulator(void) {
+    display_task_running = false;
+
+    if (display_task_handle) {
+        os_task_delete(display_task_handle);
+        display_task_handle = NULL;
+    }
+
+    if (frame_ready_semaphore) {
+        os_semaphore_delete(frame_ready_semaphore);
+        frame_ready_semaphore = NULL;
+    }
+
+    if (frame_done_semaphore) {
+        os_semaphore_delete(frame_done_semaphore);
+        frame_done_semaphore = NULL;
+    }
+
     save_sram();
     if (gb) { free(gb); gb = NULL; }
     if (rom_bank0) { free(rom_bank0); rom_bank0 = NULL; }
-    if (sram_data) { free(sram_data); sram_data = NULL; }
-    sram_size = 0;
-    sram_dirty = false;
-    if (gb_sprite) { sprite_destroy(gb_sprite); gb_sprite = NULL; }
+    // SRAM cleanup not needed (using SD card storage)
+    for (int i = 0; i < 2; i++) {
+        if (display_sprite[i]) {
+            sprite_destroy(display_sprite[i]);
+            display_sprite[i] = NULL;
+        }
+    }
+    write_buffer_index = 0;
+    read_buffer_index = 0;
+    buffer_ready[0] = false;
+    buffer_ready[1] = false;
+    current_line = 0;
+    frame_complete = false;
     if (rom_data) { flash_rom_unload(); rom_data = NULL; }
     rom_size = 0;
 }
@@ -450,8 +582,8 @@ static bool start_emulator(const char *path) {
         return false;
     }
 
-    gb = malloc(sizeof(struct gb_s));
-    rom_bank0 = malloc(ROM_BANK_SIZE);
+    gb = calloc(1, sizeof(struct gb_s));
+    rom_bank0 = calloc(1, ROM_BANK_SIZE);
     if (!gb || !rom_bank0) {
         os_log(TAG, "Failed to allocate: gb=%p bank0=%p", gb, rom_bank0);
         cleanup_emulator();
@@ -459,49 +591,95 @@ static bool start_emulator(const char *path) {
     }
     memcpy(rom_bank0, rom_data, ROM_BANK_SIZE);
 
-    gb_sprite = display_create_sprite(GB_WIDTH, GB_HEIGHT, 2);
-    if (!gb_sprite) {
-        os_log(TAG, "Failed to create display sprite");
+    // Calculate best scaling factor based on screen size
+    // Use only clean scaling factors: 2.0, 1.5, or 1.0
+    int screen_w = display_get_width();
+    int screen_h = display_get_height();
+    float scale_x = (float)screen_w / GB_WIDTH;
+    float scale_y = (float)screen_h / GB_HEIGHT;
+    float min_scale = (scale_x < scale_y) ? scale_x : scale_y;
+
+    // Choose best clean scaling factor
+    if (min_scale >= 2.0) {
+        SCALE_FACTOR = 2.0;
+    } else if (min_scale >= 1.5) {
+        SCALE_FACTOR = 1.5;
+    } else {
+        SCALE_FACTOR = 1.0;
+    }
+
+    // Calculate position to center the scaled image
+    int scaled_w = (int)(GB_WIDTH * SCALE_FACTOR);
+    int scaled_h = (int)(GB_HEIGHT * SCALE_FACTOR);
+    gb_screen_x = (screen_w - scaled_w) / 2;
+    gb_screen_y = (screen_h - scaled_h) / 2;
+
+    os_log(TAG, "Screen: %dx%d, GB: %dx%d, Scale: %.1f, Pos: (%d,%d), Size: %dx%d",
+           screen_w, screen_h, GB_WIDTH, GB_HEIGHT, SCALE_FACTOR, gb_screen_x, gb_screen_y, scaled_w, scaled_h);
+
+    // Create two sprites for double buffering
+    // Keep 2-bit (4 color) sprites for memory efficiency - emulator outputs 2-bit indices
+    for (int i = 0; i < 2; i++) {
+        display_sprite[i] = display_create_sprite(GB_WIDTH, GB_HEIGHT, 2);
+        if (!display_sprite[i]) {
+            os_log(TAG, "Failed to create display sprite %d", i);
+            cleanup_emulator();
+            return false;
+        }
+
+        // Set up default grayscale palette (will be updated for Color games)
+        for (int c = 0; c < 4; c++) {
+            uint16_t color;
+            switch (c) {
+                case 0: color = 0xFFFF; break;  // White/lightest
+                case 1: color = 0xAD55; break;  // Light gray
+                case 2: color = 0x52AA; break;  // Dark gray
+                case 3: color = 0x0000; break;  // Black/darkest
+            }
+            sprite_set_palette_color(display_sprite[i], c, color);
+        }
+    }
+
+    frame_ready_semaphore = os_semaphore_create();
+    frame_done_semaphore = os_semaphore_create();
+    if (!frame_ready_semaphore || !frame_done_semaphore) {
+        os_log(TAG, "Failed to create semaphores");
         cleanup_emulator();
         return false;
     }
-    sprite_set_palette_color(gb_sprite, 0, 0xFFFF);
-    sprite_set_palette_color(gb_sprite, 1, 0xAD55);
-    sprite_set_palette_color(gb_sprite, 2, 0x52AA);
-    sprite_set_palette_color(gb_sprite, 3, 0x0000);
+
+    display_task_running = true;
+    write_buffer_index = 0;
+    read_buffer_index = 0;
+    buffer_ready[0] = false;
+    buffer_ready[1] = false;
+    current_line = 0;
+    frame_complete = false;
+
+    display_task_handle = os_task_create(display_task, "gb_display", 4096, 5, 1);
+    if (!display_task_handle) {
+        os_log(TAG, "Failed to create display task");
+        cleanup_emulator();
+        return false;
+    }
 
     os_log(TAG, "Allocated: gb=%d bank0=%d ROM=%d", (int)sizeof(struct gb_s), ROM_BANK_SIZE, rom_size);
 
-    enum gb_init_error_e ret = gb_init(gb, gb_rom_read_cb, gb_cart_ram_read_cb,
-                                        gb_cart_ram_write_cb, gb_error_cb, NULL);
+    enum gb_init_error_e ret = gb_init(gb, &gb_rom_read_cb, &gb_rom_read16_cb, &gb_rom_read32_cb,
+                                        &gb_cart_ram_read_cb, &gb_cart_ram_write_cb, &gb_error_cb, NULL);
     if (ret != GB_INIT_NO_ERROR) {
         os_log(TAG, "gb_init failed: error %d", ret);
         cleanup_emulator();
         return false;
     }
 
+    // SRAM support disabled - using SD card saves would avoid RAM usage
+    // For now, games with save RAM will run but won't persist saves
     size_t save_size = 0;
     gb_get_save_size_s(gb, &save_size);
     if (save_size > 0) {
-        sram_data = malloc(save_size);
-        if (!sram_data) {
-            os_log(TAG, "Failed to allocate SRAM: %d bytes", save_size);
-            cleanup_emulator();
-            return false;
-        }
-        sram_size = save_size;
-        memset(sram_data, 0, save_size);
-
-        char sram_path[270];
-        snprintf(sram_path, sizeof(sram_path), "%s.sav", rom_path);
-        FILE *sf = fopen(sram_path, "rb");
-        if (sf) {
-            size_t loaded = fread(sram_data, 1, save_size, sf);
-            fclose(sf);
-            os_log(TAG, "Loaded SRAM: %d/%d bytes", loaded, save_size);
-        } else {
-            os_log(TAG, "No SRAM file (new game)");
-        }
+        os_log(TAG, "ROM requires %d bytes save RAM (save support disabled)", save_size);
+        // TODO: Implement SD card-based save game support
     }
 
     os_time_status_t ts;
@@ -519,13 +697,19 @@ static bool start_emulator(const char *path) {
 
     gb_init_lcd(gb, gb_lcd_draw_line_cb);
 
+    // Enable frame skipping to maintain correct game speed at lower rendering FPS
+    // This allows the game logic to run at 60 FPS even if we can only render 30-37 FPS
+    gb->direct.frame_skip = true;
+    os_log(TAG, "Frame skipping ENABLED for correct game speed");
+
     char title[17];
     gb_get_rom_name(gb, title);
     title[16] = '\0';
     os_log(TAG, "Loaded: \"%s\" (%d bytes, save=%d)", title, rom_size, save_size);
 
+    os_log(TAG, "Dual-core rendering enabled (Core 0: emulation, Core 1: display)");
+
     app_mode = MODE_PLAYING;
-    sprite_set_active(gb_sprite);
     last_frame_time = esp_timer_get_time();
     display_clear(0x0000);
     return true;
@@ -554,6 +738,8 @@ void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TIMER | EVENT_TOUCH;
     ctx->timer_interval_ms = 16;
 
+    fps_report_time = esp_timer_get_time();
+
     char startup_file[256];
     size_t file_len = os_consume_startup_file(startup_file, sizeof(startup_file) - 1);
     if (file_len > 0) {
@@ -569,7 +755,7 @@ void app_init(app_context_t *ctx) {
 void app_event(app_context_t *ctx, event_t *event) {
     if (app_mode == MODE_PLAYING) {
         if (event->type == EVENT_TIMER) {
-            if (!gb || !gb_sprite) return;
+            if (!gb || !display_sprite) return;
             gb->direct.joypad = joypad_state;
 
             int64_t now = esp_timer_get_time();
@@ -581,19 +767,24 @@ void app_event(app_context_t *ctx, event_t *event) {
 
             uint32_t c0 = get_ccount();
             for (int i = 0; i < frames_to_run; i++) {
-                gb_run_frame(gb);
+                gb_run_frame_dualfetch(gb);
             }
             uint32_t c1 = get_ccount();
-            sprite_push(gb_sprite, GB_SCREEN_X, GB_SCREEN_Y);
-            uint32_t c2 = get_ccount();
+
             last_frame_time += frames_to_run * GB_FRAME_US;
 
-            static int frame_count = 0;
-            frame_count++;
-            if (frame_count % 60 == 0) {
-                os_log(TAG, "perf: emulate=%u push=%u total=%u frames=%d",
-                       c1 - c0, c2 - c1, c2 - c0, frames_to_run);
+            // Report FPS every 10 seconds
+            int64_t fps_elapsed = now - fps_report_time;
+            if (fps_elapsed >= 10000000) {  // 10 seconds
+                int frames = rendered_frame_count;
+                rendered_frame_count = 0;
+                if (frames > 0) {
+                    float fps = frames / (fps_elapsed / 1000000.0f);
+                    os_log(TAG, "FPS: %.1f", fps);
+                }
+                fps_report_time = now;
             }
+
             return;
         }
 
@@ -618,8 +809,9 @@ void app_event(app_context_t *ctx, event_t *event) {
                     joypad_state |= button;
                 }
                 gb->direct.joypad = joypad_state;
-                gb_run_frame(gb);
-                sprite_push(gb_sprite, GB_SCREEN_X, GB_SCREEN_Y);
+                gb_run_frame_dualfetch(gb);
+
+                // Frame already handled by LCD callback line-by-line
                 return;
             }
 
@@ -633,8 +825,9 @@ void app_event(app_context_t *ctx, event_t *event) {
                 }
                 if (event->keyboard.key == 'j' || event->keyboard.key == 'J') {
                     if (load_state()) {
-                        gb_run_frame(gb);
-                        sprite_push(gb_sprite, GB_SCREEN_X, GB_SCREEN_Y);
+                        gb_run_frame_dualfetch(gb);
+
+                        // Frame already handled by LCD callback line-by-line
                     }
                 }
             }

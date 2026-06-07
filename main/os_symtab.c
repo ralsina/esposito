@@ -53,6 +53,8 @@ static const os_symtab_entry_t symtab[] = {
     {"sprite_draw_pixel",            sprite_draw_pixel},
     {"sprite_write_row",             sprite_write_row},
     {"sprite_push",                  sprite_push},
+    {"sprite_push_rotated_zoom",     sprite_push_rotated_zoom},
+    {"sprite_set_pivot",             sprite_set_pivot},
     {"sprite_destroy",               sprite_destroy},
     {"sprite_set_active",            sprite_set_active},
     {"sprite_get_active",            sprite_get_active},
@@ -296,6 +298,14 @@ static const os_symtab_entry_t symtab[] = {
 
     // C library support for ctype functions
     {"_ctype_",                 (void*)_ctype_},
+
+    // Task and synchronization API
+    {"os_task_create",          (void*)os_task_create},
+    {"os_task_delete",          (void*)os_task_delete},
+    {"os_semaphore_create",     (void*)os_semaphore_create},
+    {"os_semaphore_give",       (void*)os_semaphore_give},
+    {"os_semaphore_take",       (void*)os_semaphore_take},
+    {"os_semaphore_delete",     (void*)os_semaphore_delete},
 
     {NULL, NULL}
 };

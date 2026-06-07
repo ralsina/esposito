@@ -861,3 +861,97 @@ void os_event_loop(void) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
+
+// ============================================================================
+// Task and Synchronization API for Apps
+// ============================================================================
+
+typedef struct {
+    os_task_func_t func;
+    void *parameter;
+} task_wrapper_params_t;
+
+static void task_wrapper(void *pvParameters) {
+    task_wrapper_params_t *params = (task_wrapper_params_t *)pvParameters;
+    os_task_func_t task_func = params->func;
+    void *parameter = params->parameter;
+
+    free(params);
+
+    if (task_func) {
+        task_func(parameter);
+    }
+
+    vTaskDelete(NULL);
+}
+
+os_task_handle_t *os_task_create(os_task_func_t task_func, const char *name, int stack_size, int priority, int core_id) {
+    if (!task_func) return NULL;
+
+    os_task_handle_t *handle = malloc(sizeof(os_task_handle_t));
+    if (!handle) return NULL;
+
+    task_wrapper_params_t *params = malloc(sizeof(task_wrapper_params_t));
+    if (!params) {
+        free(handle);
+        return NULL;
+    }
+
+    params->func = task_func;
+    params->parameter = NULL;
+
+    BaseType_t ret = xTaskCreatePinnedToCore(
+        task_wrapper,
+        name,
+        stack_size,
+        params,
+        priority,
+        (TaskHandle_t *)&handle->handle,
+        core_id
+    );
+
+    if (ret != pdPASS) {
+        free(params);
+        free(handle);
+        return NULL;
+    }
+
+    return handle;
+}
+
+void os_task_delete(os_task_handle_t *task) {
+    if (!task || !task->handle) return;
+    vTaskDelete((TaskHandle_t)task->handle);
+    free(task);
+}
+
+os_semaphore_handle_t *os_semaphore_create(void) {
+    os_semaphore_handle_t *handle = malloc(sizeof(os_semaphore_handle_t));
+    if (!handle) return NULL;
+
+    handle->handle = xSemaphoreCreateBinary();
+    if (!handle->handle) {
+        free(handle);
+        return NULL;
+    }
+
+    return handle;
+}
+
+void os_semaphore_give(os_semaphore_handle_t *sem) {
+    if (!sem || !sem->handle) return;
+    xSemaphoreGive((SemaphoreHandle_t)sem->handle);
+}
+
+bool os_semaphore_take(os_semaphore_handle_t *sem, int timeout_ms) {
+    if (!sem || !sem->handle) return false;
+
+    TickType_t timeout = (timeout_ms < 0) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+    return xSemaphoreTake((SemaphoreHandle_t)sem->handle, timeout) == pdTRUE;
+}
+
+void os_semaphore_delete(os_semaphore_handle_t *sem) {
+    if (!sem || !sem->handle) return;
+    vSemaphoreDelete((SemaphoreHandle_t)sem->handle);
+    free(sem);
+}

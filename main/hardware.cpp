@@ -664,6 +664,18 @@ void sprite_push(void *sprite_handle, int x, int y) {
     sprite->pushSprite(x, y);
 }
 
+void sprite_push_rotated_zoom(void *sprite_handle, int x, int y, float angle, float scale_x, float scale_y) {
+    if (!sprite_handle) return;
+    LGFX_Sprite *sprite = static_cast<LGFX_Sprite*>(sprite_handle);
+    sprite->pushRotateZoom(x, y, angle, scale_x, scale_y);
+}
+
+void sprite_set_pivot(void *sprite_handle, float pivot_x, float pivot_y) {
+    if (!sprite_handle) return;
+    LGFX_Sprite *sprite = static_cast<LGFX_Sprite*>(sprite_handle);
+    sprite->setPivot(pivot_x, pivot_y);
+}
+
 void sprite_destroy(void *sprite_handle) {
     if (!sprite_handle) return;
     LGFX_Sprite *sprite = static_cast<LGFX_Sprite*>(sprite_handle);
