@@ -659,6 +659,74 @@ elf_handle_t *elf_loader_load(const char *path) {
             bool is_exec = (sh->sh_flags & SHF_EXECINSTR) != 0;
             if ((pass == 0 && !is_exec) || (pass == 1 && is_exec)) continue;
 
+            // Optimization: For IROM sections (pass == 1, is_exec == true),
+            // write directly to flash without buffering to save RAM
+            if (is_exec && sh->sh_size > 16384) {  // 16KB threshold for direct-write
+                ESP_LOGI(TAG, "Direct-write IROM section %d (%lu bytes)", section_index, (unsigned long)sh->sh_size);
+
+                // Read and process in chunks to avoid large buffer
+                const size_t chunk_size = 4096; // 4KB chunks
+                size_t remaining = sh->sh_size;
+                size_t file_offset = sh->sh_offset;
+                size_t flash_offset = write_offset;
+
+                while (remaining > 0) {
+                    size_t to_read = (remaining < chunk_size) ? remaining : chunk_size;
+                    uint8_t *chunk_buf = app_malloc(to_read);
+                    if (!chunk_buf) {
+                        ESP_LOGE(TAG, "Failed to allocate chunk buffer (%lu bytes)", (unsigned long)to_read);
+                        app_free(strtab);
+                        app_free(symtab);
+                        app_free(shdrs);
+                        fclose(fp);
+                        elf_loader_unload(handle);
+                        return NULL;
+                    }
+
+                    if (!read_exact_at(fp, file_offset, chunk_buf, to_read)) {
+                        ESP_LOGE(TAG, "Failed to read chunk at offset 0x%lx", (unsigned long)file_offset);
+                        app_free(chunk_buf);
+                        app_free(strtab);
+                        app_free(symtab);
+                        app_free(shdrs);
+                        fclose(fp);
+                        elf_loader_unload(handle);
+                        return NULL;
+                    }
+
+                    // Apply relocations to this chunk
+                    if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, strtab, section_index, chunk_buf, true, &total_patched)) {
+                        app_free(chunk_buf);
+                        app_free(strtab);
+                        app_free(symtab);
+                        app_free(shdrs);
+                        fclose(fp);
+                        elf_loader_unload(handle);
+                        return NULL;
+                    }
+
+                    // Write chunk directly to flash
+                    ret = esp_partition_write(handle->flash_part, flash_offset, chunk_buf, to_read);
+                    app_free(chunk_buf);
+                    if (ret != ESP_OK) {
+                        ESP_LOGE(TAG, "Failed to write chunk to flash: %s", esp_err_to_name(ret));
+                        app_free(strtab);
+                        app_free(symtab);
+                        app_free(shdrs);
+                        fclose(fp);
+                        elf_loader_unload(handle);
+                        return NULL;
+                    }
+
+                    remaining -= to_read;
+                    file_offset += to_read;
+                    flash_offset += to_read;
+                }
+
+                ESP_LOGI(TAG, "Direct-write completed for section %d", section_index);
+                continue; // Skip regular buffer path
+            }
+
             // Use app heap for large per-section temp buffers to avoid global heap fragmentation.
             uint8_t *section_buf = app_malloc(sh->sh_size);
             if (!section_buf) {
@@ -674,6 +742,7 @@ elf_handle_t *elf_loader_load(const char *path) {
             if (!read_exact_at(fp, sh->sh_offset, section_buf, sh->sh_size)) {
                 ESP_LOGE(TAG, "Failed to read section data at offset 0x%lx", (unsigned long)sh->sh_offset);
                 app_free(section_buf);
+                app_free(strtab);
                 app_free(strtab);
                 app_free(symtab);
                 app_free(shdrs);
