@@ -197,6 +197,7 @@ void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 0;
 
+    os_set_cpu_freq_mhz(160);
     text_mode_init();
     text_mode_clear(TEXT_COLOR_BLACK);
 

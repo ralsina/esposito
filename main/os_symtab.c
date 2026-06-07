@@ -307,6 +307,9 @@ static const os_symtab_entry_t symtab[] = {
     {"os_semaphore_take",       (void*)os_semaphore_take},
     {"os_semaphore_delete",     (void*)os_semaphore_delete},
 
+    // CPU frequency control
+    {"os_set_cpu_freq_mhz",     (void*)os_set_cpu_freq_mhz},
+
     {NULL, NULL}
 };
 

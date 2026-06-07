@@ -147,6 +147,8 @@ void os_semaphore_give(os_semaphore_handle_t *sem);
 bool os_semaphore_take(os_semaphore_handle_t *sem, int timeout_ms);
 void os_semaphore_delete(os_semaphore_handle_t *sem);
 
+bool os_set_cpu_freq_mhz(int freq_mhz);
+
 #ifdef __cplusplus
 }
 #endif

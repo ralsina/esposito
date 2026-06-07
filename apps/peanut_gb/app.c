@@ -738,6 +738,7 @@ void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TIMER | EVENT_TOUCH;
     ctx->timer_interval_ms = 16;
 
+    os_set_cpu_freq_mhz(240);
     fps_report_time = esp_timer_get_time();
 
     char startup_file[256];

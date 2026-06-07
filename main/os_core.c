@@ -37,8 +37,8 @@ static int64_t screensaver_last_activity = 0;
 static bool screensaver_active = false;
 static uint8_t screensaver_restore_brightness = 255;
 static uint8_t screensaver_restore_kbd_backlight = 255;
-static esp_pm_config_t screensaver_saved_pm_config;
-static bool screensaver_saved_pm_config_valid = false;
+static int screensaver_saved_cpu_mhz = 0;
+static bool screensaver_saved_cpu_mhz_valid = false;
 
 void os_log_global_heap_stats(const char *label) {
     size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -727,12 +727,12 @@ void os_event_loop(void) {
                     display_set_backlight(screensaver_restore_brightness);
                     keyboard_set_backlight(screensaver_restore_kbd_backlight);
 
-                    // Restore saved PM config to bring CPU back to normal frequency
+                    // Restore saved CPU frequency
                     int restored_cpu_mhz = 160;
-                    if (screensaver_saved_pm_config_valid) {
-                        restored_cpu_mhz = screensaver_saved_pm_config.max_freq_mhz;
-                        esp_pm_configure(&screensaver_saved_pm_config);
-                        screensaver_saved_pm_config_valid = false;
+                    if (screensaver_saved_cpu_mhz_valid) {
+                        restored_cpu_mhz = screensaver_saved_cpu_mhz;
+                        os_set_cpu_freq_mhz(restored_cpu_mhz);
+                        screensaver_saved_cpu_mhz_valid = false;
                     }
 
                     screensaver_active = false;
@@ -823,16 +823,13 @@ void os_event_loop(void) {
                     screensaver_restore_kbd_backlight = keyboard_get_backlight();
                     keyboard_set_backlight(0);
 
-                    // Save current PM config and reduce CPU to 80 MHz
-                    if (esp_pm_get_configuration(&screensaver_saved_pm_config) == ESP_OK) {
-                        screensaver_saved_pm_config_valid = true;
-                        esp_pm_config_t pm_config = {
-                            .max_freq_mhz = 80,
-                            .min_freq_mhz = 80,
-                            .light_sleep_enable = false,
-                        };
-                        esp_pm_configure(&pm_config);
+                    // Save current CPU frequency and reduce to minimum
+                    esp_pm_config_t pm_config;
+                    if (esp_pm_get_configuration(&pm_config) == ESP_OK) {
+                        screensaver_saved_cpu_mhz = pm_config.max_freq_mhz;
+                        screensaver_saved_cpu_mhz_valid = true;
                     }
+                    os_set_cpu_freq_mhz(80);
 
                     screensaver_active = true;
                     ESP_LOGI(TAG, "Screensaver activated after %d min idle (display=0%%, keyboard backlight=0%%, CPU=80 MHz)", ss_timeout_min);
@@ -954,4 +951,19 @@ void os_semaphore_delete(os_semaphore_handle_t *sem) {
     if (!sem || !sem->handle) return;
     vSemaphoreDelete((SemaphoreHandle_t)sem->handle);
     free(sem);
+}
+
+bool os_set_cpu_freq_mhz(int freq_mhz) {
+    esp_pm_config_t pm_config = {
+        .max_freq_mhz = freq_mhz,
+        .min_freq_mhz = freq_mhz,
+        .light_sleep_enable = false,
+    };
+    esp_err_t ret = esp_pm_configure(&pm_config);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "CPU frequency set to %d MHz", freq_mhz);
+        return true;
+    }
+    ESP_LOGE(TAG, "Failed to set CPU frequency to %d MHz: %s", freq_mhz, esp_err_to_name(ret));
+    return false;
 }
