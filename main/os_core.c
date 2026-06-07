@@ -37,8 +37,6 @@ static int64_t screensaver_last_activity = 0;
 static bool screensaver_active = false;
 static uint8_t screensaver_restore_brightness = 255;
 static uint8_t screensaver_restore_kbd_backlight = 255;
-static int screensaver_saved_cpu_mhz = 0;
-static bool screensaver_saved_cpu_mhz_valid = false;
 
 void os_log_global_heap_stats(const char *label) {
     size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -729,10 +727,9 @@ void os_event_loop(void) {
 
                     // Restore saved CPU frequency
                     int restored_cpu_mhz = 160;
-                    if (screensaver_saved_cpu_mhz_valid) {
-                        restored_cpu_mhz = screensaver_saved_cpu_mhz;
+                    if (current_app && current_app->requested_cpu_freq_mhz > 0) {
+                        restored_cpu_mhz = current_app->requested_cpu_freq_mhz;
                         os_set_cpu_freq_mhz(restored_cpu_mhz);
-                        screensaver_saved_cpu_mhz_valid = false;
                     }
 
                     screensaver_active = false;
@@ -771,11 +768,11 @@ void os_event_loop(void) {
                 continue;
             }
 
-            // Check for screenshot trigger (Alt+ESC)
+            // Check for screenshot trigger (Alt+ESC or Fn+ESC)
             if (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
                 event.keyboard.key == 27 &&
-                (event.keyboard.modifiers & MODIFIER_ALT)) {
-                ESP_LOGI(TAG, "Screenshot triggered (Alt+ESC)");
+                ((event.keyboard.modifiers & MODIFIER_ALT) || (event.keyboard.modifiers & MODIFIER_FN))) {
+                ESP_LOGI(TAG, "Screenshot triggered (Alt+ESC or Fn+ESC)");
                 if (graphics_mode_is_active()) {
                     graphics_mode_save_screenshot();
                 } else if (sprite_get_active()) {
@@ -823,12 +820,7 @@ void os_event_loop(void) {
                     screensaver_restore_kbd_backlight = keyboard_get_backlight();
                     keyboard_set_backlight(0);
 
-                    // Save current CPU frequency and reduce to minimum
-                    esp_pm_config_t pm_config;
-                    if (esp_pm_get_configuration(&pm_config) == ESP_OK) {
-                        screensaver_saved_cpu_mhz = pm_config.max_freq_mhz;
-                        screensaver_saved_cpu_mhz_valid = true;
-                    }
+                    // Reduce CPU frequency to minimum
                     os_set_cpu_freq_mhz(80);
 
                     screensaver_active = true;
@@ -954,6 +946,11 @@ void os_semaphore_delete(os_semaphore_handle_t *sem) {
 }
 
 bool os_set_cpu_freq_mhz(int freq_mhz) {
+    if (freq_mhz <= 0) {
+        ESP_LOGE(TAG, "Invalid CPU frequency: %d MHz (must be positive)", freq_mhz);
+        return false;
+    }
+
     esp_pm_config_t pm_config = {
         .max_freq_mhz = freq_mhz,
         .min_freq_mhz = freq_mhz,
@@ -962,6 +959,12 @@ bool os_set_cpu_freq_mhz(int freq_mhz) {
     esp_err_t ret = esp_pm_configure(&pm_config);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "CPU frequency set to %d MHz", freq_mhz);
+
+        // Track the requested frequency in the current app context
+        if (current_app) {
+            current_app->requested_cpu_freq_mhz = freq_mhz;
+        }
+
         return true;
     }
     ESP_LOGE(TAG, "Failed to set CPU frequency to %d MHz: %s", freq_mhz, esp_err_to_name(ret));

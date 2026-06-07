@@ -69,6 +69,7 @@ struct app_context {
     uint32_t subscriptions;
     uint32_t timer_interval_ms;
     void *user_data;
+    int requested_cpu_freq_mhz;
 };
 
 // App manifest structure for built-in apps
