@@ -38,10 +38,10 @@ fi
 APP_NAME="$(basename "$APP_DIR")"
 OUTPUT_DIR="${2:-build/apps}"
 
-# Add performance optimizations for peanut_gb
-if [[ "$APP_NAME" == "peanut_gb" ]]; then
+# Add performance optimizations for gameboy
+if [[ "$APP_NAME" == "gameboy" ]]; then
     EXTRA_CFLAGS="-fjump-tables -ftree-switch-conversion -fno-strict-aliasing"
-    echo "  Enabling jump table optimizations for peanut_gb"
+    echo "  Enabling jump table optimizations for gameboy"
 fi
 TOOLCHAIN_PREFIX="${TOOLCHAIN_PREFIX:-xtensa-esp32-elf}"
 
