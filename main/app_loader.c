@@ -18,7 +18,7 @@ bool app_loader_init(void) {
     return true;
 }
 
-int app_loader_scan(char (*app_names)[64], int max_apps) {
+int app_loader_scan(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps) {
     int count = 0;
 
     if (sd_card_is_mounted()) {
@@ -38,8 +38,7 @@ int app_loader_scan(char (*app_names)[64], int max_apps) {
                     app_sd_manifest_t manifest;
                     app_manifest_read(entry->d_name, &manifest);
                     if (!manifest.show_in_launcher) continue;
-                    strncpy(app_names[count], entry->d_name, 63);
-                    app_names[count][63] = '\0';
+                    snprintf(app_names[count], APP_LOADER_MAX_NAME_LEN, "%s", entry->d_name);
                     count++;
                 }
             }
@@ -124,6 +123,6 @@ bool app_loader_load(const char *app_name) {
 }
 
 int app_loader_get_count(void) {
-    char names[APP_LOADER_MAX_APPS][64];
+    char names[APP_LOADER_MAX_APPS][APP_LOADER_MAX_NAME_LEN];
     return app_loader_scan(names, APP_LOADER_MAX_APPS);
 }

@@ -88,7 +88,7 @@ char *app_manifest_get_display_name(const char *app_name, char *out, size_t out_
     return out;
 }
 
-int app_manifest_find_apps_for_ext(const char *ext, char (*app_names_out)[64], int max_apps) {
+int app_manifest_find_apps_for_ext(const char *ext, char (*app_names_out)[APP_MANIFEST_NAME_MAX], int max_apps) {
     if (!ext || !app_names_out || max_apps <= 0) return 0;
 
     // Strip leading dot if the caller included it
@@ -112,8 +112,7 @@ int app_manifest_find_apps_for_ext(const char *ext, char (*app_names_out)[64], i
         app_sd_manifest_t m;
         app_manifest_read(entry->d_name, &m);
         if (manifest_has_extension(&m, ext)) {
-            strncpy(app_names_out[count], entry->d_name, 63);
-            app_names_out[count][63] = '\0';
+            snprintf(app_names_out[count], APP_MANIFEST_NAME_MAX, "%s", entry->d_name);
             count++;
         }
     }

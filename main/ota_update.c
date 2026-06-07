@@ -144,8 +144,8 @@ static void draw_progress(int pct) {
         text_mode_print_at_attr_bg(i + 2, bar_y, " ", color, TEXT_COLOR_CYAN, attr);
     }
 
-    char pct_str[8];
-    snprintf(pct_str, sizeof(pct_str), "%3d%%", pct);
+    char pct_str[16];
+    snprintf(pct_str, sizeof(pct_str), "%3d%%", pct < 100 ? pct : 100);
     text_mode_print_at(2 + (bar_width - 3) / 2, bar_y, pct_str);
     text_mode_flush();
 }

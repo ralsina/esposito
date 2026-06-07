@@ -16,7 +16,7 @@ static const char *TAG = "app_config";
 #define CONFIG_BASE_DIR "/sdcard/apps"
 #define CONFIG_MAX_PATH 512
 
-static char bound_app[64];
+static char bound_app[256];
 static bool config_bound = false;
 
 static bool mkdir_if_missing(const char *path) {

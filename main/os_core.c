@@ -68,7 +68,7 @@ static size_t event_queue_head = 0;
 static size_t event_queue_tail = 0;
 static app_context_t *current_app = NULL;
 static bool pending_app_switch = false;
-static char pending_app_name[64];
+static char pending_app_name[256];
 static bool in_app_callback = false;
 
 #define OS_STARTUP_FILE_KEY "os/startup_file"

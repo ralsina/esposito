@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-#define APP_MANIFEST_NAME_MAX 64
+#define APP_MANIFEST_NAME_MAX 256
 #define APP_MANIFEST_EXT_MAX 128
 
 // Per-app manifest describing how the OS interacts with an SD-card app.
@@ -31,7 +31,7 @@ char *app_manifest_get_display_name(const char *app_name, char *out, size_t out_
 // ext should NOT include a leading dot (e.g. pass "jpg", not ".jpg").
 // app_names_out receives the directory names (not display names) of matching apps.
 // Returns count of matching apps found.
-int app_manifest_find_apps_for_ext(const char *ext, char (*app_names_out)[64], int max_apps);
+int app_manifest_find_apps_for_ext(const char *ext, char (*app_names_out)[APP_MANIFEST_NAME_MAX], int max_apps);
 
 #ifdef __cplusplus
 }
