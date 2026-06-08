@@ -2,7 +2,7 @@
 #define READER_STATE_H
 
 #include "reader_renderer.h"
-#include "ui.h"
+#include "ui2.h"
 #include <stdio.h>
 
 #define MARGIN 2
@@ -53,34 +53,30 @@ typedef struct {
 
     // Goto state
     char goto_buf[8];
-    ui_text_input_widget_t *goto_widget;
+    ui2_text_input_t *goto_widget;
 
     // Search state
     char search_buf[64];
-    ui_text_input_widget_t *search_widget;
+    ui2_text_input_t *search_widget;
     char search_status[80];
 
     // TOC state
     toc_entry_t *toc;
     int toc_count;
     int toc_selected;
-    const char **toc_titles;  // Persistent array of title pointers for list widget
+    const char **toc_titles;
 
-    // Button widgets (managed by UI library)
-    ui_toolbar_t *file_list_toolbar;
-    ui_button_t *btn_up;
-    ui_button_t *btn_open;
-    ui_button_t *btn_down;
-    ui_button_t *btn_exit;
-    ui_button_t *btn_jump;
-    ui_button_t *btn_find;
-    ui_button_t *btn_goto;
-    ui_button_t *btn_back;
-    ui_button_t *btn_cancel;
+    // UI screen
+    ui2_screen_t *screen;
 
-    // List widgets
-    ui_list_widget_t *toc_list;
-    ui_list_widget_t *file_list;
+    // Reading mode buttons (owned by screen layout, pointers kept for custom render)
+    ui2_button_t *btn_jump;
+    ui2_button_t *btn_find;
+    ui2_button_t *btn_goto;
+    ui2_button_t *btn_back;
+
+    // Receiving mode cancel button
+    ui2_button_t *btn_cancel;
 
     // Function pointer to launch app list (for exit button)
     void (*launch_app_list)(void);

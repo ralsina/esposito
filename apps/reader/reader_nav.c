@@ -1,9 +1,9 @@
 #include "reader_nav.h"
 
 #include "reader_core.h"
-#include "reader_view.h"
 #include "text_mode.h"
-#include "ui.h"
+#include "ui2.h"
+#include "ui_osk.h"
 #include "os_core.h"
 #include "hardware.h"
 
@@ -19,10 +19,10 @@ static char ascii_lower(char ch) {
 }
 
 static void reader_nav_search_forward(reader_state_t *state, const char *query, int *bold_pending, int *underline_pending);
-void on_goto_confirm(ui_text_input_widget_t *widget, void *user_data);
-void on_goto_cancel(ui_text_input_widget_t *widget, void *user_data);
-void on_search_confirm(ui_text_input_widget_t *widget, void *user_data);
-void on_search_cancel(ui_text_input_widget_t *widget, void *user_data);
+void on_goto_confirm(void *user_data);
+void on_goto_cancel(void *user_data);
+void on_search_confirm(void *user_data);
+void on_search_cancel(void *user_data);
 
 static int contains_substring_nocase(const char *text, const char *needle) {
     if (!needle || !needle[0]) {
@@ -198,7 +198,6 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
 
     state->page_number = actual_page;
     reader_load_current_page(state, bold_pending, underline_pending);
-    reader_view_draw_reading_page(state, bold_pending, underline_pending);
     // Save progress after page change
     reader_save_current_book_progress(state);
 }
@@ -233,7 +232,6 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
     state->page_number++;
     printf("NAV_NEXT: Loading page %d from offset %ld\n", state->page_number, state->page_cache.entries[state->page_cache.current].file_pos);
     reader_load_current_page(state, bold_pending, underline_pending);
-    reader_view_draw_reading_page(state, bold_pending, underline_pending);
     // Save progress after page change
     reader_save_current_book_progress(state);
 }
@@ -260,7 +258,6 @@ void reader_nav_prev_page(reader_state_t *state, int *bold_pending, int *underli
         page_cache_prev(&state->page_cache);
         state->page_number--;
         reader_load_current_page(state, bold_pending, underline_pending);
-        reader_view_draw_reading_page(state, bold_pending, underline_pending);
         // Save progress after page change
         reader_save_current_book_progress(state);
         return;
@@ -300,16 +297,16 @@ void reader_nav_start_goto(reader_state_t *state) {
         int cols = text_mode_get_cols();
         int rows = text_mode_get_rows();
 
-        state->goto_widget = ui_text_input_create(0, rows - 4, cols, 4);
-        ui_text_input_set_title(state->goto_widget, "Go to Page");
-        ui_text_input_set_label(state->goto_widget, "Page:");
-        ui_text_input_set_hints(state->goto_widget, "Type number  Enter Confirm", "ESC Cancel");
-        ui_text_input_set_callbacks(state->goto_widget, NULL, on_goto_confirm, on_goto_cancel, state);
+        state->goto_widget = ui2_text_input_create(0, rows - 4, cols, 4);
+        ui2_text_input_set_title(state->goto_widget, "Go to Page");
+        ui2_text_input_set_label(state->goto_widget, "Page:");
+        ui2_text_input_set_hints(state->goto_widget, "Type number  Enter Confirm", "ESC Cancel");
+        ui2_text_input_set_callbacks(state->goto_widget, on_goto_confirm, on_goto_cancel, state);
     }
 
     // Set buffer and redraw
-    ui_text_input_set_buffer(state->goto_widget, state->goto_buf, sizeof(state->goto_buf));
-    ui_text_input_draw(state->goto_widget);
+    ui2_text_input_set_buffer(state->goto_widget, state->goto_buf, sizeof(state->goto_buf));
+    UI2_WIDGET(state->goto_widget)->vtable->draw(UI2_WIDGET(state->goto_widget));
     text_mode_flush();
 }
 
@@ -319,70 +316,42 @@ void reader_nav_handle_goto_key(reader_state_t *state, char key, int *bold_pendi
     }
 
     // Let the widget handle the key
-    if (ui_text_input_handle_key(state->goto_widget, key)) {
+    if (UI2_WIDGET(state->goto_widget)->vtable->handle_key(UI2_WIDGET(state->goto_widget), key)) {
         // Widget handled the key, only redraw if still in goto mode
         if (state->mode == MODE_GOTO) {
-            ui_text_input_draw(state->goto_widget);
+            UI2_WIDGET(state->goto_widget)->vtable->draw(UI2_WIDGET(state->goto_widget));
             text_mode_flush();
         }
     }
     // Callbacks handle mode switching and page navigation
 }
 
-void on_goto_confirm(ui_text_input_widget_t *widget, void *user_data) {
-    (void)widget;
-    if (!user_data) {
-        return;
-    }
-    reader_state_t *state = (reader_state_t*)user_data;
-    int bold_pending = 0, underline_pending = 0;
-
-    // Parse and go to page
+void on_goto_confirm(void *user_data) {
+    if (!user_data) return;
+    reader_state_t *state = (reader_state_t *)user_data;
     int page = 0;
-    if (state->goto_buf[0] != '\0') {
-        page = atoi(state->goto_buf);
-    }
-    reader_nav_goto_page(state, (page > 1) ? page : 1, &bold_pending, &underline_pending);
+    if (state->goto_buf[0] != '\0') page = atoi(state->goto_buf);
+    int bp = 0, up = 0;
+    reader_nav_goto_page(state, (page > 1) ? page : 1, &bp, &up);
 }
 
-void on_goto_cancel(ui_text_input_widget_t *widget, void *user_data) {
-    (void)widget;
-    if (!user_data) {
-        return;
-    }
-    reader_state_t *state = (reader_state_t*)user_data;
-    int bold_pending = 0, underline_pending = 0;
-
-    // Return to reading mode
+void on_goto_cancel(void *user_data) {
+    if (!user_data) return;
+    reader_state_t *state = (reader_state_t *)user_data;
     state->mode = MODE_READING;
-    reader_view_draw_reading_page(state, &bold_pending, &underline_pending);
-    text_mode_flush();
 }
 
-void on_search_confirm(ui_text_input_widget_t *widget, void *user_data) {
-    (void)widget;
-    if (!user_data) {
-        return;
-    }
-    reader_state_t *state = (reader_state_t*)user_data;
-    int bold_pending = 0, underline_pending = 0;
-
-    // Perform the search
-    reader_nav_search_forward(state, state->search_buf, &bold_pending, &underline_pending);
+void on_search_confirm(void *user_data) {
+    if (!user_data) return;
+    reader_state_t *state = (reader_state_t *)user_data;
+    int bp = 0, up = 0;
+    reader_nav_search_forward(state, state->search_buf, &bp, &up);
 }
 
-void on_search_cancel(ui_text_input_widget_t *widget, void *user_data) {
-    (void)widget;
-    if (!user_data) {
-        return;
-    }
-    reader_state_t *state = (reader_state_t*)user_data;
-    int bold_pending = 0, underline_pending = 0;
-
-    // Return to reading mode
+void on_search_cancel(void *user_data) {
+    if (!user_data) return;
+    reader_state_t *state = (reader_state_t *)user_data;
     state->mode = MODE_READING;
-    reader_view_draw_reading_page(state, &bold_pending, &underline_pending);
-    text_mode_flush();
 }
 
 void reader_nav_start_search(reader_state_t *state) {
@@ -408,23 +377,22 @@ void reader_nav_start_search(reader_state_t *state) {
         int cols = text_mode_get_cols();
         int rows = text_mode_get_rows();
 
-        state->search_widget = ui_text_input_create(0, rows - 4, cols, 4);
-        ui_text_input_set_title(state->search_widget, "Search Forward");
-        ui_text_input_set_label(state->search_widget, "Text:");
-        ui_text_input_set_hints(state->search_widget, "Type text  Enter Search", "ESC Cancel");
-        ui_text_input_set_callbacks(state->search_widget, NULL, on_search_confirm, on_search_cancel, state);
+        state->search_widget = ui2_text_input_create(0, rows - 4, cols, 4);
+        ui2_text_input_set_title(state->search_widget, "Search Forward");
+        ui2_text_input_set_label(state->search_widget, "Text:");
+        ui2_text_input_set_hints(state->search_widget, "Type text  Enter Search", "ESC Cancel");
+        ui2_text_input_set_callbacks(state->search_widget, on_search_confirm, on_search_cancel, state);
     }
 
     // Set buffer and redraw
-    ui_text_input_set_buffer(state->search_widget, state->search_buf, sizeof(state->search_buf));
-    ui_text_input_draw(state->search_widget);
+    ui2_text_input_set_buffer(state->search_widget, state->search_buf, sizeof(state->search_buf));
+    UI2_WIDGET(state->search_widget)->vtable->draw(UI2_WIDGET(state->search_widget));
     text_mode_flush();
 }
 
 static void reader_nav_search_forward(reader_state_t *state, const char *query, int *bold_pending, int *underline_pending) {
     if (!query || !query[0] || !state->file) {
         snprintf(state->search_status, sizeof(state->search_status), "Search text is empty");
-        reader_view_draw_reading_page(state, bold_pending, underline_pending);
         return;
     }
 
@@ -461,7 +429,6 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
             state->page_number = page;
             reader_load_current_page(state, bold_pending, underline_pending);
             snprintf(state->search_status, sizeof(state->search_status), "Found \"%s\" on page %d", query, page);
-            reader_view_draw_reading_page(state, bold_pending, underline_pending);
             return;
         }
 
@@ -474,7 +441,6 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
     state->page_number = start_page;
     reader_load_current_page(state, bold_pending, underline_pending);
     snprintf(state->search_status, sizeof(state->search_status), "Not found: \"%s\"", query);
-    reader_view_draw_reading_page(state, bold_pending, underline_pending);
 }
 
 void reader_nav_handle_search_key(reader_state_t *state, char key, int *bold_pending, int *underline_pending) {
@@ -483,10 +449,10 @@ void reader_nav_handle_search_key(reader_state_t *state, char key, int *bold_pen
     }
 
     // Let the widget handle the key
-    if (ui_text_input_handle_key(state->search_widget, key)) {
+    if (UI2_WIDGET(state->search_widget)->vtable->handle_key(UI2_WIDGET(state->search_widget), key)) {
         // Widget handled the key, only redraw if still in search mode
         if (state->mode == MODE_SEARCH) {
-            ui_text_input_draw(state->search_widget);
+            UI2_WIDGET(state->search_widget)->vtable->draw(UI2_WIDGET(state->search_widget));
             text_mode_flush();
         }
     }

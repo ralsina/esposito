@@ -5,6 +5,8 @@
 #include "os_core.h"
 #include "text_mode.h"
 
+#include "reader_view.h"
+
 #include <string.h>
 #include <sys/stat.h>
 
@@ -30,6 +32,8 @@ void reader_startup_init(reader_state_t *state, int *bold_pending, int *underlin
         if (stat(saved_file, &st) == 0 && S_ISREG(st.st_mode)) {
             if (reader_events_open_book(state, saved_file, bold_pending, underline_pending)) {
                 reader_events_enter_reading_mode(state, bold_pending, underline_pending);
+                reader_view_setup_reading(state);
+                reader_view_render_reading(state, bold_pending, underline_pending);
                 return;
             }
         }

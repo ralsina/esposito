@@ -5,6 +5,7 @@
 #include "reader_core.h"
 #include "reader_events.h"
 #include "reader_startup.h"
+#include "reader_view.h"
 #include "serial_rx.h"
 #include "hardware.h"
 #include <string.h>
@@ -20,9 +21,9 @@ void app_init(app_context_t *ctx) {
     ctx->timer_interval_ms = 0;
 
     memset(&state, 0, sizeof(state));
+    state.screen = ui2_screen_create();
     reader_startup_init(&state, &bold_pending, &underline_pending);
 
-    // Keep reader config namespace bound during runtime for progress save/load.
     if (!config_bind_app("reader")) {
         os_log("reader", "Warning: could not bind reader config namespace");
     }
@@ -47,14 +48,9 @@ void app_close(app_context_t *ctx) {
     reader_free_file_list(&state);
     reader_free_toc_titles(&state);
 
-    // Clean up widgets
-    if (state.search_widget) {
-        ui_text_input_destroy(state.search_widget);
-        state.search_widget = NULL;
-    }
-    if (state.goto_widget) {
-        ui_text_input_destroy(state.goto_widget);
-        state.goto_widget = NULL;
+    if (state.screen) {
+        ui2_screen_destroy(state.screen);
+        state.screen = NULL;
     }
 
     config_unbind_app();

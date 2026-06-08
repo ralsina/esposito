@@ -257,7 +257,7 @@ ui2_list_t *ui2_list_create(int x, int y, int width, int height) {
     list->count = 0;
     list->selected = 0;
     list->scroll_offset = 0;
-    list->visible_rows = height;
+    list->visible_rows = height - 1;
     list->title = NULL;
     list->normal_fg = TEXT_COLOR_WHITE;
     list->normal_bg = TEXT_COLOR_BLACK;

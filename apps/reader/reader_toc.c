@@ -54,7 +54,7 @@ static void draw_scan_progress(const char *path, long scanned, long total, int p
     int rows = text_mode_get_rows();
 
     if (!screen_initialized || force || strcmp(last_path, path) != 0) {
-        ui_clear();
+        text_mode_clear(TEXT_COLOR_BLACK);
 
         const char *name = path;
         const char *slash = strrchr(path, '/');

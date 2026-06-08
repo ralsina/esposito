@@ -58,6 +58,8 @@ static bool ui2_button_handle_key(ui2_widget_t *widget, char key) {
 static bool ui2_button_handle_touch(ui2_widget_t *widget, int col, int row, bool pressed) {
     ui2_button_t *btn = (ui2_button_t *)widget;
     if (!widget->enabled || !widget->visible || !pressed) return false;
+    if (col < widget->x || col >= widget->x + widget->width) return false;
+    if (row < widget->y || row >= widget->y + widget->height) return false;
 
     if (btn->on_click) btn->on_click(btn, btn->click_data);
     return true;
