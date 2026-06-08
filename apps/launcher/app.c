@@ -1,8 +1,7 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "hardware.h"
-#include "ui.h"
-#include "ui_toolbar.h"
+#include "ui2.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -18,61 +17,8 @@ static int app_count = 0;
 static char app_names[APP_LOADER_MAX_APPS][256];
 static char app_display_names[APP_LOADER_MAX_APPS][256];
 
-#define HEADER_ROW 1
-#define APPS_START_ROW 4
-
-static ui_toolbar_t *toolbar = NULL;
-static ui_list_widget_t *app_list = NULL;
-static int previous_selected = -1;
-
-static void app_launcher_show(void);
-
-static void on_app_list_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data) {
-    (void)list;
-    (void)user_data;
-    app_launcher_selected = new_selection;
-}
-
-static void on_app_list_item_selected(ui_list_widget_t *list, int item_index, void *user_data) {
-    (void)list;
-    (void)user_data;
-    if (app_count > 0 && item_index >= 0 && item_index < app_count) {
-        os_log(TAG, "Launching app: %s", app_names[item_index]);
-        previous_selected = -1;
-        os_load_app(app_names[item_index]);
-    }
-}
-
-static void on_launcher_up_click(ui_button_t *button, void *user_data) {
-    (void)button;
-    (void)user_data;
-    if (app_list && app_count > 0) {
-        int new_selection = (app_launcher_selected - 1 + app_count) % app_count;
-        app_launcher_selected = new_selection;
-        ui_list_set_selection(app_list, new_selection);
-    }
-    app_launcher_show();
-}
-
-static void on_launcher_open_click(ui_button_t *button, void *user_data) {
-    (void)button;
-    (void)user_data;
-    if (app_count > 0) {
-        previous_selected = -1;
-        os_load_app(app_names[app_launcher_selected]);
-    }
-}
-
-static void on_launcher_down_click(ui_button_t *button, void *user_data) {
-    (void)button;
-    (void)user_data;
-    if (app_list && app_count > 0) {
-        int new_selection = (app_launcher_selected + 1) % app_count;
-        app_launcher_selected = new_selection;
-        ui_list_set_selection(app_list, new_selection);
-    }
-    app_launcher_show();
-}
+static ui2_screen_t *screen = NULL;
+static ui2_list_t *launcher_list = NULL;
 
 static void sort_app_names(void) {
     for (int i = 0; i < app_count - 1; i++) {
@@ -87,131 +33,105 @@ static void sort_app_names(void) {
     }
 }
 
-static void app_launcher_show_static(void) {
+static void on_selection_changed(int new_selection, void *user_data) {
+    (void)user_data;
+    app_launcher_selected = new_selection;
+}
+
+static void on_item_activated(int item_index, void *user_data) {
+    (void)user_data;
+    if (app_count > 0 && item_index >= 0 && item_index < app_count) {
+        os_log(TAG, "Launching app: %s", app_names[item_index]);
+        os_load_app(app_names[item_index]);
+    }
+}
+
+static void on_up_click(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (launcher_list && app_count > 0) {
+        int new_selection = (app_launcher_selected - 1 + app_count) % app_count;
+        app_launcher_selected = new_selection;
+        ui2_list_set_selection(launcher_list, new_selection);
+    }
+}
+
+static void on_open_click(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (app_count > 0) {
+        os_load_app(app_names[app_launcher_selected]);
+    }
+}
+
+static void on_down_click(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (launcher_list && app_count > 0) {
+        int new_selection = (app_launcher_selected + 1) % app_count;
+        app_launcher_selected = new_selection;
+        ui2_list_set_selection(launcher_list, new_selection);
+    }
+}
+
+static void build_launcher_screen(void) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
 
-    if (!app_list) {
-        int list_height = rows - 6;
-        app_list = ui_list_create(1, 1, cols - 2, list_height);
-        ui_list_set_title(app_list, "App Launcher");
-        ui_list_set_colors(app_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
-                           TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
-        ui_list_set_border(app_list, true);
-        ui_list_set_scrollbar(app_list, true);
-        ui_list_set_callbacks(app_list, on_app_list_selection_changed,
-                              on_app_list_item_selected, NULL);
-    } else {
-        app_list->x = 1;
-        app_list->y = 1;
-        app_list->width = cols - 2;
-        app_list->height = rows - 6;
-    }
+    screen = ui2_screen_create();
+    ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
+    ui2_screen_set_root(screen, root);
 
     if (app_count > 0) {
+        int list_height = rows - 6;
+        launcher_list = ui2_list_create(1, 1, cols - 2, list_height);
+        ui2_list_set_title(launcher_list, "App Launcher");
+        ui2_list_set_colors(launcher_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                            TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+
         static const char *display_ptrs[APP_LOADER_MAX_APPS];
         for (int i = 0; i < app_count; i++) {
             display_ptrs[i] = app_display_names[i];
         }
-        ui_list_set_items(app_list, display_ptrs, app_count);
-        ui_list_set_selection(app_list, app_launcher_selected);
-        ui_list_draw(app_list);
-    }
-
-    if (toolbar) {
-        ui_toolbar_destroy(toolbar);
-        toolbar = NULL;
-    }
-
-    int btn_h = 3;
-    int btn_row = rows - btn_h - 1;
-    const char *toolbar_labels[] = {"\xE2\x96\xB2", "\xE2\x9C\x93", "\xE2\x96\xBC"};
-    toolbar = ui_toolbar_create(btn_row, btn_h, 3, toolbar_labels);
-    if (toolbar) {
-        ui_button_set_callback(ui_toolbar_get_button(toolbar, 0), on_launcher_up_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(toolbar, 1), on_launcher_open_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(toolbar, 2), on_launcher_down_click, NULL);
-        ui_toolbar_draw(toolbar);
-    }
-}
-
-static void app_launcher_show(void) {
-    bool first_render = (previous_selected == -1);
-
-    if (first_render) {
-        ui_clear();
-        app_launcher_show_static();
+        ui2_list_set_items(launcher_list, display_ptrs, app_count);
+        ui2_list_set_selection(launcher_list, app_launcher_selected);
+        ui2_list_set_callbacks(launcher_list, on_selection_changed, on_item_activated, NULL);
+        ui2_layout_add(root, UI2_WIDGET(launcher_list));
+        ui2_screen_focus_set(screen, UI2_WIDGET(launcher_list));
     } else {
-        if (previous_selected != app_launcher_selected && app_list) {
-            ui_list_draw(app_list);
-            text_mode_flush();
-        }
+        ui2_label_t *msg = ui2_label_create(cols / 2 - 10, rows / 2, "No apps available!",
+                                             TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+        ui2_layout_add(root, UI2_WIDGET(msg));
     }
 
-    previous_selected = app_launcher_selected;
-}
+    int btn_row = rows - 4;
+    ui2_layout_t *bar = ui2_layout_create(1, btn_row, cols - 2, 3, UI2_LAYOUT_HORIZONTAL);
+    ui2_layout_set_gap(bar, 2);
+    ui2_layout_add(root, UI2_WIDGET(bar));
 
-static void app_launcher_handle_key(char key) {
-    int old_selection = app_launcher_selected;
+    ui2_button_t *up = ui2_button_create(0, 0, 5, 3, "\xE2\x96\xB2");
+    ui2_button_set_callback(up, on_up_click, NULL);
+    ui2_layout_add(bar, UI2_WIDGET(up));
 
-    switch (key) {
-        case 'w':
-        case 'W':
-        case 'A':
-            if (app_list && app_count > 0) {
-                int new_selection = (app_launcher_selected - 1 + app_count) % app_count;
-                app_launcher_selected = new_selection;
-                ui_list_set_selection(app_list, new_selection);
-                app_launcher_show();
-            }
-            break;
+    ui2_button_t *open = ui2_button_create(0, 0, 5, 3, "\xE2\x9C\x93");
+    ui2_button_set_callback(open, on_open_click, NULL);
+    ui2_layout_add(bar, UI2_WIDGET(open));
 
-        case 's':
-        case 'S':
-        case 'B':
-            if (app_list && app_count > 0) {
-                int new_selection = (app_launcher_selected + 1) % app_count;
-                app_launcher_selected = new_selection;
-                ui_list_set_selection(app_list, new_selection);
-                app_launcher_show();
-            }
-            break;
-
-        case '\n':
-        case '\r':
-            os_log(TAG, "Launching app: %s", app_names[app_launcher_selected]);
-            previous_selected = -1;
-            os_load_app(app_names[app_launcher_selected]);
-            return;
-
-        default:
-            return;
-    }
-
-    if (old_selection != app_launcher_selected) {
-        app_launcher_show();
-    }
+    ui2_button_t *down = ui2_button_create(0, 0, 5, 3, "\xE2\x96\xBC");
+    ui2_button_set_callback(down, on_down_click, NULL);
+    ui2_layout_add(bar, UI2_WIDGET(down));
 }
 
 void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
-    ctx->timer_interval_ms = 0;
 
     os_set_cpu_freq_mhz(160);
     text_mode_init();
-    text_mode_clear(TEXT_COLOR_BLACK);
 
     app_count = app_loader_scan(app_names, APP_LOADER_MAX_APPS);
     sort_app_names();
     for (int i = 0; i < app_count; i++) {
         app_manifest_get_display_name(app_names[i], app_display_names[i], 64);
-    }
-
-    if (app_count == 0) {
-        os_log(TAG, "No apps found!");
-        ui_clear();
-        ui_label(5, 5, "No apps available!", TEXT_COLOR_RED);
-        return;
     }
 
     app_context_t *current = os_get_current_app();
@@ -224,23 +144,16 @@ void app_init(app_context_t *ctx) {
             }
         }
     }
-    previous_selected = -1;
 
-    app_launcher_show();
+    build_launcher_screen();
+    ui2_screen_render(screen);
     os_log(TAG, "App launcher initialized with %d apps", app_count);
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
     (void)ctx;
-
-    if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
-        app_launcher_handle_key(event->keyboard.key);
-    } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
-        if (app_list && ui_list_handle_touch(app_list, event)) {
-            return;
-        }
-        if (toolbar && ui_toolbar_handle_touch(toolbar, event)) return;
-    }
+    if (ui2_screen_handle_event(screen, event))
+        ui2_screen_render(screen);
 }
 
 void app_checkpoint(app_context_t *ctx) {
@@ -249,6 +162,10 @@ void app_checkpoint(app_context_t *ctx) {
 
 void app_close(app_context_t *ctx) {
     (void)ctx;
-    text_mode_clear(TEXT_COLOR_BLACK);
+    if (screen) {
+        ui2_screen_destroy(screen);
+        screen = NULL;
+        launcher_list = NULL;
+    }
     os_log(TAG, "App launcher closing");
 }
