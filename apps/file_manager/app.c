@@ -1,10 +1,8 @@
 #include "os_core.h"
 #include "text_mode.h"
-#include "ui.h"
+#include "ui2.h"
 #include "app_config.h"
-
 #include "app_manifest.h"
-#include "ui_button.h"
 #include "hardware.h"
 
 #include <dirent.h>
@@ -34,8 +32,6 @@ typedef struct {
     fm_entry_t *entries;
     int entries_capacity;
     int entry_count;
-    char **display_list;  // Dynamic array of strings, exactly sized to entry_count
-    int display_list_count;  // How many items are actually allocated in display_list
     int selected;
     int scroll;
 } fm_pane_t;
@@ -52,26 +48,30 @@ typedef struct {
     int pending_edit_is_dir;
     char pending_edit_path[FM_MAX_PATH];
     char pending_name[FM_MAX_NAME];
-    ui_text_input_widget_t *name_input;
-    ui_toolbar_t *toolbar;
+    ui2_text_input_t *name_input;
+    ui2_screen_t *screen;
+    ui2_list_t *lists[FM_PANES];
 } file_manager_t;
 
 static const char *TAG = "file_manager";
 static file_manager_t state;
 
+static char pane_display[FM_PANES][FM_MAX_ENTRIES][FM_MAX_NAME + 2];
+static const char *pane_ptrs[FM_PANES][FM_MAX_ENTRIES];
+static uint8_t pane_row_attrs[FM_PANES][FM_MAX_ENTRIES];
+
 static void render(void);
 static void apply_name_input(void);
-static void on_name_confirm(ui_text_input_widget_t *widget, void *user_data);
-static void on_name_cancel(ui_text_input_widget_t *widget, void *user_data);
-static void on_new_file_click(ui_button_t *button, void *user_data);
-static void on_mkdir_click(ui_button_t *button, void *user_data);
-static void on_rename_click(ui_button_t *button, void *user_data);
-static void on_copy_click(ui_button_t *button, void *user_data);
-static void on_delete_click(ui_button_t *button, void *user_data);
-static void on_exit_click(ui_button_t *button, void *user_data);
-static void on_open_click(ui_button_t *button, void *user_data);
+static void on_name_confirm(void *user_data);
+static void on_name_cancel(void *user_data);
+static void on_new_file_click(ui2_button_t *button, void *user_data);
+static void on_mkdir_click(ui2_button_t *button, void *user_data);
+static void on_rename_click(ui2_button_t *button, void *user_data);
+static void on_copy_click(ui2_button_t *button, void *user_data);
+static void on_delete_click(ui2_button_t *button, void *user_data);
+static void on_exit_click(ui2_button_t *button, void *user_data);
+static void on_open_click(ui2_button_t *button, void *user_data);
 
-// Forward declarations for functions used by button callbacks
 static void start_new_file(void);
 static void active_mkdir(void);
 static void start_rename_selected(void);
@@ -107,7 +107,6 @@ enum {
     INPUT_MODE_RENAME,
 };
 
-// Storage for app names returned by manifest lookup (static to avoid stack pressure)
 static char manifest_app_bufs[FM_OPEN_WITH_MAX][256];
 
 static int ascii_tolower(int ch) {
@@ -129,13 +128,6 @@ static int path_is_root(const char *path) {
 static const char *path_basename(const char *path) {
     const char *slash = strrchr(path, '/');
     return slash ? slash + 1 : path;
-}
-
-static int path_has_extension(const char *path, const char *extension) {
-    size_t path_len = strlen(path);
-    size_t ext_len = strlen(extension);
-    if (path_len < ext_len) return 0;
-    return strcmp(path + path_len - ext_len, extension) == 0;
 }
 
 static int path_exists(const char *path) {
@@ -215,43 +207,43 @@ static void set_status(const char *message) {
     snprintf(state.status, sizeof(state.status), "%s", message);
 }
 
-static void on_new_file_click(ui_button_t *button, void *user_data) {
+static void on_new_file_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     start_new_file();
 }
 
-static void on_mkdir_click(ui_button_t *button, void *user_data) {
+static void on_mkdir_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     active_mkdir();
 }
 
-static void on_rename_click(ui_button_t *button, void *user_data) {
+static void on_rename_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     start_rename_selected();
 }
 
-static void on_copy_click(ui_button_t *button, void *user_data) {
+static void on_copy_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     active_copy_to_other_pane();
 }
 
-static void on_delete_click(ui_button_t *button, void *user_data) {
+static void on_delete_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     active_delete_selected();
 }
 
-static void on_exit_click(ui_button_t *button, void *user_data) {
+static void on_exit_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     active_up_or_exit();
 }
 
-static void on_open_click(ui_button_t *button, void *user_data) {
+static void on_open_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     active_open_selected();
@@ -273,61 +265,10 @@ static void clear_pending_edit(void) {
     state.pending_name[0] = '\0';
 }
 
-static void pane_clear_entries(fm_pane_t *pane);
-static void pane_free_display_list(fm_pane_t *pane);
-
 static void pane_clear_entries(fm_pane_t *pane) {
     pane->entry_count = 0;
-    pane_free_display_list(pane);
-}
-
-static void pane_free_display_list(fm_pane_t *pane) {
-    if (!pane || !pane->display_list) {
-        pane->display_list_count = 0;
-        return;
-    }
-    for (int i = 0; i < pane->display_list_count; i++) {
-        if (pane->display_list[i]) {
-            free(pane->display_list[i]);
-        }
-    }
-    free(pane->display_list);
-    pane->display_list = NULL;
-    pane->display_list_count = 0;
-}
-
-static void pane_allocate_display_list(fm_pane_t *pane) {
-    pane_free_display_list(pane);
-    
-    if (pane->entry_count <= 0) {
-        pane->display_list = NULL;
-        return;
-    }
-    
-    size_t array_size = sizeof(char*) * (pane->entry_count + 1);
-    
-    pane->display_list = malloc(array_size);
-    if (!pane->display_list) {
-        os_log(TAG, "display list alloc failed: %zu bytes", array_size);
-        set_status("Memory allocation failed");
-        pane->display_list = NULL;
-        return;
-    }
-    
-    for (int i = 0; i < pane->entry_count; i++) {
-        const fm_entry_t *ent = &pane->entries[i];
-        size_t len = strlen(ent->name) + 2;
-        pane->display_list[i] = malloc(len);
-        if (!pane->display_list[i]) {
-            os_log(TAG, "display item alloc failed at %d: %zu bytes", i, len);
-            set_status("Memory allocation failed");
-            pane_free_display_list(pane);
-            return;
-        }
-        snprintf(pane->display_list[i], len, "%s%s", ent->name, ent->is_dir ? "/" : "");
-    }
-    pane->display_list[pane->entry_count] = NULL;
-    pane->display_list_count = pane->entry_count;
+    pane->selected = 0;
+    pane->scroll = 0;
 }
 
 static int pane_add_entry(fm_pane_t *pane, const char *name, const char *path, int is_dir, unsigned int size) {
@@ -345,8 +286,6 @@ static int pane_add_entry(fm_pane_t *pane, const char *name, const char *path, i
 
 static void pane_scan_directory(fm_pane_t *pane) {
     pane_clear_entries(pane);
-    pane->selected = 0;
-    pane->scroll = 0;
 
     if (!path_is_under_root(pane->cwd)) {
         snprintf(pane->cwd, sizeof(pane->cwd), "%s", FM_ROOT_PATH);
@@ -360,7 +299,6 @@ static void pane_scan_directory(fm_pane_t *pane) {
 
     DIR *directory = opendir(pane->cwd);
     if (!directory) {
-        // Saved pane path may no longer exist; retry from root once.
         if (!path_is_root(pane->cwd)) {
             snprintf(pane->cwd, sizeof(pane->cwd), "%s", FM_ROOT_PATH);
             directory = opendir(pane->cwd);
@@ -401,8 +339,6 @@ static void pane_scan_directory(fm_pane_t *pane) {
     if (pane->entry_count > 1) {
         pane_sort_entries(pane);
     }
-
-    pane_allocate_display_list(pane);
 }
 
 static int pane_selected_index(fm_pane_t *pane) {
@@ -480,7 +416,6 @@ static void open_selected_with_app(const char *app_name, const char *file_path) 
 }
 
 static int collect_apps_for_path(const char *path, const char **apps_out, int max_apps) {
-    // Find the extension (without the leading dot)
     const char *dot = strrchr(path, '.');
     if (!dot || !dot[1]) return 0;
     const char *ext = dot + 1;
@@ -654,14 +589,12 @@ static void active_delete_selected(void) {
     render();
 }
 
-static void on_name_confirm(ui_text_input_widget_t *widget, void *user_data) {
-    (void)widget;
+static void on_name_confirm(void *user_data) {
     (void)user_data;
     apply_name_input();
 }
 
-static void on_name_cancel(ui_text_input_widget_t *widget, void *user_data) {
-    (void)widget;
+static void on_name_cancel(void *user_data) {
     (void)user_data;
     clear_pending_edit();
     set_status("Canceled");
@@ -743,66 +676,76 @@ static int handle_pending_open_choice(char key) {
     return 1;
 }
 
-
-static void draw_pane(int pane_index, int x, int width, int height) {
+static void build_pane_display(int pane_index) {
     fm_pane_t *pane = &state.panes[pane_index];
-    int active = pane_index == state.active_pane;
-    int selected_index = pane_selected_index(pane);
-
-    char title[FM_MAX_PATH + 16];
-    char path_display[FM_MAX_PATH + 1];
-    int path_max = width - 12;
-    if (path_max < 3) path_max = 3;
-
-    snprintf(path_display, sizeof(path_display), "%s", pane->cwd);
-    if ((int)strlen(path_display) > path_max) {
-        int start = (int)strlen(path_display) - path_max + 1;
-        if (start < 0) start = 0;
-        snprintf(path_display, sizeof(path_display), "~%s", pane->cwd + start);
+    for (int i = 0; i < pane->entry_count && i < FM_MAX_ENTRIES; i++) {
+        const fm_entry_t *ent = &pane->entries[i];
+        snprintf(pane_display[pane_index][i], sizeof(pane_display[0][0]), "%s%s",
+                 ent->name, ent->is_dir ? "/" : "");
+        pane_ptrs[pane_index][i] = pane_display[pane_index][i];
+        pane_row_attrs[pane_index][i] = ent->is_dir ? TEXT_ATTR_BOLD : TEXT_ATTR_NORMAL;
     }
+}
 
-    snprintf(title, sizeof(title), "%c %s [%d/%d]", active ? '*' : ' ', path_display,
-             selected_index < 0 ? 0 : selected_index + 1, pane->entry_count);
+static void on_pane_selection_changed(int new_selection, void *user_data) {
+    int pane_idx = (int)(intptr_t)user_data;
+    state.panes[pane_idx].selected = new_selection;
+}
 
-    // Build per-item colors: BRIGHT_WHITE for dirs, WHITE for files
-    uint8_t *item_colors = NULL;
-    if (pane->entry_count > 0) {
-        item_colors = malloc(pane->entry_count);
-        if (item_colors) {
-            for (int entry_index = 0; entry_index < pane->entry_count; entry_index++) {
-                item_colors[entry_index] = pane->entries[entry_index].is_dir
-                    ? TEXT_COLOR_BRIGHT_WHITE : TEXT_COLOR_WHITE;
-            }
-        }
-    }
+static void on_pane_item_activated(int item_index, void *user_data) {
+    int pane_idx = (int)(intptr_t)user_data;
+    state.active_pane = pane_idx;
+    state.panes[pane_idx].selected = item_index;
+    active_open_selected();
+}
 
-    ui_column_draw(x, 0, width, height, title, active,
-                   (const char **)pane->display_list, pane->entry_count, item_colors, pane->selected, pane->scroll);
-
-    free(item_colors);
+static void draw_status_overlay(void) {
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+    int status_row = rows - 1;
+    char line[FM_STATUS_MAX + 4];
+    int len = strlen(state.status);
+    if (len > cols) len = cols;
+    int pos = 0;
+    for (int i = 0; i < len; i++) line[pos++] = state.status[i];
+    for (int i = pos; i < cols; i++) line[pos++] = ' ';
+    line[pos] = '\0';
+    text_mode_print_at_attr_bg(0, status_row, line,
+                               TEXT_COLOR_BRIGHT_BLACK, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 }
 
 static void render(void) {
     if (state.input_mode != INPUT_MODE_NONE) {
-        ui_text_input_set_buffer(state.name_input, state.pending_name, sizeof(state.pending_name));
-        ui_text_input_draw(state.name_input);
+        text_mode_clear(TEXT_COLOR_BLACK);
+        ui2_text_input_set_buffer(state.name_input, state.pending_name, sizeof(state.pending_name));
+        UI2_WIDGET(state.name_input)->vtable->draw(UI2_WIDGET(state.name_input));
         text_mode_flush();
         return;
     }
 
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
-    int pane_height = rows - 2;
+    int pane_height = rows - 6;
     int left_width = cols / 2;
-    int right_width = cols - left_width;
+    int right_width = cols - left_width - 1;
 
-    draw_pane(0, 0, left_width, pane_height);
-    draw_pane(1, left_width, right_width, pane_height);
+    for (int p = 0; p < 2; p++) {
+        fm_pane_t *pane = &state.panes[p];
+        build_pane_display(p);
 
-    // Show action toolbar and status
-    ui_status_bar(rows - 2, state.status, "");
-    ui_toolbar_draw(state.toolbar);
+        ui2_widget_t *lw = UI2_WIDGET(state.lists[p]);
+        lw->x = p == 0 ? 0 : left_width + 1;
+        lw->width = p == 0 ? left_width : right_width;
+        lw->height = pane_height;
 
+        ui2_list_set_title(state.lists[p], pane->cwd);
+        ui2_list_set_items(state.lists[p], pane_ptrs[p], pane->entry_count);
+        ui2_list_set_row_attrs(state.lists[p], pane_row_attrs[p], pane->entry_count);
+        ui2_list_set_selection(state.lists[p], pane->selected);
+    }
+
+    ui2_screen_render(state.screen);
+    draw_status_overlay();
     text_mode_flush();
 }
 
@@ -870,7 +813,6 @@ void app_init(app_context_t *ctx) {
     }
 
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
-    ctx->timer_interval_ms = 0;
 
     snprintf(state.panes[0].cwd, sizeof(state.panes[0].cwd), "%s", FM_ROOT_PATH);
     snprintf(state.panes[1].cwd, sizeof(state.panes[1].cwd), "%s", FM_ROOT_PATH);
@@ -889,38 +831,62 @@ void app_init(app_context_t *ctx) {
             state.panes[1].entries = NULL;
         }
         set_status("Out of memory allocating pane entries");
-        render();
         return;
     }
-    state.panes[0].display_list = NULL;
-    state.panes[0].display_list_count = 0;
-    state.panes[1].display_list = NULL;
-    state.panes[1].display_list_count = 0;
     state.active_pane = 0;
     clear_pending_open();
     clear_pending_edit();
 
-    // Create text input widget
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
-    state.name_input = ui_text_input_create(0, rows - 4, cols, 4);
-    ui_text_input_set_title(state.name_input, "File Manager");
-    ui_text_input_set_label(state.name_input, "Name:");
-    ui_text_input_set_hints(state.name_input, "Type name  Enter Confirm", "ESC Cancel");
-    ui_text_input_set_callbacks(state.name_input, NULL, on_name_confirm, on_name_cancel, NULL);
 
-    // Create action toolbar for touch mode
-    const char *toolbar_labels[] = {"New", "Dir", "Ren", "Cpy", "Del", "\xE2\x9C\x93", "\xE2\x9C\x98"};
-    state.toolbar = ui_toolbar_create(rows - 1, 1, 7, toolbar_labels);
-    if (state.toolbar) {
-        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 0), on_new_file_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 1), on_mkdir_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 2), on_rename_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 3), on_copy_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 4), on_delete_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 5), on_open_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(state.toolbar, 6), on_exit_click, NULL);
+    state.screen = ui2_screen_create();
+    ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
+    ui2_screen_set_root(state.screen, root);
+
+    int left_width = cols / 2;
+    int right_width = cols - left_width - 1;
+    int pane_height = rows - 6;
+
+    for (int p = 0; p < 2; p++) {
+        int x = p == 0 ? 0 : left_width + 1;
+        int w = p == 0 ? left_width : right_width;
+        state.lists[p] = ui2_list_create(x, 0, w, pane_height);
+        ui2_list_set_colors(state.lists[p], TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                            TEXT_COLOR_BLACK, TEXT_COLOR_BRIGHT_GREEN, TEXT_COLOR_CYAN);
+        ui2_list_set_border(state.lists[p], true);
+        ui2_list_set_callbacks(state.lists[p], on_pane_selection_changed,
+                               on_pane_item_activated, (void*)(intptr_t)p);
+        ui2_layout_add(root, UI2_WIDGET(state.lists[p]));
     }
+    ui2_screen_focus_set(state.screen, UI2_WIDGET(state.lists[0]));
+
+    int btn_row = rows - 5;
+    ui2_layout_t *bar = ui2_layout_create(0, btn_row, cols, 3, UI2_LAYOUT_HORIZONTAL);
+    ui2_layout_set_gap(bar, 0);
+    ui2_layout_add(root, UI2_WIDGET(bar));
+
+    int btn_w = cols / 7;
+    struct { const char *label; void (*cb)(ui2_button_t *, void *); } btn_defs[] = {
+        {"New", on_new_file_click},
+        {"Dir", on_mkdir_click},
+        {"Ren", on_rename_click},
+        {"Cpy", on_copy_click},
+        {"Del", on_delete_click},
+        {"\xE2\x9C\x93", on_open_click},
+        {"\xE2\x9C\x98", on_exit_click},
+    };
+    for (int i = 0; i < 7; i++) {
+        ui2_button_t *btn = ui2_button_create(0, 0, btn_w, 3, btn_defs[i].label);
+        ui2_button_set_callback(btn, btn_defs[i].cb, NULL);
+        ui2_layout_add(bar, UI2_WIDGET(btn));
+    }
+
+    state.name_input = ui2_text_input_create(0, rows - 5, cols, 4);
+    ui2_text_input_set_title(state.name_input, "File Manager");
+    ui2_text_input_set_label(state.name_input, "Name:");
+    ui2_text_input_set_hints(state.name_input, "Enter Confirm", "ESC Cancel");
+    ui2_text_input_set_callbacks(state.name_input, on_name_confirm, on_name_cancel, NULL);
 
     int config_ok = config_bind_app("file_manager");
     char left_selected[FM_MAX_PATH];
@@ -952,51 +918,16 @@ void app_init(app_context_t *ctx) {
     pane_select_path(&state.panes[0], left_selected);
     pane_select_path(&state.panes[1], right_selected);
 
+    ui2_screen_focus_set(state.screen, UI2_WIDGET(state.lists[state.active_pane]));
     render();
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
     (void)ctx;
 
-    // Handle touch events
-    if (event->type == EVENT_TOUCH && event->touch.pressed) {
-        // Convert pixel coordinates to character coordinates
-        int cw = text_mode_get_char_width();
-        int ch = text_mode_get_char_height();
-        int x_col = event->touch.x / cw;
-        int y_col = event->touch.y / ch;
-
-        // Handle toolbar touches
-        if (ui_toolbar_handle_touch(state.toolbar, event)) return;
-
-        // Handle pane touches
-        int cols = text_mode_get_cols();
-        int rows = text_mode_get_rows();
-        int pane_height = rows - 2;
-        int left_width = cols / 2;
-
-        // Check if touch is within the file list area
-        if (y_col >= 1 && y_col < pane_height) {
-            fm_pane_t *touched_pane;
-
-            if (x_col < left_width) {
-                // Left pane
-                touched_pane = &state.panes[0];
-            } else {
-                // Right pane
-                touched_pane = &state.panes[1];
-            }
-
-            // Calculate which entry was touched (accounting for header)
-            int entry_index = (y_col - 1) + touched_pane->scroll;
-
-            if (entry_index >= 0 && entry_index < touched_pane->entry_count) {
-                // Select the touched entry and make this pane active
-                state.active_pane = (x_col < left_width) ? 0 : 1;
-                touched_pane->selected = entry_index;
-                render();
-            }
-        }
+    if (event->type == EVENT_TOUCH) {
+        if (ui2_screen_handle_event(state.screen, event))
+            render();
         return;
     }
 
@@ -1007,62 +938,55 @@ void app_event(app_context_t *ctx, event_t *event) {
     char key = event->keyboard.key;
 
     if (state.input_mode != INPUT_MODE_NONE) {
-        if (ui_text_input_handle_key(state.name_input, key)) {
-            ui_text_input_draw(state.name_input);
+        bool handled = UI2_WIDGET(state.name_input)->vtable->handle_key(UI2_WIDGET(state.name_input), key);
+        if (handled) {
+            text_mode_clear(TEXT_COLOR_BLACK);
+            UI2_WIDGET(state.name_input)->vtable->draw(UI2_WIDGET(state.name_input));
             text_mode_flush();
         }
         return;
     }
-
-    fm_pane_t *active = &state.panes[state.active_pane];
 
     if (handle_pending_open_choice(key)) {
         render();
         return;
     }
 
-    if (key == 'w' || key == 'W') {
-        if (active->entry_count > 0) {
-            if (active->selected > 0) {
-                active->selected--;
-            } else {
-                active->selected = active->entry_count - 1;
-            }
-        }
-    } else if (key == 's' || key == 'S') {
-        if (active->entry_count > 0) {
-            if (active->selected < active->entry_count - 1) {
-                active->selected++;
-            } else {
-                active->selected = 0;
-            }
-        }
-    } else if (key == 'a' || key == 'A') {
-        state.active_pane = 0;
-        set_status("Active pane: left");
-    } else if (key == 'd' || key == 'D' || key == '\t') {
-        state.active_pane = 1;
-        set_status("Active pane: right");
-    } else if (key == '\n' || key == '\r') {
-        active_open_selected();
-    } else if (key == 27) {
-        active_up_or_exit();
-    } else if (key == 'r' || key == 'R') {
-        pane_scan_directory(active);
-        set_status("Reloaded");
-    } else if (key == 'k' || key == 'K') {
-        active_mkdir();
-    } else if (key == 'n' || key == 'N') {
-        start_new_file();
-    } else if (key == 'm' || key == 'M') {
-        start_rename_selected();
-    } else if (key == 'c' || key == 'C') {
-        active_copy_to_other_pane();
-    } else if (key == 'x' || key == 'X') {
-        active_delete_selected();
-    }
+    bool handled = ui2_screen_handle_event(state.screen, event);
 
-    render();
+    if (!handled) {
+        fm_pane_t *active = &state.panes[state.active_pane];
+
+        if (key == 'a' || key == 'A') {
+            state.active_pane = 0;
+            ui2_screen_focus_set(state.screen, UI2_WIDGET(state.lists[0]));
+            set_status("Active pane: left");
+            render();
+        } else if (key == 'd' || key == 'D') {
+            state.active_pane = 1;
+            ui2_screen_focus_set(state.screen, UI2_WIDGET(state.lists[1]));
+            set_status("Active pane: right");
+            render();
+        } else if (key == 'r' || key == 'R') {
+            pane_scan_directory(active);
+            set_status("Reloaded");
+            render();
+        } else if (key == 'k' || key == 'K') {
+            active_mkdir();
+        } else if (key == 'n' || key == 'N') {
+            start_new_file();
+        } else if (key == 'm' || key == 'M') {
+            start_rename_selected();
+        } else if (key == 'c' || key == 'C') {
+            active_copy_to_other_pane();
+        } else if (key == 'x' || key == 'X') {
+            active_delete_selected();
+        } else if (key == 27) {
+            active_up_or_exit();
+        }
+    } else {
+        render();
+    }
 }
 
 void app_checkpoint(app_context_t *ctx) {
@@ -1074,26 +998,17 @@ void app_close(app_context_t *ctx) {
     (void)ctx;
     save_state();
 
-    // Clean up text input widget
-    if (state.name_input) {
-        ui_text_input_destroy(state.name_input);
-        state.name_input = NULL;
-    }
-
-    // Clean up toolbar
-    if (state.toolbar) {
-        ui_toolbar_destroy(state.toolbar);
-        state.toolbar = NULL;
+    if (state.screen) {
+        ui2_screen_destroy(state.screen);
+        state.screen = NULL;
     }
 
     for (int pane_index = 0; pane_index < FM_PANES; pane_index++) {
-        pane_free_display_list(&state.panes[pane_index]);
         if (state.panes[pane_index].entries) {
             free(state.panes[pane_index].entries);
             state.panes[pane_index].entries = NULL;
         }
         state.panes[pane_index].entries_capacity = 0;
     }
-    text_mode_clear(TEXT_COLOR_BLACK);
     os_log(TAG, "File Manager close");
 }

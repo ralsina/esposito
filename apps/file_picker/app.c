@@ -1,8 +1,7 @@
 #include "os_core.h"
 #include "app_config.h"
-
 #include "text_mode.h"
-#include "ui.h"
+#include "ui2.h"
 
 #include <dirent.h>
 #include <stdio.h>
@@ -43,6 +42,13 @@ typedef struct {
 
 static const char *TAG = "file_picker";
 static file_picker_t picker;
+
+static ui2_screen_t *screen = NULL;
+static ui2_list_t *list_widget = NULL;
+static char entry_names[FP_MAX_ENTRIES][FP_MAX_NAME + 4];
+static const char *entry_ptrs[FP_MAX_ENTRIES];
+static uint8_t entry_attrs[FP_MAX_ENTRIES];
+static bool switch_pending = false;
 
 static int ascii_tolower(int ch) {
     if (ch >= 'A' && ch <= 'Z') {
@@ -295,22 +301,8 @@ static void scan_directory(void) {
     }
 }
 
-static void ensure_selection_visible(int list_rows) {
-    if (picker.selected < 0) picker.selected = 0;
-    if (picker.selected >= picker.entry_count && picker.entry_count > 0) {
-        picker.selected = picker.entry_count - 1;
-    }
-
-    if (picker.selected < picker.scroll) {
-        picker.scroll = picker.selected;
-    }
-    if (picker.selected >= picker.scroll + list_rows) {
-        picker.scroll = picker.selected - list_rows + 1;
-    }
-    if (picker.scroll < 0) picker.scroll = 0;
-}
-
 static void picker_return(int canceled) {
+    switch_pending = true;
     if (canceled && picker.cancel_to_launcher) {
         os_load_app("launcher");
         return;
@@ -350,62 +342,83 @@ static void select_current_file(void) {
     picker_return(0);
 }
 
-static void draw_row(int x, int y, int width, const fp_entry_t *entry, int selected) {
-    char line[160];
-    if (entry->is_dir) {
-        snprintf(line, sizeof(line), "%c [D] %s", selected ? '>' : ' ', entry->name);
-    } else {
-        snprintf(line, sizeof(line), "%c     %s", selected ? '>' : ' ', entry->name);
-    }
-
-    int max_text = width - 1;
-    if (max_text < 0) max_text = 0;
-    if ((int)strlen(line) > max_text) {
-        line[max_text] = '\0';
-    }
-
-    uint8_t fg = selected ? TEXT_COLOR_BLACK : TEXT_COLOR_WHITE;
-    uint8_t bg = selected ? TEXT_COLOR_BRIGHT_GREEN : TEXT_COLOR_BLACK;
-    uint8_t attr = selected ? TEXT_ATTR_BOLD : TEXT_ATTR_NORMAL;
-
-    text_mode_print_at_attr_bg(x, y, line, fg, bg, attr);
-
-    int used = (int)strlen(line);
-    for (int col = used; col < width; col++) {
-        text_mode_print_at_attr_bg(x + col, y, " ", fg, bg, attr);
+static void build_entry_list(void) {
+    for (int i = 0; i < picker.entry_count && i < FP_MAX_ENTRIES; i++) {
+        if (picker.entries[i].is_dir) {
+            snprintf(entry_names[i], sizeof(entry_names[i]), "%s/", picker.entries[i].name);
+            entry_attrs[i] = TEXT_ATTR_BOLD;
+        } else {
+            snprintf(entry_names[i], sizeof(entry_names[i]), "%s", picker.entries[i].name);
+            entry_attrs[i] = TEXT_ATTR_NORMAL;
+        }
+        entry_ptrs[i] = entry_names[i];
     }
 }
 
-static void render(void) {
+static void rebuild_screen(void) {
+    build_entry_list();
+    ui2_list_set_items(list_widget, entry_ptrs, picker.entry_count);
+    ui2_list_set_row_attrs(list_widget, entry_attrs, picker.entry_count);
+    ui2_screen_render(screen);
+}
+
+static void draw_overlays(void) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
-    int body_height = rows - 2;
-    int list_rows = body_height - 2;
-    if (list_rows < 1) list_rows = 1;
 
-    char title_line[FP_TITLE_MAX + FP_GLOB_MAX + 8];
-    snprintf(title_line, sizeof(title_line), "%s", picker.title[0] ? picker.title : "File Picker");
-
-    ui_window(0, 0, cols, body_height, title_line);
-
-    ensure_selection_visible(list_rows);
-
-    for (int row = 0; row < list_rows; row++) {
-        int index = picker.scroll + row;
-        if (index < picker.entry_count) {
-            draw_row(1, 1 + row, cols - 2, &picker.entries[index], index == picker.selected);
-        } else {
-            for (int col = 0; col < cols - 2; col++) {
-                text_mode_print_at_attr_bg(1 + col, 1 + row, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
-            }
-        }
-    }
-
+    int status_row = rows - 2;
     char right[64];
     snprintf(right, sizeof(right), "%s", picker.glob[0] ? picker.glob : "*");
-    ui_status_bar(rows - 2, picker.status, right);
-    ui_label(1, rows - 1, "W/S move  Enter select  ESC up/cancel  R reload", TEXT_COLOR_BRIGHT_BLACK);
-    text_mode_flush();
+    int right_len = strlen(right);
+
+    int left_len = strlen(picker.status);
+    int used = left_len + 2 + right_len;
+    int padding = cols - used;
+    if (padding < 1) padding = 1;
+    if (padding > 40) padding = 40;
+
+    char status_line[FP_STATUS_MAX + 64];
+    int pos = 0;
+    for (int i = 0; i < left_len; i++) status_line[pos++] = picker.status[i];
+    for (int i = 0; i < padding; i++) status_line[pos++] = ' ';
+    for (int i = 0; i < right_len; i++) status_line[pos++] = right[i];
+    status_line[pos] = '\0';
+
+    text_mode_print_at_attr_bg(0, status_row, status_line,
+                               TEXT_COLOR_BRIGHT_BLACK, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+
+    text_mode_print_at_attr_bg(0, rows - 1, "W/S move  Enter select  ESC up/cancel  R reload",
+                               TEXT_COLOR_BRIGHT_BLACK, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+}
+
+static void on_selection_changed(int new_selection, void *user_data) {
+    (void)user_data;
+    picker.selected = new_selection;
+}
+
+static void on_item_activated(int item_index, void *user_data) {
+    (void)user_data;
+    picker.selected = item_index;
+    select_current_file();
+}
+
+static void build_picker_screen(void) {
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+
+    screen = ui2_screen_create();
+    int list_height = rows - 4;
+    ui2_list_t *list = ui2_list_create(0, 0, cols, list_height);
+    ui2_list_set_title(list, picker.title[0] ? picker.title : "File Picker");
+    ui2_list_set_colors(list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                        TEXT_COLOR_BLACK, TEXT_COLOR_BRIGHT_GREEN, TEXT_COLOR_CYAN);
+    ui2_list_set_callbacks(list, on_selection_changed, on_item_activated, NULL);
+    list_widget = list;
+
+    ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
+    ui2_layout_add(root, UI2_WIDGET(list));
+    ui2_screen_set_root(screen, root);
+    ui2_screen_focus_set(screen, UI2_WIDGET(list));
 }
 
 static void load_config(void) {
@@ -455,7 +468,7 @@ static void load_config(void) {
 }
 
 void app_init(app_context_t *ctx) {
-    (void)ctx;
+    ctx->subscriptions = EVENT_KEYBOARD;
 
     os_log(TAG, "File Picker init");
 
@@ -464,45 +477,59 @@ void app_init(app_context_t *ctx) {
         return;
     }
 
-    ctx->subscriptions = EVENT_KEYBOARD;
-    ctx->timer_interval_ms = 0;
-
     memset(&picker, 0, sizeof(picker));
     load_config();
     set_status("Select a file");
     scan_directory();
-    render();
+    switch_pending = false;
+
+    build_picker_screen();
+    rebuild_screen();
+    draw_overlays();
+    text_mode_flush();
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
     (void)ctx;
+    if (switch_pending) return;
 
     if (event->type != EVENT_KEYBOARD || !event->keyboard.pressed) {
         return;
     }
 
+    bool handled = false;
+    bool need_rebuild = false;
     char key = event->keyboard.key;
 
-    if (key == 'w' || key == 'W') {
-        if (picker.selected > 0) picker.selected--;
-    } else if (key == 's' || key == 'S') {
-        if (picker.selected + 1 < picker.entry_count) picker.selected++;
-    } else if (key == '\n' || key == '\r') {
-        select_current_file();
-    } else if (key == 'r' || key == 'R') {
+    if (key == 'r' || key == 'R') {
         scan_directory();
         set_status("Reloaded");
+        need_rebuild = true;
+        handled = true;
     } else if (key == 27) {
         if (!is_root(picker.cwd)) {
             path_parent(picker.cwd, picker.cwd, sizeof(picker.cwd));
             scan_directory();
+            need_rebuild = true;
+            handled = true;
         } else {
             picker_return(1);
             return;
         }
     }
 
-    render();
+    if (!handled) {
+        handled = ui2_screen_handle_event(screen, event);
+    }
+
+    if (need_rebuild) {
+        rebuild_screen();
+    } else if (handled) {
+        ui2_screen_render(screen);
+    }
+
+    draw_overlays();
+    text_mode_flush();
 }
 
 void app_checkpoint(app_context_t *ctx) {
@@ -511,6 +538,10 @@ void app_checkpoint(app_context_t *ctx) {
 
 void app_close(app_context_t *ctx) {
     (void)ctx;
-    text_mode_clear(TEXT_COLOR_BLACK);
+    if (screen) {
+        ui2_screen_destroy(screen);
+        screen = NULL;
+        list_widget = NULL;
+    }
     os_log(TAG, "File Picker close");
 }

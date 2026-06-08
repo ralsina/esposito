@@ -24,7 +24,11 @@ typedef struct {
     uint8_t selected_fg;
     uint8_t selected_bg;
     uint8_t border_fg;
+    uint8_t unfocused_border_fg;
     int scrollbar_width;
+    bool border;
+    const uint8_t *row_attrs;
+    int row_attrs_count;
     ui2_list_selection_cb on_selection_changed;
     ui2_list_activate_cb on_item_activated;
     void *cb_data;
@@ -44,6 +48,8 @@ void ui2_list_set_callbacks(ui2_list_t *list,
 void ui2_list_set_colors(ui2_list_t *list, uint8_t normal_fg, uint8_t normal_bg,
                           uint8_t selected_fg, uint8_t selected_bg, uint8_t border_fg);
 void ui2_list_set_scrollbar_width(ui2_list_t *list, int width);
+void ui2_list_set_border(ui2_list_t *list, bool enabled);
+void ui2_list_set_row_attrs(ui2_list_t *list, const uint8_t *attrs, int count);
 
 #ifdef __cplusplus
 }
