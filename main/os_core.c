@@ -616,6 +616,9 @@ void os_event_loop(void) {
             bool is_alt_esc = (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
                                event.keyboard.key == 27 &&
                                (event.keyboard.modifiers & MODIFIER_ALT));
+            bool is_fn_esc  = (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
+                               event.keyboard.key == 27 &&
+                               (event.keyboard.modifiers & MODIFIER_FN));
 
             if (event.type == EVENT_KEYBOARD) {
                 ESP_LOGI(TAG, "KB: key=%d(0x%02x) raw=0x%02x mod=0x%02x pressed=%d wants=%d",
@@ -624,7 +627,7 @@ void os_event_loop(void) {
                          event.keyboard.pressed, wants_keyboard);
             }
 
-            if (wants_keyboard || is_ctrl_esc || is_alt_esc) {
+            if (wants_keyboard || is_ctrl_esc || is_alt_esc || is_fn_esc) {
                 event_queue_push(&event);
             }
         }

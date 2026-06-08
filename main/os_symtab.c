@@ -8,6 +8,9 @@
 #include "app_launcher.h"
 #include "terminal_mode.h"
 #include "text_mode.h"
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
 #include "graphics_mode.h"
 #include "fonts.h"
 #include "wifi.h"
@@ -22,6 +25,7 @@
 #include <time.h>
 #include <math.h>
 #include <ctype.h>
+#include <setjmp.h>
 #include "esp_timer.h"
 
 static const os_symtab_entry_t symtab[] = {
@@ -309,6 +313,64 @@ static const os_symtab_entry_t symtab[] = {
 
     // CPU frequency control
     {"os_set_cpu_freq_mhz",     (void*)os_set_cpu_freq_mhz},
+
+    // Lua needs these for error handling (pcall/xpcall via setjmp/longjmp)
+    {"setjmp",                  setjmp},
+    {"longjmp",                 longjmp},
+
+    // Lua C API (embedded in firmware, app allocates from app heap via custom allocator)
+    {"lua_newstate",            lua_newstate},
+    {"lua_close",               lua_close},
+    {"luaL_openlibs",           luaL_openlibs},
+    {"luaL_loadstring",         luaL_loadstring},
+    {"lua_pcallk",              lua_pcallk},
+    {"lua_tolstring",           lua_tolstring},
+    {"lua_settop",              lua_settop},
+    {"lua_gettop",              lua_gettop},
+    {"lua_pushinteger",         lua_pushinteger},
+    {"lua_pushnumber",          lua_pushnumber},
+    {"lua_pushstring",          lua_pushstring},
+    {"lua_getglobal",           lua_getglobal},
+    {"lua_setglobal",           lua_setglobal},
+    {"lua_error",               lua_error},
+    {"luaL_error",              luaL_error},
+    {"lua_getfield",            lua_getfield},
+    {"lua_setfield",            lua_setfield},
+    {"lua_next",                lua_next},
+    {"lua_pushnil",             lua_pushnil},
+    {"lua_pushboolean",         lua_pushboolean},
+    {"lua_toboolean",           lua_toboolean},
+    {"lua_type",                lua_type},
+    {"lua_typename",            lua_typename},
+    {"lua_isinteger",           lua_isinteger},
+    {"lua_isstring",            lua_isstring},
+    {"lua_tonumberx",           lua_tonumberx},
+    {"lua_tointegerx",          lua_tointegerx},
+    {"lua_pushvalue",           lua_pushvalue},
+    {"lua_pushlstring",         lua_pushlstring},
+    {"lua_pushcclosure",        lua_pushcclosure},
+    {"lua_createtable",         lua_createtable},
+    {"lua_setmetatable",        lua_setmetatable},
+    {"lua_getmetatable",        lua_getmetatable},
+    {"lua_rawlen",              lua_rawlen},
+    {"luaL_setfuncs",           luaL_setfuncs},
+    {"luaL_requiref",           luaL_requiref},
+    {"luaL_checkversion_",      luaL_checkversion_},
+    {"luaL_checklstring",       luaL_checklstring},
+    {"luaL_checkinteger",       luaL_checkinteger},
+    {"luaL_optinteger",         luaL_optinteger},
+    {"luaL_optlstring",         luaL_optlstring},
+    {"lua_rawseti",             lua_rawseti},
+    {"luaopen_base",            luaopen_base},
+    {"luaopen_coroutine",       luaopen_coroutine},
+    {"luaopen_table",           luaopen_table},
+    {"luaopen_io",              luaopen_io},
+    {"luaopen_os",              luaopen_os},
+    {"luaopen_string",          luaopen_string},
+    {"luaopen_utf8",            luaopen_utf8},
+    {"luaopen_math",            luaopen_math},
+    {"luaopen_debug",           luaopen_debug},
+    {"luaopen_package",         luaopen_package},
 
     {NULL, NULL}
 };

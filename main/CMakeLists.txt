@@ -6,6 +6,9 @@ else()
     set(BOARD_PATH "${CMAKE_CURRENT_LIST_DIR}/../boards/cyd_2usb")
 endif()
 
+# Collect Lua source files from libs/lua/
+file(GLOB LUA_SOURCES "../libs/lua/*.c")
+
 idf_component_register(
     SRCS "main.c"
         "app_heap.c"
@@ -29,9 +32,14 @@ idf_component_register(
         "graphics_mode.cpp"
         "wifi.cpp"
         "../fonts/fonts.cpp"
-    INCLUDE_DIRS "." ".." "../libs/ui" "../fonts" "${BOARD_PATH}" "../managed_components/LovyanGFX/src/lgfx/utility"
+        ${LUA_SOURCES}
+    INCLUDE_DIRS "." ".." "../libs/ui" "../fonts" "${BOARD_PATH}" "../managed_components/LovyanGFX/src/lgfx/utility" "../libs/lua"
     REQUIRES spi_flash driver esp_app_format esp_common esp_hw_support esp_system heap log pthread ${ARCH_DEPS} spiffs esp_driver_spi cxx esp_driver_i2c esp_driver_sdspi esp_driver_uart fatfs wear_levelling esp_wifi esp_netif nvs_flash esp_event lwip esp_http_client mbedtls app_update
 )
+
+# Lua configuration for ESP32 (32-bit integers and floats required)
+# LUA_32BITS is defined in libs/lua/luaconf.h
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-unused-function -Wno-sign-compare)
 
 # Get firmware version from git
 execute_process(
