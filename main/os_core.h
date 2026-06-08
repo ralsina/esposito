@@ -109,6 +109,7 @@ void os_log_global_heap_stats(const char *label);
 bool os_init_filesystem(void);
 void os_event_loop(void);
 bool os_load_app(const char *app_name);
+void os_exit(void);
 bool os_open_app_with_file(const char *app_name, const char *file_path);
 size_t os_consume_startup_file(char *out, size_t out_size);
 bool os_get_time_status(os_time_status_t *status);

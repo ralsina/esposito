@@ -58,6 +58,7 @@ static void on_quit_clicked(ui2_button_t *btn, void *data) {
 
 void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
+    text_mode_init();
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
 

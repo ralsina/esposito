@@ -9,10 +9,7 @@
 #include "os_core.h"
 #include "hardware.h"
 #include "text_mode.h"
-#include "ui.h"
-#include "ui_list.h"
-#include "ui_toolbar.h"
-#include "ui_button.h"
+#include "ui2.h"
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,8 +75,8 @@ typedef struct {
 } rom_list_t;
 
 static rom_list_t *rom_list_data = NULL;
-static ui_list_widget_t *rom_list_widget = NULL;
-static ui_toolbar_t *rom_toolbar = NULL;
+static ui2_screen_t *screen = NULL;
+static ui2_list_t *rom_list = NULL;
 
 // ROM read callback - 8-bit
 static uint8_t gb_rom_read_cb(struct gb_s *gb_ctx, const uint_fast32_t addr) {
@@ -370,10 +367,6 @@ static void free_rom_list_data(void) {
     rom_list_data = NULL;
 }
 
-static void cleanup_widgets(void) {
-    if (rom_list_widget) { ui_list_destroy(rom_list_widget); rom_list_widget = NULL; }
-    if (rom_toolbar) { ui_toolbar_destroy(rom_toolbar); rom_toolbar = NULL; }
-}
 
 static bool has_gb_extension(const char *name) {
     size_t len = strlen(name);
@@ -459,101 +452,117 @@ static rom_list_t *scan_roms(void) {
 }
 
 static void open_selected_rom(void);
-static void toolbar_up_click(ui_button_t *button, void *user_data);
-static void toolbar_down_click(ui_button_t *button, void *user_data);
-static void toolbar_open_click(ui_button_t *button, void *user_data);
-static void toolbar_exit_click(ui_button_t *button, void *user_data);
+static void on_up_click(ui2_button_t *button, void *user_data);
+static void on_down_click(ui2_button_t *button, void *user_data);
+static void on_open_click(ui2_button_t *button, void *user_data);
+static void on_exit_click(ui2_button_t *button, void *user_data);
 
-static void on_rom_selected(ui_list_widget_t *list, int item_index, void *user_data) {
-    (void)list;
+static void on_rom_activated(int item_index, void *user_data) {
     (void)user_data;
     if (rom_list_data) rom_list_data->selected = item_index;
     open_selected_rom();
 }
 
-static void on_rom_selection_changed(ui_list_widget_t *list, int new_selection, void *user_data) {
-    (void)list;
+static void on_rom_selection_changed(int new_selection, void *user_data) {
     (void)user_data;
     if (rom_list_data) rom_list_data->selected = new_selection;
 }
 
-static void toolbar_up_click(ui_button_t *button, void *user_data) {
+static void on_up_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
-    if (rom_list_widget) {
-        ui_list_handle_key(rom_list_widget, 'u');
-        if (rom_list_data) rom_list_data->selected = rom_list_widget->selected;
-        ui_list_draw(rom_list_widget);
-        text_mode_flush();
+    if (rom_list) {
+        int sel = ui2_list_get_selection(rom_list);
+        if (sel > 0) ui2_list_set_selection(rom_list, sel - 1);
     }
 }
 
-static void toolbar_down_click(ui_button_t *button, void *user_data) {
+static void on_down_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
-    if (rom_list_widget) {
-        ui_list_handle_key(rom_list_widget, 'd');
-        if (rom_list_data) rom_list_data->selected = rom_list_widget->selected;
-        ui_list_draw(rom_list_widget);
-        text_mode_flush();
+    if (rom_list) {
+        int sel = ui2_list_get_selection(rom_list);
+        if (sel < rom_list->count - 1) ui2_list_set_selection(rom_list, sel + 1);
     }
 }
 
-static void toolbar_open_click(ui_button_t *button, void *user_data) {
+static void on_open_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     open_selected_rom();
 }
 
-static void toolbar_exit_click(ui_button_t *button, void *user_data) {
+static void on_exit_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     os_load_app("launcher");
 }
 
-static void draw_rom_list(void) {
+static void destroy_screen(void) {
+    if (screen) {
+        ui2_screen_destroy(screen);
+        screen = NULL;
+        rom_list = NULL;
+    }
+}
+
+static void build_rom_list_screen(void) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();
     int list_height = rows - 5;
 
-    ui_clear();
-    cleanup_widgets();
-
-    rom_list_widget = ui_list_create(1, 1, cols - 2, list_height);
-    if (!rom_list_widget) {
-        os_log(TAG, "Failed to create ROM list widget");
-        return;
-    }
-    ui_list_set_title(rom_list_widget, "Select a ROM");
-    ui_list_set_colors(rom_list_widget, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
-                       TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
-    ui_list_set_border(rom_list_widget, true);
-    ui_list_set_scrollbar(rom_list_widget, true);
-    ui_list_set_callbacks(rom_list_widget, on_rom_selection_changed, on_rom_selected, NULL);
+    screen = ui2_screen_create();
+    ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
+    ui2_screen_set_root(screen, root);
 
     if (rom_list_data && rom_list_data->count > 0) {
-        ui_list_set_items(rom_list_widget, (const char **)rom_list_data->names,
-                          rom_list_data->count);
-        ui_list_set_selection(rom_list_widget, rom_list_data->selected);
-        ui_list_draw(rom_list_widget);
+        rom_list = ui2_list_create(1, 1, cols - 2, list_height);
+        if (!rom_list) {
+            os_log(TAG, "Failed to create ROM list widget");
+            return;
+        }
+        ui2_list_set_title(rom_list, "Select a ROM");
+        ui2_list_set_colors(rom_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                            TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+        ui2_list_set_items(rom_list, (const char **)rom_list_data->names,
+                           rom_list_data->count);
+        ui2_list_set_selection(rom_list, rom_list_data->selected);
+        ui2_list_set_callbacks(rom_list, on_rom_selection_changed, on_rom_activated, NULL);
+        ui2_layout_add(root, UI2_WIDGET(rom_list));
+        ui2_screen_focus_set(screen, UI2_WIDGET(rom_list));
     } else {
-        ui_label(2, 2, "No ROMs found", TEXT_COLOR_YELLOW);
-        ui_label(2, 4, "Place .gb files in", TEXT_COLOR_BRIGHT_BLACK);
-        ui_label(2, 5, ROMS_DIR, TEXT_COLOR_BRIGHT_BLACK);
+        ui2_label_t *no_roms = ui2_label_create(2, 2, "No ROMs found",
+                                                 TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+        ui2_label_t *dir_msg = ui2_label_create(2, 4, "Place .gb files in",
+                                                 TEXT_COLOR_BRIGHT_BLACK, TEXT_ATTR_NORMAL);
+        ui2_label_t *dir_path = ui2_label_create(2, 5, ROMS_DIR,
+                                                  TEXT_COLOR_BRIGHT_BLACK, TEXT_ATTR_NORMAL);
+        ui2_layout_add(root, UI2_WIDGET(no_roms));
+        ui2_layout_add(root, UI2_WIDGET(dir_msg));
+        ui2_layout_add(root, UI2_WIDGET(dir_path));
     }
 
-    int button_row = rows - 3;
-    const char *labels[] = {"Up", "Dn", "Open", "Exit"};
-    rom_toolbar = ui_toolbar_create(button_row, 3, 4, labels);
-    if (rom_toolbar) {
-        ui_button_set_callback(ui_toolbar_get_button(rom_toolbar, 0), toolbar_up_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(rom_toolbar, 1), toolbar_down_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(rom_toolbar, 2), toolbar_open_click, NULL);
-        ui_button_set_callback(ui_toolbar_get_button(rom_toolbar, 3), toolbar_exit_click, NULL);
-        ui_toolbar_draw(rom_toolbar);
-    } else {
-        os_log(TAG, "Failed to create toolbar");
-    }
+    ui2_layout_t *bar = ui2_layout_create(1, rows - 3, cols - 2, 3, UI2_LAYOUT_HORIZONTAL);
+    ui2_layout_set_gap(bar, 2);
+    ui2_layout_add(root, UI2_WIDGET(bar));
+
+    ui2_button_t *up = ui2_button_create(0, 0, 6, 3, "Up");
+    ui2_button_set_callback(up, on_up_click, NULL);
+    ui2_layout_add(bar, UI2_WIDGET(up));
+
+    ui2_button_t *dn = ui2_button_create(0, 0, 6, 3, "Dn");
+    ui2_button_set_callback(dn, on_down_click, NULL);
+    ui2_layout_add(bar, UI2_WIDGET(dn));
+
+    ui2_button_t *open = ui2_button_create(0, 0, 8, 3, "Open");
+    ui2_button_set_callback(open, on_open_click, NULL);
+    ui2_layout_add(bar, UI2_WIDGET(open));
+
+    ui2_button_t *exit = ui2_button_create(0, 0, 8, 3, "Exit");
+    ui2_button_set_callback(exit, on_exit_click, NULL);
+    ui2_layout_add(bar, UI2_WIDGET(exit));
+
+    ui2_screen_render(screen);
 }
 
 static void show_rom_list(void) {
@@ -563,15 +572,17 @@ static void show_rom_list(void) {
     free_rom_list_data();
     rom_list_data = scan_roms();
     text_mode_init();
-    draw_rom_list();
+    destroy_screen();
+    build_rom_list_screen();
 }
 
 static bool start_emulator(const char *path) {
     strncpy(rom_path, path, sizeof(rom_path) - 1);
     rom_path[sizeof(rom_path) - 1] = '\0';
 
-    cleanup_widgets();
+    destroy_screen();
     free_rom_list_data();
+    text_mode_init();
 
     rom_data = flash_rom_load(rom_path, &rom_size);
     if (!rom_data) {
@@ -843,35 +854,24 @@ void app_event(app_context_t *ctx, event_t *event) {
     }
 
     if (app_mode == MODE_ROM_LIST) {
-        if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
-            if (rom_list_widget && ui_list_handle_key(rom_list_widget, event->keyboard.key)) {
-                if (app_mode == MODE_ROM_LIST && rom_list_widget) {
-                    if (rom_list_data) rom_list_data->selected = rom_list_widget->selected;
-                    ui_list_draw(rom_list_widget);
-                    text_mode_flush();
+        if (event->type == EVENT_KEYBOARD) {
+            if (event->keyboard.pressed) {
+                if (ui2_screen_handle_event(screen, event)) {
+                    ui2_screen_render(screen);
+                    return;
                 }
-                return;
-            }
-
-            if (event->keyboard.key == 27) {
-                os_load_app("launcher");
+                if (event->keyboard.key == 27) {
+                    os_load_app("launcher");
+                }
             }
             return;
         }
 
         if (event->type == EVENT_TOUCH) {
-            if (rom_toolbar && ui_toolbar_handle_touch(rom_toolbar, event)) {
-                text_mode_flush();
-                return;
+            if (ui2_screen_handle_event(screen, event)) {
+                ui2_screen_render(screen);
             }
-            if (rom_list_widget && ui_list_handle_touch(rom_list_widget, event)) {
-                if (app_mode == MODE_ROM_LIST && rom_list_widget) {
-                    if (rom_list_data) rom_list_data->selected = rom_list_widget->selected;
-                    ui_list_draw(rom_list_widget);
-                    text_mode_flush();
-                }
-                return;
-            }
+            return;
         }
     }
 }
@@ -881,7 +881,7 @@ void app_checkpoint(app_context_t *ctx) {
 }
 
 void app_close(app_context_t *ctx) {
-    cleanup_widgets();
+    destroy_screen();
     free_rom_list_data();
     cleanup_emulator();
     display_clear(0x0000);

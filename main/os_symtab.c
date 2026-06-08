@@ -70,6 +70,7 @@ static const os_symtab_entry_t symtab[] = {
     {"keyboard_get_backlight",       keyboard_get_backlight},
     {"os_get_board_info",            os_get_board_info},
     {"os_load_app",                  os_load_app},
+    {"os_exit",                      os_exit},
     {"os_process_one_event_iteration", os_process_one_event_iteration},
     {"os_open_app_with_file",   os_open_app_with_file},
     {"os_consume_startup_file", os_consume_startup_file},

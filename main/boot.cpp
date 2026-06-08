@@ -358,7 +358,12 @@ void boot_sequence(void) {
     ESP_LOGI(TAG, "");
 
     boot_status.stage = BOOT_STAGE_COMPLETE;
-    boot_display_progress(BOOT_STAGE_COMPLETE, true, "System ready");
+    // Only update display if no app is running (otherwise app's own rendering is already on screen)
+    if (os_get_current_app() == NULL) {
+        boot_display_progress(BOOT_STAGE_COMPLETE, true, "System ready");
+    } else {
+        ESP_LOGI(TAG, "  %s", boot_status.stage_name);
+    }
 
     // Show available apps (if any)
     int app_count = app_loader_get_count();

@@ -188,6 +188,10 @@ void os_unload_app(void) {
     serial_ring_clear();
 }
 
+void os_exit(void) {
+    os_load_app("launcher");
+}
+
 bool os_load_app(const char *app_name) {
     if (in_app_callback) {
         if (!app_name || !app_name[0]) {

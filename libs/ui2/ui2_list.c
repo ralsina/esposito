@@ -21,12 +21,12 @@ static void ui2_list_draw(ui2_widget_t *widget) {
     ui2_list_t *list = (ui2_list_t *)widget;
     if (!widget->visible || !list->items || list->count <= 0) return;
 
-    int content_x = widget->x;
     int content_y = widget->y;
-    int content_width = widget->width;
+    int scrollbar_width = (list->count > list->visible_rows) ? list->scrollbar_width : 0;
+    int content_width = widget->width - scrollbar_width;
 
     if (list->title) {
-        int title_x = widget->x + (widget->width - (int)strlen(list->title)) / 2;
+        int title_x = widget->x + (content_width - (int)strlen(list->title)) / 2;
         if (title_x < widget->x) title_x = widget->x;
         text_mode_print_at_attr(title_x, content_y, list->title,
                                 TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
@@ -61,6 +61,34 @@ static void ui2_list_draw(ui2_widget_t *widget) {
                 text_mode_print_at_attr_bg(widget->x, y, "  ", fg, bg, TEXT_ATTR_NORMAL);
 
             text_mode_print_at_attr_bg(widget->x + 2, y, truncated, fg, bg, TEXT_ATTR_NORMAL);
+        }
+    }
+
+    if (scrollbar_width > 0) {
+        int sb_x = widget->x + widget->width - 1;
+        int sb_rows = list->visible_rows;
+
+        int thumb_size = (sb_rows * sb_rows) / list->count;
+        if (thumb_size < 1) thumb_size = 1;
+        if (thumb_size > sb_rows) thumb_size = sb_rows;
+
+        int max_offset = list->count - list->visible_rows;
+        int thumb_start = 0;
+        if (max_offset > 0) {
+            thumb_start = (list->scroll_offset * (sb_rows - thumb_size)) / max_offset;
+        }
+        if (thumb_start > sb_rows - thumb_size)
+            thumb_start = sb_rows - thumb_size;
+
+        for (int i = 0; i < sb_rows; i++) {
+            int y = content_y + i;
+            if (i >= thumb_start && i < thumb_start + thumb_size) {
+                text_mode_print_at_attr_bg(sb_x, y, " ",
+                    list->selected_fg, list->selected_bg, TEXT_ATTR_BOLD);
+            } else {
+                text_mode_print_at_attr_bg(sb_x, y, " ",
+                    list->border_fg, list->normal_bg, TEXT_ATTR_BORDER_LEFT);
+            }
         }
     }
 }
@@ -107,6 +135,38 @@ static bool ui2_list_handle_touch(ui2_widget_t *widget, int col, int row, bool p
 
     int content_y = widget->y;
     if (list->title) content_y++;
+
+    int scrollbar_width = (list->count > list->visible_rows) ? list->scrollbar_width : 0;
+
+    if (scrollbar_width > 0 && col >= widget->x + widget->width - scrollbar_width) {
+        if (row >= content_y && row < content_y + list->visible_rows) {
+            int max_offset = list->count - list->visible_rows;
+            if (max_offset > 0) {
+                int midpoint = content_y + list->visible_rows / 2;
+                int new_offset = list->scroll_offset;
+                if (row < midpoint) {
+                    new_offset -= list->visible_rows;
+                    if (new_offset < 0) new_offset = 0;
+                } else {
+                    new_offset += list->visible_rows;
+                    if (new_offset > max_offset) new_offset = max_offset;
+                }
+                if (new_offset != list->scroll_offset) {
+                    int old_sel = list->selected;
+                    list->scroll_offset = new_offset;
+                    if (list->selected < list->scroll_offset)
+                        list->selected = list->scroll_offset;
+                    if (list->selected >= list->scroll_offset + list->visible_rows)
+                        list->selected = list->scroll_offset + list->visible_rows - 1;
+                    if (list->selected >= list->count) list->selected = list->count - 1;
+                    if (old_sel != list->selected && list->on_selection_changed)
+                        list->on_selection_changed(list->selected, list->cb_data);
+                }
+            }
+            return true;
+        }
+        return false;
+    }
 
     if (row < content_y) return false;
 
@@ -172,6 +232,7 @@ ui2_list_t *ui2_list_create(int x, int y, int width, int height) {
     list->selected_fg = TEXT_COLOR_BRIGHT_WHITE;
     list->selected_bg = TEXT_COLOR_GREEN;
     list->border_fg = TEXT_COLOR_CYAN;
+    list->scrollbar_width = 1;
     list->on_selection_changed = NULL;
     list->on_item_activated = NULL;
     list->cb_data = NULL;
@@ -238,4 +299,9 @@ void ui2_list_set_colors(ui2_list_t *list, uint8_t normal_fg, uint8_t normal_bg,
     list->selected_fg = selected_fg;
     list->selected_bg = selected_bg;
     list->border_fg = border_fg;
+}
+
+void ui2_list_set_scrollbar_width(ui2_list_t *list, int width) {
+    if (!list) return;
+    list->scrollbar_width = (width > 0) ? width : 0;
 }

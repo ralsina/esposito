@@ -93,3 +93,4 @@ site/assets/firmware.bin
 site/assets/version.txt
 .antigravitycli/
 F2.md
+lua-5.4.7/
