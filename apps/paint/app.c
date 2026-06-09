@@ -12,7 +12,7 @@
 
 static paint_state_t state;
 
-static void go_to_launcher(void) { os_load_app("launcher"); }
+static void go_to_launcher(void) { os_exit(); }
 
 void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_TOUCH | EVENT_TOUCH_CONTINUOUS;

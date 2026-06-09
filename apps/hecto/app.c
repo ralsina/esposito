@@ -659,8 +659,7 @@ static void handle_keyboard_event(event_t *event) {
                 return;
             case 'q':
             case 'Q':
-                // Quit to launcher
-                os_load_app("launcher");
+                os_exit();
                 return;
             case 'h':
             case 'H':

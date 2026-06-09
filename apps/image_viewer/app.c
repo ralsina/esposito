@@ -162,7 +162,7 @@ void app_event(app_context_t *ctx, event_t *event) {
     }
 
     if (event->keyboard.key == 27 || event->keyboard.key == 'q' || event->keyboard.key == 'Q') {
-        os_load_app("launcher");
+        os_exit();
         return;
     }
 

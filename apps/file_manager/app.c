@@ -778,9 +778,9 @@ static void active_up_or_exit(void) {
         render();
         return;
     }
-
-    os_load_app("launcher");
+    os_exit();
 }
+
 
 static void save_state(void) {
     if (!config_bind_app("file_manager")) return;

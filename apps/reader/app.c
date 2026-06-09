@@ -6,6 +6,7 @@
 #include "reader_events.h"
 #include "reader_startup.h"
 #include "reader_view.h"
+#include "reader_render_pipeline.h"
 #include "serial_rx.h"
 #include "hardware.h"
 #include <string.h>
@@ -14,11 +15,11 @@ static reader_state_t state;
 static int bold_pending = 0;
 static int underline_pending = 0;
 
-static void go_to_launcher(void) { os_load_app("launcher"); }
+static void go_to_launcher(void) { os_exit(); }
 
 void app_init(app_context_t *ctx) {
-    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH | EVENT_SERIAL;
-    ctx->timer_interval_ms = 0;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH | EVENT_SERIAL | EVENT_TIMER;
+    ctx->timer_interval_ms = 100;
 
     memset(&state, 0, sizeof(state));
     state.screen = ui2_screen_create();
@@ -36,14 +37,25 @@ void app_event(app_context_t *ctx, event_t *event) {
         }
         return;
     }
+
+    if (event->type == EVENT_TIMER) {
+        if (state.mode == MODE_READING && state.pipeline.task) {
+            render_pipeline_consume_done(&state.pipeline);
+        }
+        return;
+    }
+
     reader_events_handle_event(&state, event, &bold_pending, &underline_pending, go_to_launcher);
 }
 
 void app_checkpoint(app_context_t *ctx) {
-    reader_save_current_book_progress(&state);
+    reader_save_current_book_progress(&state, true);
 }
 
 void app_close(app_context_t *ctx) {
+    render_pipeline_shutdown(&state.pipeline);
+    state.lines = NULL;
+    state.line_buf_size = 0;
     reader_close_current_file(&state);
     reader_free_file_list(&state);
     reader_free_toc_titles(&state);

@@ -53,7 +53,7 @@ static void on_fruit_activated(int index, void *data) {
 static void on_quit_clicked(ui2_button_t *btn, void *data) {
     (void)btn;
     (void)data;
-    os_load_app("launcher");
+    os_exit();
 }
 
 void app_init(app_context_t *ctx) {

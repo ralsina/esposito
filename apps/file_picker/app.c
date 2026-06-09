@@ -304,12 +304,12 @@ static void scan_directory(void) {
 static void picker_return(int canceled) {
     switch_pending = true;
     if (canceled && picker.cancel_to_launcher) {
-        os_load_app("launcher");
+        os_exit();
         return;
     }
 
     if (!picker.return_app[0] || !os_load_app(picker.return_app)) {
-        os_load_app("launcher");
+        os_exit();
     }
 }
 

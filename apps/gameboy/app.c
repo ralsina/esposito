@@ -495,7 +495,7 @@ static void on_open_click(ui2_button_t *button, void *user_data) {
 static void on_exit_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
-    os_load_app("launcher");
+    os_exit();
 }
 
 static void destroy_screen(void) {
@@ -861,7 +861,7 @@ void app_event(app_context_t *ctx, event_t *event) {
                     return;
                 }
                 if (event->keyboard.key == 27) {
-                    os_load_app("launcher");
+                    os_exit();
                 }
             }
             return;

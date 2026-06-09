@@ -3,6 +3,7 @@
 #include "app_config.h"
 #include "reader_core.h"
 #include "reader_nav.h"
+#include "reader_render_pipeline.h"
 #include "reader_toc.h"
 #include "reader_view.h"
 #include "text_mode.h"
@@ -33,6 +34,10 @@ static void handle_osk_result(reader_state_t *state, int *bold_pending, int *und
 }
 
 static void exit_to_file_list(reader_state_t *state) {
+    render_pipeline_shutdown(&state->pipeline);
+    state->lines = NULL;
+    state->line_buf_size = 0;
+
     char prev_file[MAX_PATH];
     strncpy(prev_file, state->current_file, MAX_PATH);
     prev_file[MAX_PATH - 1] = '\0';
@@ -217,7 +222,7 @@ void on_toc_jump_click(ui2_button_t *button, void *user_data) {
     state->page_cache.current = 0;
     state->page_number = entry->page_number;
     reader_load_current_page(state, &bp, &up);
-    reader_save_current_book_progress(state);
+    reader_save_current_book_progress(state, false);
 }
 
 void on_toc_down_click(ui2_button_t *button, void *user_data) {
@@ -310,6 +315,17 @@ void reader_events_enter_reading_mode(reader_state_t *state, int *bold_pending, 
         state->content_rows = rows - 4;
     } else {
         state->content_rows = rows - 2;
+    }
+
+    // Init render pipeline with 3 dynamic buffers
+    if (!state->pipeline.task) {
+        int lb = state->screen_width + LINE_BUF_MARGIN;
+        render_pipeline_init(&state->pipeline, state->current_file, state->file, state->screen_width, state->content_rows, lb);
+    }
+    if (state->pipeline.task) {
+        state->lines = state->pipeline.buffers[state->pipeline.display_buffer].lines;
+        state->line_buf_size = state->screen_width + LINE_BUF_MARGIN;
+        render_pipeline_ensure_buffers(&state->pipeline, state->screen_width, state->content_rows);
     }
 
     if (!reader_alloc_lines(state, state->screen_width, state->content_rows)) {

@@ -1,11 +1,13 @@
 #include "reader_nav.h"
 
 #include "reader_core.h"
+#include "reader_render_pipeline.h"
 #include "text_mode.h"
 #include "ui2.h"
 #include "ui_osk.h"
 #include "os_core.h"
 #include "hardware.h"
+#include <esp_timer.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,6 +71,39 @@ static int scan_one_page(FILE *file, rendered_line_t *lines, int max_lines, int 
     return renderer.line_count;
 }
 
+// Find a pipeline buffer that is not the display buffer
+static int find_free_buffer(reader_render_pipeline_t *p) {
+    for (int i = 0; i < NUM_RENDER_BUFFERS; i++) {
+        if (i != p->display_buffer) return i;
+    }
+    return 0;
+}
+
+// After displaying a page, dispatch a pre-render for the next page forward
+static void dispatch_next_pre_render(reader_state_t *state) {
+    reader_render_pipeline_t *p = &state->pipeline;
+    if (!p->task) return;
+
+    // Clear any pending done signals
+    render_pipeline_consume_done(p);
+
+    int next_page = state->page_number + 1;
+    long next_offset = -1;
+
+    // Get the next page offset from page cache
+    if (state->page_cache.current + 1 < state->page_cache.count) {
+        next_offset = state->page_cache.entries[state->page_cache.current + 1].file_pos;
+    }
+
+    if (next_offset <= 0 || next_offset == state->page_cache.entries[state->page_cache.current].file_pos) {
+        return;
+    }
+
+    int buf = find_free_buffer(p);
+    p->buffers[buf].page_number = next_page;
+    render_pipeline_dispatch(p, buf, next_offset);
+}
+
 int reader_compute_page_number(reader_state_t *state) {
     uint32_t target_offset = state->page_cache.entries[state->page_cache.current].file_pos;
     if (target_offset == 0 || !state->file) {
@@ -88,21 +123,36 @@ int reader_compute_page_number(reader_state_t *state) {
         }
     }
 
+    if (state->pipeline.file_mutex) {
+        os_semaphore_take(state->pipeline.file_mutex, -1);
+    }
     fseek(state->file, start_offset, SEEK_SET);
     int page = start_page;
     while (1) {
         long current_pos = ftell(state->file);
         if (current_pos >= (long)target_offset) {
+            if (state->pipeline.file_mutex) {
+                os_semaphore_give(state->pipeline.file_mutex);
+            }
             return page;
         }
         long next_pos;
         if (scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, state->line_buf_size, &next_pos) == 0) {
+            if (state->pipeline.file_mutex) {
+                os_semaphore_give(state->pipeline.file_mutex);
+            }
             return page;
         }
         if (next_pos <= current_pos) {
+            if (state->pipeline.file_mutex) {
+                os_semaphore_give(state->pipeline.file_mutex);
+            }
             return page;
         }
         if ((long)target_offset < next_pos) {
+            if (state->pipeline.file_mutex) {
+                os_semaphore_give(state->pipeline.file_mutex);
+            }
             return page;
         }
         fseek(state->file, next_pos, SEEK_SET);
@@ -115,6 +165,9 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
         return;
     }
 
+    if (state->pipeline.file_mutex) {
+        os_semaphore_take(state->pipeline.file_mutex, -1);
+    }
     fseek(state->file, 0, SEEK_SET);
 
     uint32_t page_starts[PAGE_CACHE_ENTRIES];
@@ -197,17 +250,60 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
     }
 
     state->page_number = actual_page;
+    if (state->pipeline.file_mutex) {
+        os_semaphore_give(state->pipeline.file_mutex);
+    }
     reader_load_current_page(state, bold_pending, underline_pending);
     // Save progress after page change
-    reader_save_current_book_progress(state);
+    reader_save_current_book_progress(state, false);
 }
 
 void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underline_pending) {
-    // Check if cache is still valid (dimensions haven't changed)
+    reader_render_pipeline_t *p = &state->pipeline;
+    int next_page = state->page_number + 1;
+
+    // Try pre-rendered buffer first
+    if (p->task) {
+        for (int i = 0; i < NUM_RENDER_BUFFERS; i++) {
+            if (i != p->display_buffer && p->buffers[i].page_number == next_page && p->buffers[i].line_count > 0) {
+                // Buffer found — drain any pending done signal first
+                render_pipeline_consume_done(p);
+
+                p->display_buffer = i;
+                state->lines = p->buffers[i].lines;
+                state->line_count = p->buffers[i].line_count;
+                state->page_number = next_page;
+
+                // Update page cache so sync fallbacks and pre-render dispatch work
+                page_cache_init(&state->page_cache);
+                state->page_cache.entries[0].file_pos = p->buffers[i].file_pos;
+                state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
+                state->page_cache.entries[0].screen_width = state->screen_width;
+                state->page_cache.entries[0].content_rows = state->content_rows;
+                state->page_cache.count = 1;
+                state->page_cache.current = 0;
+
+                if (p->buffers[i].next_file_pos > 0) {
+                    state->page_cache.entries[1].file_pos = p->buffers[i].next_file_pos;
+                    state->page_cache.entries[1].state = RENDER_STATE_DEFAULT;
+                    state->page_cache.entries[1].screen_width = state->screen_width;
+                    state->page_cache.entries[1].content_rows = state->content_rows;
+                    state->page_cache.count = 2;
+                }
+
+                reader_save_current_book_progress(state, false);
+                dispatch_next_pre_render(state);
+                return;
+            }
+        }
+    }
+
+    // Fallback: synchronous render (existing logic)
+    int64_t t0 = esp_timer_get_time();
     if (!page_cache_is_valid(&state->page_cache, state->screen_width, state->content_rows)) {
-        // Cache invalid - rebuild from current position
+        os_semaphore_take(state->pipeline.file_mutex, -1);
         uint32_t current_offset = ftell(state->file);
-        printf("NAV_NEXT: Cache invalid, rebuilding from offset %u\n", current_offset);
+        os_semaphore_give(state->pipeline.file_mutex);
         page_cache_init(&state->page_cache);
         state->page_cache.entries[0].file_pos = current_offset;
         state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
@@ -218,28 +314,62 @@ void reader_nav_next_page(reader_state_t *state, int *bold_pending, int *underli
     }
 
     if (page_cache_can_next(&state->page_cache)) {
-        printf("NAV_NEXT: Using cached page %d\n", state->page_cache.current + 1);
         page_cache_next(&state->page_cache);
     } else {
-        // No cached next page. Render the current page to compute the next
-        // page position (reader_load_current_page with the ring buffer fix
-        // will store it properly).
-        printf("NAV_NEXT: No cached next page, computing by rendering current page\n");
         reader_load_current_page(state, bold_pending, underline_pending);
         page_cache_next(&state->page_cache);
     }
 
     state->page_number++;
-    printf("NAV_NEXT: Loading page %d from offset %ld\n", state->page_number, state->page_cache.entries[state->page_cache.current].file_pos);
     reader_load_current_page(state, bold_pending, underline_pending);
-    // Save progress after page change
-    reader_save_current_book_progress(state);
+    reader_save_current_book_progress(state, false);
+
+    dispatch_next_pre_render(state);
+    printf("NAV: sync next page %d took %lld us\n", state->page_number, esp_timer_get_time() - t0);
 }
 
 void reader_nav_prev_page(reader_state_t *state, int *bold_pending, int *underline_pending) {
-    // Check if cache is still valid (dimensions haven't changed)
+    reader_render_pipeline_t *p = &state->pipeline;
+    int prev_page = state->page_number - 1;
+
+    // Try pre-rendered buffer first
+    if (p->task && prev_page >= 1) {
+        for (int i = 0; i < NUM_RENDER_BUFFERS; i++) {
+            if (i != p->display_buffer && p->buffers[i].page_number == prev_page && p->buffers[i].line_count > 0) {
+                int64_t t0 = esp_timer_get_time();
+                render_pipeline_consume_done(p);
+
+                p->display_buffer = i;
+                state->lines = p->buffers[i].lines;
+                state->line_count = p->buffers[i].line_count;
+                state->page_number = prev_page;
+
+                page_cache_init(&state->page_cache);
+                state->page_cache.entries[0].file_pos = p->buffers[i].file_pos;
+                state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
+                state->page_cache.entries[0].screen_width = state->screen_width;
+                state->page_cache.entries[0].content_rows = state->content_rows;
+                state->page_cache.count = 1;
+                state->page_cache.current = 0;
+
+                if (p->buffers[i].next_file_pos > 0) {
+                    state->page_cache.entries[1].file_pos = p->buffers[i].next_file_pos;
+                    state->page_cache.entries[1].state = RENDER_STATE_DEFAULT;
+                    state->page_cache.entries[1].screen_width = state->screen_width;
+                    state->page_cache.entries[1].content_rows = state->content_rows;
+                    state->page_cache.count = 2;
+                }
+
+                reader_save_current_book_progress(state, false);
+                dispatch_next_pre_render(state);
+                printf("NAV: fast prev page %d took %lld us\n", prev_page, esp_timer_get_time() - t0);
+                return;
+            }
+        }
+    }
+
+    // Fallback: synchronous render
     if (!page_cache_is_valid(&state->page_cache, state->screen_width, state->content_rows)) {
-        // Cache invalid - need to rebuild by going to specific page
         if (state->page_number > 1) {
             int cols = text_mode_get_cols();
             int rows = text_mode_get_rows();
@@ -258,8 +388,8 @@ void reader_nav_prev_page(reader_state_t *state, int *bold_pending, int *underli
         page_cache_prev(&state->page_cache);
         state->page_number--;
         reader_load_current_page(state, bold_pending, underline_pending);
-        // Save progress after page change
-        reader_save_current_book_progress(state);
+        reader_save_current_book_progress(state, false);
+        dispatch_next_pre_render(state);
         return;
     }
 
@@ -399,6 +529,9 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
     uint32_t start_offset = state->page_cache.entries[state->page_cache.current].file_pos;
     int start_page = state->page_number;
 
+    if (state->pipeline.file_mutex) {
+        os_semaphore_take(state->pipeline.file_mutex, -1);
+    }
     // Start from the NEXT page to avoid finding the same result again
     fseek(state->file, start_offset, SEEK_SET);
     // Skip the current page by advancing past it
@@ -419,6 +552,9 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
 
         state->line_count = line_count;
         if (page_contains_query(state, query)) {
+            if (state->pipeline.file_mutex) {
+                os_semaphore_give(state->pipeline.file_mutex);
+            }
             page_cache_init(&state->page_cache);
             state->page_cache.entries[0].file_pos = page_offset;
             state->page_cache.entries[0].state = RENDER_STATE_DEFAULT;
@@ -432,11 +568,19 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
             return;
         }
 
-        if (next_pos <= page_offset) break;
+        if (next_pos <= page_offset) {
+            if (state->pipeline.file_mutex) {
+                os_semaphore_give(state->pipeline.file_mutex);
+            }
+            break;
+        }
         fseek(state->file, next_pos, SEEK_SET);
         page++;
     }
 
+    if (state->pipeline.file_mutex) {
+        os_semaphore_give(state->pipeline.file_mutex);
+    }
     fseek(state->file, start_offset, SEEK_SET);
     state->page_number = start_page;
     reader_load_current_page(state, bold_pending, underline_pending);

@@ -229,6 +229,92 @@ static void update_cell(int x, int y) {
     }
 }
 
+static void update_cell_range(int x, int y, int count) {
+    if (graphics_mode_is_active()) return;
+    if (!grid || count < 1 || x < 0 || x + count > grid_cols || y < 0 || y >= grid_rows) return;
+
+    int start_idx = y * grid_cols + x;
+    text_cell_t *first = &grid[start_idx];
+
+    uint16_t fg = color_palette[first->color & 0x0F];
+    uint16_t bg = color_palette[first->bg_color & 0x0F];
+    uint8_t attr = first->attributes;
+
+    if (attr & TEXT_ATTR_INVERSE) {
+        uint16_t tmp = fg; fg = bg; bg = tmp;
+    }
+
+    font_variant_t needed = FONT_VARIANT_REGULAR;
+    if (attr & TEXT_ATTR_BOLD && attr & TEXT_ATTR_ITALIC) {
+        needed = FONT_VARIANT_BOLDITALIC;
+    } else if (attr & TEXT_ATTR_BOLD) {
+        needed = FONT_VARIANT_BOLD;
+    } else if (attr & TEXT_ATTR_ITALIC) {
+        needed = FONT_VARIANT_ITALIC;
+    }
+    if (needed != current_variant) {
+        if (display_load_font(current_font, needed)) {
+            current_variant = needed;
+        }
+    }
+
+    int px, py;
+    grid_to_pixel(x, y, &px, &py);
+
+    // Build text string and check for symbol chars
+    char buf[256];
+    int buf_len = 0;
+    bool has_symbols = false;
+    for (int i = 0; i < count; i++) {
+        text_cell_t *cell = &grid[start_idx + i];
+        if (cell->attributes & TEXT_ATTR_SYMBOL) {
+            has_symbols = true;
+            break;
+        }
+        uint16_t cp = cell->character;
+        if (cp < 0x80) {
+            buf[buf_len++] = (char)cp;
+        } else if (cp < 0x800) {
+            buf[buf_len++] = (char)(0xC0 | (cp >> 6));
+            buf[buf_len++] = (char)(0x80 | (cp & 0x3F));
+        } else {
+            buf[buf_len++] = (char)(0xE0 | (cp >> 12));
+            buf[buf_len++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+            buf[buf_len++] = (char)(0x80 | (cp & 0x3F));
+        }
+    }
+    buf[buf_len] = '\0';
+
+    if (has_symbols) {
+        for (int i = 0; i < count; i++) {
+            update_cell(x + i, y);
+        }
+        return;
+    }
+
+    // Draw background for the whole run
+    display_fill_rect(px, py, font_width * count, font_height, bg);
+
+    // Draw text (transparent so it doesn't overwrite our fill_rect background)
+    if (buf_len > 0) {
+        display_draw_text_transparent(px, py, buf, fg);
+    }
+
+    // Draw borders (single rect per border type for the run)
+    if (attr & TEXT_ATTR_UNDERLINE) {
+        display_fill_rect(px, py + font_height - 1, font_width * count, 1, fg);
+    }
+    if (attr & TEXT_ATTR_BORDER_TOP) {
+        display_fill_rect(px, py, font_width * count, 1, fg);
+    }
+    if (attr & TEXT_ATTR_BORDER_LEFT) {
+        display_fill_rect(px, py, 1, font_height, fg);
+    }
+    if (attr & TEXT_ATTR_BORDER_RIGHT) {
+        display_fill_rect(px + font_width * count - 1, py, 1, font_height, fg);
+    }
+}
+
 void text_mode_set_palette(const uint16_t colors[16]) {
     if (!colors) return;
     memcpy(color_palette, colors, sizeof(color_palette));
@@ -565,6 +651,9 @@ static void text_mode_write_cells(int x, int y, const char *str, uint8_t fg_colo
     const char *p = str;
     const char *end = str + len;
 
+    int run_start = -1;
+    int run_len = 0;
+
     while (p < end && cx < max_x) {
         uint16_t cp;
         int bytes = utf8_decode(p, &cp);
@@ -581,6 +670,15 @@ static void text_mode_write_cells(int x, int y, const char *str, uint8_t fg_colo
             cell->color == fg_color &&
             cell->bg_color == bg &&
             cell->attributes == attr) {
+            // Already correct - flush accumulated run and skip
+            if (run_len > 0) {
+                update_cell_range(run_start, y, run_len);
+                refresh_symbol_cells_around(run_start, y);
+                if (run_len > 1) {
+                    refresh_symbol_cells_around(run_start + run_len - 1, y);
+                }
+                run_len = 0;
+            }
             cx++;
             p += bytes;
             continue;
@@ -590,10 +688,40 @@ static void text_mode_write_cells(int x, int y, const char *str, uint8_t fg_colo
         cell->color = fg_color;
         cell->bg_color = bg;
         cell->attributes = attr;
-        update_cell(cx, y);
-        refresh_symbol_cells_around(cx, y);
+
+        if (attr & TEXT_ATTR_SYMBOL) {
+            // Symbol chars need per-cell rendering, flush any accumulated run
+            if (run_len > 0) {
+                update_cell_range(run_start, y, run_len);
+                refresh_symbol_cells_around(run_start, y);
+                if (run_len > 1) {
+                    refresh_symbol_cells_around(run_start + run_len - 1, y);
+                }
+                run_len = 0;
+            }
+            update_cell(cx, y);
+            refresh_symbol_cells_around(cx, y);
+        } else {
+            if (run_len == 0) {
+                run_start = cx;
+                run_len = 1;
+            } else {
+                run_len++;
+            }
+            refresh_symbol_cells_around(cx, y);
+        }
+
         cx++;
         p += bytes;
+    }
+
+    // Flush remaining run
+    if (run_len > 0) {
+        update_cell_range(run_start, y, run_len);
+        refresh_symbol_cells_around(run_start, y);
+        if (run_len > 1) {
+            refresh_symbol_cells_around(run_start + run_len - 1, y);
+        }
     }
 
     if (cx > x) {

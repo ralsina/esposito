@@ -194,7 +194,7 @@ void app_event(app_context_t *ctx, event_t *event) {
                 input[0] = '\0';
                 input_pos = 0;
                 if (strcmp(copy, "exit") == 0 || strcmp(copy, "quit") == 0) {
-                    os_load_app("launcher");
+                    os_exit();
                     return;
                 }
                 eval_line(copy);

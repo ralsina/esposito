@@ -2,7 +2,10 @@
 
 #include "app_config.h"
 #include "reader_toc.h"
+#include "reader_render_pipeline.h"
 #include <text_mode.h>
+#include <os_core.h>
+#include <esp_timer.h>
 
 #include <dirent.h>
 #include <stdint.h>
@@ -36,18 +39,25 @@ void reader_build_book_key(char *out, size_t out_size, const char *prefix, const
     snprintf(out, out_size, "%s/%s", prefix, safe_path);
 }
 
-void reader_save_current_book_progress(reader_state_t *state) {
+void reader_save_current_book_progress(reader_state_t *state, bool force) {
     if (!state->file || !state->current_file[0] || state->page_cache.current < 0) {
         return;
+    }
+
+    if (!force) {
+        int64_t now = esp_timer_get_time();
+        if (now - state->last_save_us < 5000000) {
+            return;
+        }
+        state->last_save_us = now;
     }
 
     config_bind_app("reader");
 
     char offset_key[320];
-    int offset = (int)state->page_cache.entries[state->page_cache.current].file_pos;
     reader_build_book_key(offset_key, sizeof(offset_key), KEY_BOOK_OFFSET_PREFIX, state->current_file);
 
-    config_set_int(offset_key, offset);
+    config_set_int(offset_key, (int)state->page_cache.entries[state->page_cache.current].file_pos);
     config_set_string(KEY_LAST_FILE, state->current_file);
 }
 
@@ -173,7 +183,7 @@ int reader_find_file_index_by_path(const reader_state_t *state, const char *path
 
 void reader_close_current_file(reader_state_t *state) {
     if (state->file) {
-        reader_save_current_book_progress(state);
+        reader_save_current_book_progress(state, true);
         fclose(state->file);
         state->file = NULL;
     }
@@ -249,19 +259,34 @@ int reader_load_current_page(reader_state_t *state, int *bold_pending, int *unde
         printf("LOAD_PAGE: Starting fresh\n");
     }
 
+    if (state->pipeline.file_mutex) {
+        os_semaphore_take(state->pipeline.file_mutex, -1);
+    }
     fseek(state->file, offset, SEEK_SET);
     renderer_init(&renderer, state->file, state->lines, heading_levels, state->content_rows, state->screen_width, state->line_buf_size);
     renderer.state = cached_state;
     renderer.tokenizer.current_pos = offset;
 
-    printf("LOAD_PAGE: File position after seek: %ld\n", ftell(state->file));
+    int64_t t0 = esp_timer_get_time();
     renderer_process_page(&renderer);
+    int64_t t1 = esp_timer_get_time();
+    if (state->pipeline.file_mutex) {
+        os_semaphore_give(state->pipeline.file_mutex);
+    }
     state->line_count = renderer.line_count;
+    printf("LOAD_PAGE: render took %lld us for %d lines\n", t1 - t0, state->line_count);
 
     // Use the saved next page position from the renderer, not ftell()
     long actual_position = renderer_get_position(&renderer);
+    if (state->pipeline.file_mutex) {
+        os_semaphore_take(state->pipeline.file_mutex, -1);
+    }
+    long ftell_pos = ftell(state->file);
+    if (state->pipeline.file_mutex) {
+        os_semaphore_give(state->pipeline.file_mutex);
+    }
     printf("LOAD_PAGE: Got %d lines, renderer says next page starts at: %ld (ftell says: %ld)\n",
-           state->line_count, actual_position, ftell(state->file));
+           state->line_count, actual_position, ftell_pos);
 
     // Sanity check: position should never be less than the starting position
     long start_position = state->page_cache.entries[state->page_cache.current].file_pos;
@@ -318,6 +343,16 @@ bool reader_alloc_lines(reader_state_t *state, int screen_width, int content_row
 
     reader_free_lines(state);
 
+    // When the pipeline is active, point state->lines at the display buffer
+    if (state->pipeline.task) {
+        if (!render_pipeline_ensure_buffers(&state->pipeline, screen_width, content_rows)) {
+            return false;
+        }
+        state->lines = state->pipeline.buffers[state->pipeline.display_buffer].lines;
+        state->line_buf_size = needed;
+        return true;
+    }
+
     state->lines = calloc(MAX_RENDERED_LINES, sizeof(rendered_line_t));
     if (!state->lines) return false;
 
@@ -340,12 +375,13 @@ bool reader_alloc_lines(reader_state_t *state, int screen_width, int content_row
 }
 
 void reader_free_lines(reader_state_t *state) {
-    if (state->lines) {
+    // Only free if state->lines is NOT a pipeline buffer (pipeline manages its own)
+    if (state->lines && !state->pipeline.task) {
         if (state->lines[0].text) {
             free(state->lines[0].text);
         }
         free(state->lines);
-        state->lines = NULL;
     }
+    state->lines = NULL;
     state->line_buf_size = 0;
 }

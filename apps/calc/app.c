@@ -158,7 +158,7 @@ static void button_percent(ui2_button_t *button, void *user_data) {
 static void button_exit(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
-    os_load_app("launcher");
+    os_exit();
 }
 
 static void draw_display(void) {

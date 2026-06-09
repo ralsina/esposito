@@ -2,6 +2,7 @@
 #define READER_STATE_H
 
 #include "reader_renderer.h"
+#include "reader_render_pipeline.h"
 #include "ui2.h"
 #include <stdio.h>
 
@@ -49,8 +50,10 @@ typedef struct {
     int line_buf_size;
     int screen_width;
     int content_rows;
+    reader_render_pipeline_t pipeline;
     int page_number;
     int total_pages;
+    int64_t last_save_us;
 
     // Goto state
     char goto_buf[8];

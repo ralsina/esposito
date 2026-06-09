@@ -437,7 +437,7 @@ static void set_status(const char *msg) {
 static void on_main_exit_click(ui_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
-    os_load_app("launcher");
+    os_exit();
 }
 
 static void on_main_up_click(ui_button_t *button, void *user_data) {
