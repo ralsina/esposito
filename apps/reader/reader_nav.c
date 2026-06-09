@@ -56,9 +56,9 @@ static int page_contains_query(const reader_state_t *state, const char *query) {
 // Scan one page from current file position using the token renderer.
 // Returns number of content lines rendered, and sets next_pos_out to
 // the file offset where the next page starts.
-static int scan_one_page(FILE *file, rendered_line_t *lines, int max_lines, int screen_width, long *next_pos_out) {
+static int scan_one_page(FILE *file, rendered_line_t *lines, int max_lines, int screen_width, int line_buf_size, long *next_pos_out) {
     page_renderer_t renderer;
-    renderer_init(&renderer, file, lines, NULL, max_lines, screen_width);
+    renderer_init(&renderer, file, lines, NULL, max_lines, screen_width, line_buf_size);
     renderer.tokenizer.current_pos = ftell(file);
     if (!renderer_process_page(&renderer)) {
         return 0;
@@ -96,7 +96,7 @@ int reader_compute_page_number(reader_state_t *state) {
             return page;
         }
         long next_pos;
-        if (scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &next_pos) == 0) {
+        if (scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, state->line_buf_size, &next_pos) == 0) {
             return page;
         }
         if (next_pos <= current_pos) {
@@ -125,7 +125,7 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
     for (page = 1; page < target; page++) {
         long start = ftell(state->file);
         long next_pos;
-        int line_count = scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &next_pos);
+        int line_count = scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, state->line_buf_size, &next_pos);
         if (line_count == 0) {
             break;
         }
@@ -157,7 +157,7 @@ static void reader_nav_goto_page(reader_state_t *state, int target, int *bold_pe
     } else {
         long probe_pos = ftell(state->file);
         long next_pos;
-        int probe_count = scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &next_pos);
+        int probe_count = scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, state->line_buf_size, &next_pos);
         if (probe_count == 0) {
             offset = page_starts[store_count > 0 ? store_count - 1 : 0];
             actual_page = last_page;
@@ -403,7 +403,7 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
     fseek(state->file, start_offset, SEEK_SET);
     // Skip the current page by advancing past it
     long skip_next;
-    scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &skip_next);
+    scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, state->line_buf_size, &skip_next);
     if (skip_next > 0) {
         fseek(state->file, skip_next, SEEK_SET);
     }
@@ -412,7 +412,7 @@ static void reader_nav_search_forward(reader_state_t *state, const char *query, 
     while (1) {
         uint32_t page_offset = (uint32_t)ftell(state->file);
         long next_pos;
-        int line_count = scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, &next_pos);
+        int line_count = scan_one_page(state->file, state->lines, state->content_rows, state->screen_width, state->line_buf_size, &next_pos);
         if (line_count == 0) {
             break;
         }

@@ -1,5 +1,6 @@
 #include "reader_view.h"
 
+#include "reader_core.h"
 #include "reader_events.h"
 #include "reader_nav.h"
 #include "text_mode.h"
@@ -207,6 +208,11 @@ void reader_view_render_reading(reader_state_t *state, int *bold_pending, int *u
         mutable_state->content_rows = current_rows - 4;
     } else {
         mutable_state->content_rows = current_rows - 2;
+    }
+
+    if (!reader_alloc_lines(state, state->screen_width, state->content_rows)) {
+        printf("VIEW: Failed to allocate lines buffer!\n");
+        return;
     }
 
     text_mode_clear(TEXT_COLOR_BLACK);

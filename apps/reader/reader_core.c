@@ -2,6 +2,7 @@
 
 #include "app_config.h"
 #include "reader_toc.h"
+#include <text_mode.h>
 
 #include <dirent.h>
 #include <stdint.h>
@@ -249,7 +250,7 @@ int reader_load_current_page(reader_state_t *state, int *bold_pending, int *unde
     }
 
     fseek(state->file, offset, SEEK_SET);
-    renderer_init(&renderer, state->file, state->lines, heading_levels, state->content_rows, state->screen_width);
+    renderer_init(&renderer, state->file, state->lines, heading_levels, state->content_rows, state->screen_width, state->line_buf_size);
     renderer.state = cached_state;
     renderer.tokenizer.current_pos = offset;
 
@@ -307,4 +308,44 @@ int reader_load_current_page(reader_state_t *state, int *bold_pending, int *unde
     }
 
     return state->line_count;
+}
+
+bool reader_alloc_lines(reader_state_t *state, int screen_width, int content_rows) {
+    int needed = screen_width + LINE_BUF_MARGIN;
+    if (state->lines && state->line_buf_size == needed && content_rows <= MAX_RENDERED_LINES) {
+        return true;
+    }
+
+    reader_free_lines(state);
+
+    state->lines = calloc(MAX_RENDERED_LINES, sizeof(rendered_line_t));
+    if (!state->lines) return false;
+
+    char *text_buf = malloc((size_t)MAX_RENDERED_LINES * needed);
+    if (!text_buf) {
+        free(state->lines);
+        state->lines = NULL;
+        return false;
+    }
+
+    for (int i = 0; i < MAX_RENDERED_LINES; i++) {
+        state->lines[i].text = text_buf + (size_t)i * needed;
+        state->lines[i].text[0] = '\0';
+        state->lines[i].color = TEXT_COLOR_WHITE;
+        state->lines[i].attr = TEXT_ATTR_NORMAL;
+    }
+
+    state->line_buf_size = needed;
+    return true;
+}
+
+void reader_free_lines(reader_state_t *state) {
+    if (state->lines) {
+        if (state->lines[0].text) {
+            free(state->lines[0].text);
+        }
+        free(state->lines);
+        state->lines = NULL;
+    }
+    state->line_buf_size = 0;
 }

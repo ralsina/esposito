@@ -44,8 +44,9 @@ typedef struct {
     char current_file[MAX_PATH];
     FILE *file;
     page_cache_t page_cache;
-    rendered_line_t lines[MAX_RENDERED_LINES];
+    rendered_line_t *lines;
     int line_count;
+    int line_buf_size;
     int screen_width;
     int content_rows;
     int page_number;

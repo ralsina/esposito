@@ -41,16 +41,16 @@ typedef struct {
     int current_line;
     int max_lines;
     int screen_width;
+    int line_buf_size;
     rendered_line_t *lines;
     uint8_t *heading_levels;
     int line_count;
-    bool in_paragraph;          // Currently building a paragraph
-    bool page_full;             // Page has been filled
-    bool needs_blank_line;      // Paragraph break pending, skip next blank line
+    bool in_paragraph;
+    bool page_full;
+    bool needs_blank_line;
 } page_renderer_t;
 
-// Initialize renderer
-void renderer_init(page_renderer_t *renderer, FILE *file, rendered_line_t *lines, uint8_t *heading_levels, int max_lines, int screen_width);
+void renderer_init(page_renderer_t *renderer, FILE *file, rendered_line_t *lines, uint8_t *heading_levels, int max_lines, int screen_width, int line_buf_size);
 
 // Process tokens until page is full or EOF
 bool renderer_process_page(page_renderer_t *renderer);

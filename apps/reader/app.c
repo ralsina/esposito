@@ -47,6 +47,7 @@ void app_close(app_context_t *ctx) {
     reader_close_current_file(&state);
     reader_free_file_list(&state);
     reader_free_toc_titles(&state);
+    reader_free_lines(&state);
 
     if (state.screen) {
         ui2_screen_destroy(state.screen);

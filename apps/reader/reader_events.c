@@ -312,6 +312,11 @@ void reader_events_enter_reading_mode(reader_state_t *state, int *bold_pending, 
         state->content_rows = rows - 2;
     }
 
+    if (!reader_alloc_lines(state, state->screen_width, state->content_rows)) {
+        printf("EVENTS: Failed to allocate lines buffer!\n");
+        return;
+    }
+
     if (state->page_cache.count == 0) {
         uint32_t current_offset = ftell(state->file);
         page_cache_init(&state->page_cache);

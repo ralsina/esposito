@@ -2,6 +2,7 @@
 #define READER_CORE_H
 
 #include "reader_state.h"
+#include <stdbool.h>
 #include <stddef.h>
 
 void reader_build_book_key(char *out, size_t out_size, const char *prefix, const char *path);
@@ -13,5 +14,7 @@ int reader_find_file_index_by_path(const reader_state_t *state, const char *path
 void reader_close_current_file(reader_state_t *state);
 int reader_open_file(reader_state_t *state, const char *path);
 int reader_load_current_page(reader_state_t *state, int *bold_pending, int *underline_pending);
+bool reader_alloc_lines(reader_state_t *state, int screen_width, int content_rows);
+void reader_free_lines(reader_state_t *state);
 
 #endif

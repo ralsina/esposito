@@ -3,12 +3,13 @@
 #include <string.h>
 #include <stdio.h>
 
-void renderer_init(page_renderer_t *renderer, FILE *file, rendered_line_t *lines, uint8_t *heading_levels, int max_lines, int screen_width) {
+void renderer_init(page_renderer_t *renderer, FILE *file, rendered_line_t *lines, uint8_t *heading_levels, int max_lines, int screen_width, int line_buf_size) {
     tokenizer_init(&renderer->tokenizer, file);
     renderer->state = RENDER_STATE_DEFAULT;
     renderer->current_line = 0;
     renderer->max_lines = max_lines;
     renderer->screen_width = screen_width;
+    renderer->line_buf_size = line_buf_size;
     renderer->lines = lines;
     renderer->heading_levels = heading_levels;
     renderer->line_count = 0;
@@ -87,7 +88,7 @@ bool renderer_process_page(page_renderer_t *renderer) {
                 } else if (renderer->in_paragraph) {
                     // Single newline within paragraph = soft break (space)
                     int len = strlen(renderer->lines[renderer->current_line].text);
-                    if (len > 0 && len + 1 < (int)sizeof(renderer->lines[renderer->current_line].text)) {
+                    if (len > 0 && len + 1 < renderer->line_buf_size) {
                         renderer->lines[renderer->current_line].text[len] = ' ';
                         renderer->lines[renderer->current_line].text[len + 1] = '\0';
                     }
@@ -138,7 +139,7 @@ bool renderer_process_page(page_renderer_t *renderer) {
                             break;
                         }
                     }
-                    if (has_visible && len < sizeof(renderer->lines[renderer->current_line].text) - 1) {
+                    if (has_visible && len < renderer->line_buf_size - 1) {
                         renderer->lines[renderer->current_line].text[len] = ' ';
                         renderer->lines[renderer->current_line].text[len + 1] = '\0';
                     }
@@ -187,7 +188,7 @@ bool renderer_process_page(page_renderer_t *renderer) {
 
                     // Add word to line, handling markdown formatting
                     if (renderer->current_line < renderer->max_lines) {
-                        if (line_len + word_len < sizeof(renderer->lines[renderer->current_line].text)) {
+                        if (line_len + word_len < renderer->line_buf_size) {
                             size_t wi = 0;
                             for (size_t ri = 0; ri < word_len; ri++) {
                                 char c = token->text[ri];
