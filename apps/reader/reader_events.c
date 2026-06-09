@@ -10,7 +10,7 @@
 #include "ui2.h"
 #include "hardware.h"
 #include "serial_rx.h"
-#include "ui_osk.h"
+#include "ui2_osk.h"
 
 #include <string.h>
 #include <sys/stat.h>
@@ -20,8 +20,8 @@
 static reader_state_t *receiving_state = NULL;
 
 static void handle_osk_result(reader_state_t *state, int *bold_pending, int *underline_pending) {
-    ui_osk_result_t result = ui_osk_get_result();
-    if (result == UI_OSK_RESULT_CONFIRMED) {
+    ui2_osk_result_t result = ui2_osk_get_result();
+    if (result == UI2_OSK_RESULT_CONFIRMED) {
         if (state->mode == MODE_GOTO) {
             on_goto_confirm(state);
         } else if (state->mode == MODE_SEARCH) {
@@ -399,9 +399,9 @@ void reader_events_handle_event(reader_state_t *state, const event_t *event, int
     }
 
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
-        if (ui_osk_is_active()) {
-            ui_osk_handle_event(NULL, (event_t *)event);
-            if (!ui_osk_is_active()) {
+        if (ui2_osk_is_active()) {
+            ui2_osk_handle_event(NULL, (event_t *)event);
+            if (!ui2_osk_is_active()) {
                 handle_osk_result(state, bold_pending, underline_pending);
             }
             return;
@@ -475,9 +475,9 @@ void reader_events_handle_event(reader_state_t *state, const event_t *event, int
     }
 
     if (event->type == EVENT_TOUCH && event->touch.pressed) {
-        if (ui_osk_is_active()) {
-            ui_osk_handle_event(NULL, (event_t *)event);
-            if (!ui_osk_is_active()) {
+        if (ui2_osk_is_active()) {
+            ui2_osk_handle_event(NULL, (event_t *)event);
+            if (!ui2_osk_is_active()) {
                 handle_osk_result(state, bold_pending, underline_pending);
             }
             return;

@@ -10,7 +10,7 @@
 #include "ui2_text_input.h"
 #include "ui2_layout.h"
 #include "hardware.h"
-#include "ui_osk.h"
+#include "ui2_osk.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -391,11 +391,15 @@ void reader_view_setup_goto(reader_state_t *state) {
 
     null_reading_buttons(state);
 
+    if (ui2_osk_is_active()) {
+        return;
+    }
+
     state->mode = MODE_GOTO;
     state->goto_buf[0] = '\0';
 
     if (!keyboard_is_available()) {
-        if (ui_osk_input_text("Go to Page:", state->goto_buf, sizeof(state->goto_buf), NULL, false)) {
+        if (ui2_osk_input_text("Go to Page:", state->goto_buf, sizeof(state->goto_buf), NULL, false)) {
             return;
         }
         state->mode = MODE_READING;
@@ -423,11 +427,15 @@ void reader_view_setup_search(reader_state_t *state) {
 
     null_reading_buttons(state);
 
+    if (ui2_osk_is_active()) {
+        return;
+    }
+
     state->mode = MODE_SEARCH;
     state->search_buf[0] = '\0';
 
     if (!keyboard_is_available()) {
-        if (ui_osk_input_text("Search:", state->search_buf, sizeof(state->search_buf), NULL, false)) {
+        if (ui2_osk_input_text("Search:", state->search_buf, sizeof(state->search_buf), NULL, false)) {
             return;
         }
         state->mode = MODE_READING;

@@ -4,7 +4,7 @@
 #include "reader_render_pipeline.h"
 #include "text_mode.h"
 #include "ui2.h"
-#include "ui_osk.h"
+#include "ui2_osk.h"
 #include "os_core.h"
 #include "hardware.h"
 #include <esp_timer.h>
@@ -413,7 +413,7 @@ void reader_nav_start_goto(reader_state_t *state) {
     // Check if keyboard is available
     if (!keyboard_is_available()) {
         // Use OSK for touch input
-        if (ui_osk_input_text("Go to Page:", state->goto_buf, sizeof(state->goto_buf), NULL, false)) {
+        if (ui2_osk_input_text("Go to Page:", state->goto_buf, sizeof(state->goto_buf), NULL, false)) {
             // OSK was started successfully, will be handled in event loop
         } else {
             // Fallback to normal mode if OSK fails
@@ -493,7 +493,7 @@ void reader_nav_start_search(reader_state_t *state) {
     // Check if keyboard is available
     if (!keyboard_is_available()) {
         // Use OSK for touch input
-        if (ui_osk_input_text("Search:", state->search_buf, sizeof(state->search_buf), NULL, false)) {
+        if (ui2_osk_input_text("Search:", state->search_buf, sizeof(state->search_buf), NULL, false)) {
             // OSK was started successfully, will be handled in event loop
         } else {
             // Fallback to normal mode if OSK fails

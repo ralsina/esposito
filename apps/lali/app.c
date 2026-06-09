@@ -4,7 +4,7 @@
 #include "ui.h"
 #include "ui_list.h"
 #include "ui_text_input.h"
-#include "ui_osk.h"
+#include "ui2_osk.h"
 #include "hardware.h"
 #include "core_json.h"
 #include <stdio.h>
@@ -377,14 +377,14 @@ void app_init(app_context_t *ctx) {
 
 void app_event(app_context_t *ctx, event_t *event) {
     // Check if OSK is active and handle its events first
-    if (ui_osk_is_active()) {
-        ui_osk_handle_event(NULL, (event_t*)event);
+    if (ui2_osk_is_active()) {
+        ui2_osk_handle_event(NULL, (event_t*)event);
 
         // Check if OSK just completed
-        if (!ui_osk_is_active()) {
-            ui_osk_result_t result = ui_osk_get_result();
+        if (!ui2_osk_is_active()) {
+            ui2_osk_result_t result = ui2_osk_get_result();
 
-            if (result == UI_OSK_RESULT_CONFIRMED) {
+            if (result == UI2_OSK_RESULT_CONFIRMED) {
                 // OSK completed successfully - get the input and process it
                 on_confirm(NULL, NULL);
             } else {
@@ -421,7 +421,7 @@ void app_event(app_context_t *ctx, event_t *event) {
         if (y_col >= rows - 3) {
             // Launch OSK for text input when no physical keyboard
             if (!keyboard_is_available()) {
-                if (ui_osk_input_text("Message:", input_buffer, INPUT_BUF_LEN, input_buffer, false)) {
+                if (ui2_osk_input_text("Message:", input_buffer, INPUT_BUF_LEN, input_buffer, false)) {
                     // OSK started - will be handled in next event loop
                     // Clear the input buffer to avoid double-processing
                     // input_buffer[0] = '\0';

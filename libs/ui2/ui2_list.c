@@ -30,67 +30,102 @@ static void ui2_list_draw(ui2_widget_t *widget) {
     ui2_list_t *list = (ui2_list_t *)widget;
     if (!widget->visible) return;
 
+    int scrollbar_width = (list->count > list->visible_rows) ? list->scrollbar_width : 0;
+
     if (list->border) {
-        for (int dy = 0; dy < widget->height; dy++) {
-            for (int dx = 0; dx < widget->width; dx++) {
-                text_mode_print_at_attr_bg(widget->x + dx, widget->y + dy, " ",
-                                           list->border_fg, list->normal_bg,
-                                           border_attr_for_cell(dx, dy, widget->width, widget->height));
-            }
+        int x0 = widget->x, y0 = widget->y, x1 = x0 + widget->width - 1, y1 = y0 + widget->height - 1;
+        for (int dx = x0; dx <= x1; dx++) {
+            uint8_t ta = TEXT_ATTR_BORDER_TOP | TEXT_ATTR_BOLD;
+            uint8_t ba = TEXT_ATTR_UNDERLINE | TEXT_ATTR_BOLD;
+            if (dx == x0) { ta |= TEXT_ATTR_BORDER_LEFT; ba |= TEXT_ATTR_BORDER_LEFT; }
+            if (dx == x1) { ta |= TEXT_ATTR_BORDER_RIGHT; ba |= TEXT_ATTR_BORDER_RIGHT; }
+            text_mode_print_at_attr_bg(dx, y0, " ", list->border_fg, list->normal_bg, ta);
+            text_mode_print_at_attr_bg(dx, y1, " ", list->border_fg, list->normal_bg, ba);
+        }
+        for (int dy = y0 + 1; dy < y1; dy++) {
+            text_mode_print_at_attr_bg(x0, dy, " ", list->border_fg, list->normal_bg, TEXT_ATTR_BORDER_LEFT);
+            if (scrollbar_width == 0)
+                text_mode_print_at_attr_bg(x1, dy, " ", list->border_fg, list->normal_bg, TEXT_ATTR_BORDER_RIGHT);
         }
     }
 
-    if (!list->items || list->count <= 0) return;
-
     int content_y = widget->y;
-    int scrollbar_width = (list->count > list->visible_rows) ? list->scrollbar_width : 0;
     int content_width = widget->width - scrollbar_width;
 
     if (list->title) {
         int title_x = widget->x + (content_width - (int)strlen(list->title)) / 2;
         if (title_x < widget->x) title_x = widget->x;
-        text_mode_print_at_attr(title_x, content_y, list->title,
-                                TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+        text_mode_print_at_attr_bg(title_x, content_y, list->title,
+                                   TEXT_COLOR_BRIGHT_CYAN, list->normal_bg, TEXT_ATTR_BOLD);
         content_y++;
     }
 
-    for (int i = 0; i < list->visible_rows && (list->scroll_offset + i) < list->count; i++) {
-        int index = list->scroll_offset + i;
-        int y = content_y + i;
+    int last_content_row = widget->y + widget->height - (list->border ? 1 : 0);
+    int drawn_rows = 0;
 
-        bool is_selected = (index == list->selected);
+    if (list->items && list->count > 0) {
+        for (int i = 0; i < list->visible_rows && (list->scroll_offset + i) < list->count; i++) {
+            int index = list->scroll_offset + i;
+            int y = content_y + i;
+            drawn_rows++;
 
-        uint8_t fg = is_selected ? list->selected_fg : list->normal_fg;
-        uint8_t bg = is_selected ? list->selected_bg : list->normal_bg;
-        uint8_t edge_fg = list->border_fg;
+            bool is_selected = (index == list->selected);
 
-        for (int cx = 0; cx < content_width; cx++) {
-            uint8_t cell_fg = (cx == 0 || cx == content_width - 1) ? edge_fg : fg;
-            uint8_t attr = border_attr_for_cell(cx, y - widget->y, widget->width, widget->height);
-            text_mode_print_at_attr_bg(widget->x + cx, y, " ", cell_fg, bg, attr);
+            uint8_t fg = is_selected ? list->selected_fg : list->normal_fg;
+            uint8_t bg = is_selected ? list->selected_bg : list->normal_bg;
+            uint8_t edge_fg = list->border_fg;
+
+            for (int cx = 0; cx < content_width; cx++) {
+                uint8_t cell_fg = (cx == 0) ? edge_fg : fg;
+                if (scrollbar_width == 0 && cx == content_width - 1) cell_fg = edge_fg;
+                int gx = widget->x + cx;
+                uint8_t ca = TEXT_ATTR_NORMAL;
+                if (list->border) {
+                    if (gx == widget->x) ca |= TEXT_ATTR_BORDER_LEFT;
+                    if (gx == widget->x + widget->width - 1) ca |= TEXT_ATTR_BORDER_RIGHT;
+                    if (y == widget->y) ca |= TEXT_ATTR_BORDER_TOP;
+                    if (y == widget->y + widget->height - 1) ca |= TEXT_ATTR_UNDERLINE;
+                }
+                text_mode_print_at_attr_bg(gx, y, " ", cell_fg, bg, ca);
+            }
+
+            if (list->items[index]) {
+                char truncated[64];
+                strncpy(truncated, list->items[index], sizeof(truncated) - 1);
+                truncated[sizeof(truncated) - 1] = '\0';
+
+                int max_text = content_width - 3;
+                if (max_text < 0) max_text = 0;
+                if ((int)strlen(truncated) > max_text)
+                    truncated[max_text] = '\0';
+
+                uint8_t row_attr = TEXT_ATTR_NORMAL;
+                if (list->row_attrs && index < list->row_attrs_count)
+                    row_attr = list->row_attrs[index];
+
+                uint8_t marker_ca = TEXT_ATTR_BOLD;
+                if (list->border) marker_ca |= TEXT_ATTR_BORDER_LEFT;
+                text_mode_print_at_attr_bg(widget->x, y, is_selected ? ">" : " ", edge_fg, bg, marker_ca);
+                text_mode_print_at_attr_bg(widget->x + 1, y, " ", fg, bg, is_selected ? TEXT_ATTR_BOLD : row_attr);
+
+                uint8_t text_attr = is_selected ? TEXT_ATTR_BOLD : row_attr;
+                text_mode_print_at_attr_bg(widget->x + 2, y, truncated, fg, bg, text_attr);
+            }
         }
+    }
 
-        if (list->items[index]) {
-            char truncated[64];
-            strncpy(truncated, list->items[index], sizeof(truncated) - 1);
-            truncated[sizeof(truncated) - 1] = '\0';
-
-            int max_text = content_width - 3;
-            if (max_text < 0) max_text = 0;
-            if ((int)strlen(truncated) > max_text)
-                truncated[max_text] = '\0';
-
-            uint8_t row_attr = TEXT_ATTR_NORMAL;
-            if (list->row_attrs && index < list->row_attrs_count)
-                row_attr = list->row_attrs[index];
-
-            uint8_t marker_border = border_attr_for_cell(0, y - widget->y, widget->width, widget->height);
-            uint8_t marker_attr = (is_selected ? TEXT_ATTR_BOLD : row_attr) | marker_border;
-            text_mode_print_at_attr_bg(widget->x, y, is_selected ? ">" : " ", edge_fg, bg, marker_attr);
-            text_mode_print_at_attr_bg(widget->x + 1, y, " ", fg, bg, is_selected ? TEXT_ATTR_BOLD : row_attr);
-
-            uint8_t text_attr = is_selected ? TEXT_ATTR_BOLD : row_attr;
-            text_mode_print_at_attr_bg(widget->x + 2, y, truncated, fg, bg, text_attr);
+    // Clear remaining rows in the content area
+    for (int y = content_y + drawn_rows; y < last_content_row; y++) {
+        for (int cx = 0; cx < content_width; cx++) {
+            int gx = widget->x + cx;
+            uint8_t ca = TEXT_ATTR_NORMAL;
+            if (list->border) {
+                if (gx == widget->x) ca |= TEXT_ATTR_BORDER_LEFT;
+                if (gx == widget->x + widget->width - 1) ca |= TEXT_ATTR_BORDER_RIGHT;
+                if (y == widget->y) ca |= TEXT_ATTR_BORDER_TOP;
+            }
+            text_mode_print_at_attr_bg(gx, y, " ",
+                                       list->normal_fg, list->normal_bg, ca);
         }
     }
 
@@ -346,6 +381,8 @@ void ui2_list_set_scrollbar_width(ui2_list_t *list, int width) {
 void ui2_list_set_border(ui2_list_t *list, bool enabled) {
     if (!list) return;
     list->border = enabled;
+    list->visible_rows = list->base.height - (enabled ? 2 : 1);
+    if (list->visible_rows < 0) list->visible_rows = 0;
 }
 
 void ui2_list_set_row_attrs(ui2_list_t *list, const uint8_t *attrs, int count) {

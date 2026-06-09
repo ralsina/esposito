@@ -16,6 +16,7 @@ typedef struct {
 struct ui2_screen_s {
     ui2_layout_t *root;
     ui2_widget_t *focused;
+    bool dirty;
     char focus_next_key;
     uint8_t focus_next_mods;
     char focus_prev_key;
@@ -104,6 +105,7 @@ void ui2_screen_set_root(ui2_screen_t *screen, ui2_layout_t *root) {
     }
     screen->root = root;
     screen->focused = NULL;
+    screen->dirty = true;
 }
 
 void ui2_screen_shortcut_add(ui2_screen_t *screen, char key, uint8_t modifiers, ui2_widget_t *target) {
@@ -214,7 +216,10 @@ bool ui2_screen_handle_event(ui2_screen_t *screen, event_t *event) {
 
 void ui2_screen_render(ui2_screen_t *screen) {
     if (!screen || !screen->root) return;
-    text_mode_clear(TEXT_COLOR_BLACK);
+    if (screen->dirty) {
+        text_mode_clear(TEXT_COLOR_BLACK);
+        screen->dirty = false;
+    }
     ui2_widget_t *root_w = UI2_WIDGET(screen->root);
     root_w->vtable->draw(root_w);
     text_mode_flush();

@@ -10,19 +10,17 @@ static int border_offset(const ui2_text_t *text) {
 
 static void ui2_text_draw(ui2_widget_t *widget) {
     ui2_text_t *text = (ui2_text_t *)widget;
-    if (!widget->visible || !text->draw_border) return;
+    if (!widget->visible) return;
 
     for (int dy = 0; dy < widget->height; dy++) {
         for (int dx = 0; dx < widget->width; dx++) {
-            if (dy > 0 && dy < widget->height - 1 &&
-                dx > 0 && dx < widget->width - 1) continue;
-
             uint8_t attr = TEXT_ATTR_NORMAL;
-            if (dy == 0) attr |= TEXT_ATTR_BORDER_TOP;
-            if (dy == widget->height - 1) attr |= TEXT_ATTR_UNDERLINE;
-            if (dx == 0) attr |= TEXT_ATTR_BORDER_LEFT;
-            if (dx == widget->width - 1) attr |= TEXT_ATTR_BORDER_RIGHT;
-
+            if (text->draw_border) {
+                if (dy == 0) attr |= TEXT_ATTR_BORDER_TOP;
+                if (dy == widget->height - 1) attr |= TEXT_ATTR_UNDERLINE;
+                if (dx == 0) attr |= TEXT_ATTR_BORDER_LEFT;
+                if (dx == widget->width - 1) attr |= TEXT_ATTR_BORDER_RIGHT;
+            }
             text_mode_print_at_attr_bg(widget->x + dx, widget->y + dy, " ",
                                        text->border_fg, TEXT_COLOR_BLACK, attr);
         }

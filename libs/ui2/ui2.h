@@ -10,5 +10,6 @@
 #include "ui2_text_input.h"
 #include "ui2_progressbar.h"
 #include "ui2_text.h"
+#include "ui2_osk.h"
 
 #endif
