@@ -37,7 +37,7 @@ static void draw_window(int x, int y, int w, int h, const char *title) {
         int tlen = (int)strlen(title);
         int tx = x + (w - tlen) / 2;
         if (tx < x) tx = x + 1;
-        text_mode_print_at_attr(tx, y, title, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+        text_mode_print_at_attr(tx, y, title, TEXT_COLOR_CYAN, TEXT_ATTR_BOLD);
     }
 }
 
