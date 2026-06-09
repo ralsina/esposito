@@ -2,6 +2,7 @@
 #include "text_mode.h"
 #include "wifi.h"
 #include "core_json.h"
+#include "ui2.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -16,8 +17,8 @@ static const char *TAG = "clock";
 #define DEFAULT_TIMEZONE "UTC"
 #define DEFAULT_LOCATION "40.4168,-3.7038"
 #define WEATHER_INITIAL_DELAY_SECONDS 10
-#define WEATHER_HTTP_TIMEOUT_MS 15000
-#define WEATHER_HTTP_ATTEMPTS 3
+#define WEATHER_HTTP_TIMEOUT_MS 3000
+#define WEATHER_HTTP_ATTEMPTS 1
 #define WEATHER_REFRESH_SECONDS 600
 
 #define CLOCK_DIGIT_W 3
@@ -59,6 +60,21 @@ static weather_state_t weather = {
     .status = "No weather yet",
     .debug = "Weather dbg: idle",
 };
+
+// UI2 widgets
+static ui2_screen_t *screen = NULL;
+static ui2_label_t *title_label = NULL;
+static ui2_label_t *time_label = NULL;
+static ui2_label_t *date_label = NULL;
+static ui2_label_t *weather_label = NULL;
+static ui2_button_t *exit_button = NULL;
+
+// Exit button callback
+static void exit_button_callback(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    os_load_app("launcher");  // Return to launcher
+}
 
 static void trim_spaces(char *text) {
     if (!text || !text[0]) {
@@ -670,12 +686,14 @@ static void draw_clock(void) {
 
     os_time_status_t time_status;
     if (!os_get_time_status(&time_status)) {
-        print_padded_line(2, 18, TEXT_COLOR_RED, TEXT_ATTR_NORMAL, "Failed to read time status", 34);
-        text_mode_flush();
+        char error_msg[] = "Time error";
+        int msg_x = (screen_cols - strlen(error_msg)) / 2;
+        if (msg_x < 0) msg_x = 0;
+        text_mode_print_at_attr(msg_x, screen_rows / 2, error_msg, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
+        ui2_screen_render(screen);
         return;
     }
 
-    char line[80];
     char timezone[48];
     os_settings_get_string(SETTINGS_KEY_TIMEZONE, DEFAULT_TIMEZONE, timezone, sizeof(timezone));
     trim_spaces(timezone);
@@ -692,63 +710,51 @@ static void draw_clock(void) {
     }
 
     // Dynamic layout based on screen size
-    int time_row = 0;           // Row for timezone/NTP
-    int date_row = 1;           // Row for date
-    int weather_row = 2;        // Row for weather
-    int large_time_y = 4;       // Row for large time display
+    int title_y = 0;
+    int time_y = 2;           // Row for timezone/NTP
+    int date_y = 3;           // Row for date  
+    int weather_y = 4;        // Row for weather
+    int large_time_y = 6;     // Row for large time display
 
     // For landscape/narrow screens, adjust layout to ensure weather is visible
     if (screen_rows <= 12) {
-        // Very limited rows - compact layout
-        time_row = 0;
-        date_row = -1;          // Skip date to save space for weather
-        weather_row = 1;
+        time_y = 0;
+        date_y = -1;
+        weather_y = 1;
         large_time_y = 3;
+        title_y = -1;
     } else if (screen_rows <= 16) {
-        // Limited rows - reduced spacing
-        time_row = 0;
-        date_row = 1;
-        weather_row = 2;
+        time_y = 0;
+        date_y = 1;
+        weather_y = 2;
         large_time_y = 4;
     } else {
-        // Plenty of rows - full layout
-        time_row = 0;
-        date_row = 1;
-        weather_row = 2;
-        large_time_y = 4;
+        time_y = 1;
+        date_y = 2;
+        weather_y = 3;
+        large_time_y = 7;
     }
 
-    // Header section (timezone and NTP)
-    snprintf(line, sizeof(line), "%-14s", timezone);
-    if (screen_cols >= 40) {
-        text_mode_print_at_attr(10, time_row, line, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
-    } else {
-        // Narrow screen - left-align timezone
-        text_mode_print_at_attr(2, time_row, line, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+    // Update title
+    if (title_label) {
+        ui2_label_set_text(title_label, "Clock");
+        ui2_label_set_color(title_label, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
     }
 
-    if (time_status.synchronized) {
-        if (screen_cols >= 40) {
-            text_mode_print_at_attr(29, time_row, "NTP", TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL);
+    // Update timezone/NTP label
+    char time_buffer[64];
+    snprintf(time_buffer, sizeof(time_buffer), "%-14s", timezone);
+    if (time_label) {
+        ui2_label_set_text(time_label, time_buffer);
+        if (time_status.synchronized) {
+            ui2_label_set_color(time_label, TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL);
         } else {
-            // Skip NTP on very narrow screens to save space
-            if (screen_cols >= 20) {
-                text_mode_print_at_attr(screen_cols - 10, time_row, "NTP", TEXT_COLOR_GREEN, TEXT_ATTR_NORMAL);
-            }
-        }
-    } else {
-        if (screen_cols >= 40) {
-            text_mode_print_at_attr(29, time_row, "NTP", TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
-        } else {
-            // Skip NTP on very narrow screens to save space
-            if (screen_cols >= 20) {
-                text_mode_print_at_attr(screen_cols - 10, time_row, "NTP", TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
-            }
+            ui2_label_set_color(time_label, TEXT_COLOR_RED, TEXT_ATTR_NORMAL);
         }
     }
 
-    // Date section (only if there's space)
-    if (date_row >= 0) {
+    // Update date label
+    if (date_y >= 0 && date_label) {
         static const char *weekday_names[] = {
             "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
         };
@@ -756,64 +762,61 @@ static void draw_clock(void) {
         if (display_status.weekday >= 0 && display_status.weekday < 7) {
             weekday = weekday_names[display_status.weekday];
         }
-        snprintf(line, sizeof(line), "%s %02d/%02d/%04d", weekday, display_status.day, display_status.month, display_status.year);
         if (screen_cols >= 30) {
-            print_padded_line(2, date_row, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL, line, screen_cols - 4);
+            snprintf(time_buffer, sizeof(time_buffer), "%s %02d/%02d/%04d", weekday, display_status.day, display_status.month, display_status.year);
         } else {
-            // Narrow screen - shorter date format
-            snprintf(line, sizeof(line), "%s %02d/%02d", weekday, display_status.day, display_status.month);
-            print_padded_line(2, date_row, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL, line, screen_cols - 4);
+            snprintf(time_buffer, sizeof(time_buffer), "%s %02d/%02d", weekday, display_status.day, display_status.month);
         }
+        ui2_label_set_text(date_label, time_buffer);
+        ui2_label_set_color(date_label, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL);
     }
 
-    // Weather section - ensure it's always visible
-    if (weather.has_data) {
-        int abs_t = weather.temperature_tenths_c < 0 ? -weather.temperature_tenths_c : weather.temperature_tenths_c;
-        int whole = abs_t / 10;
-        int frac = abs_t % 10;
-        char sign = weather.temperature_tenths_c < 0 ? '-' : '\0';
-        
-        if (screen_cols >= 30) {
-            if (sign) {
-                snprintf(line, sizeof(line), "Weather: %c%d.%d C  %s", sign, whole, frac, weather_code_label(weather.weather_code));
+    // Update weather label
+    if (weather_label) {
+        if (weather.has_data) {
+            int abs_t = weather.temperature_tenths_c < 0 ? -weather.temperature_tenths_c : weather.temperature_tenths_c;
+            int whole = abs_t / 10;
+            int frac = abs_t % 10;
+            char sign = weather.temperature_tenths_c < 0 ? '-' : '\0';
+            
+            if (screen_cols >= 30) {
+                if (sign) {
+                    snprintf(time_buffer, sizeof(time_buffer), "Weather: %c%d.%d C  %s", sign, whole, frac, weather_code_label(weather.weather_code));
+                } else {
+                    snprintf(time_buffer, sizeof(time_buffer), "Weather: %d.%d C  %s", whole, frac, weather_code_label(weather.weather_code));
+                }
             } else {
-                snprintf(line, sizeof(line), "Weather: %d.%d C  %s", whole, frac, weather_code_label(weather.weather_code));
+                const char *weather_text = weather_code_label(weather.weather_code);
+                if (sign) {
+                    snprintf(time_buffer, sizeof(time_buffer), "%c%d.%d %s", sign, whole, frac, weather_text);
+                } else {
+                    snprintf(time_buffer, sizeof(time_buffer), "%d.%d %s", whole, frac, weather_text);
+                }
             }
-            print_padded_line(2, weather_row, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, screen_cols - 4);
+            ui2_label_set_color(weather_label, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
         } else {
-            // Very narrow screen - abbreviated weather
-            const char *weather_label = weather_code_label(weather.weather_code);
-            if (sign) {
-                snprintf(line, sizeof(line), "%c%d.%d %s", sign, whole, frac, weather_label);
+            const char *status = weather.status;
+            if (screen_cols < 25) {
+                strncpy(time_buffer, status, screen_cols - 10);
+                time_buffer[screen_cols - 10] = '\0';
             } else {
-                snprintf(line, sizeof(line), "%d.%d %s", whole, frac, weather_label);
+                strncpy(time_buffer, status, sizeof(time_buffer) - 1);
             }
-            print_padded_line(2, weather_row, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL, line, screen_cols - 4);
+            ui2_label_set_color(weather_label, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
         }
-    } else {
-        // Weather status - abbreviated on narrow screens
-        const char *status = weather.status;
-        if (screen_cols < 25) {
-            // Truncate long status messages on very narrow screens
-            char truncated_status[screen_cols - 8];
-            strncpy(truncated_status, status, sizeof(truncated_status) - 1);
-            truncated_status[sizeof(truncated_status) - 1] = '\0';
-            print_padded_line(2, weather_row, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, truncated_status, screen_cols - 4);
-        } else {
-            print_padded_line(2, weather_row, TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL, status, screen_cols - 4);
-        }
+        ui2_label_set_text(weather_label, time_buffer);
     }
 
-    // Set LARGE_TIME_Y dynamically based on layout
-    #define LARGE_TIME_Y large_time_y
-
-    /* Flush text-mode cells first, then paint the large clock cells on top */
-    text_mode_flush();
+    // Render ui2 screen first
+    ui2_screen_render(screen);
+    
+    // Then draw large time on top
     draw_large_time(&display_status);
+    text_mode_flush();
 }
 
 void app_init(app_context_t *ctx) {
-    ctx->subscriptions = EVENT_TIMER | EVENT_KEYBOARD;
+    ctx->subscriptions = EVENT_TIMER | EVENT_TOUCH;
     ctx->timer_interval_ms = 1000;
 
     text_mode_init();
@@ -821,7 +824,34 @@ void app_init(app_context_t *ctx) {
     weather.next_refresh_at = weather.warmup_until;
     snprintf(weather.status, sizeof(weather.status), "Weather warming up");
     snprintf(weather.debug, sizeof(weather.debug), "Weather dbg: init warmup until %lld", (long long)weather.warmup_until);
-    draw_static_clock();
+    
+    // Create ui2 screen
+    screen = ui2_screen_create();
+    
+    // Create title label
+    title_label = ui2_label_create(2, 0, "Clock", TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
+    
+    // Create time/date/weather labels
+    time_label = ui2_label_create(2, 2, "", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+    date_label = ui2_label_create(2, 3, "", TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL);
+    weather_label = ui2_label_create(2, 4, "", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+    
+    // Create exit button
+    int btn_y = text_mode_get_rows() - 3;
+    exit_button = ui2_button_create(2, btn_y, text_mode_get_cols() - 4, 3, "Press here to exit");
+    ui2_button_set_colors(exit_button, TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_RED);
+    ui2_button_set_callback(exit_button, exit_button_callback, NULL);
+    
+    // Add all widgets to screen
+    ui2_layout_t *layout = ui2_layout_create(0, 0, text_mode_get_cols(), text_mode_get_rows(), UI2_LAYOUT_ABSOLUTE);
+    ui2_layout_add(layout, UI2_WIDGET(title_label));
+    ui2_layout_add(layout, UI2_WIDGET(time_label));
+    ui2_layout_add(layout, UI2_WIDGET(date_label));
+    ui2_layout_add(layout, UI2_WIDGET(weather_label));
+    ui2_layout_add(layout, UI2_WIDGET(exit_button));
+    ui2_screen_set_root(screen, layout);
+    
+    // Initial clock drawing
     draw_clock();
 }
 
@@ -831,6 +861,13 @@ void app_checkpoint(app_context_t *ctx) {
 
 void app_close(app_context_t *ctx) {
     (void)ctx;
+    
+    // Clean up ui2 resources
+    if (screen) {
+        ui2_screen_destroy(screen);
+        screen = NULL;
+    }
+    
     text_mode_clear(TEXT_COLOR_BLACK);
 }
 
@@ -842,10 +879,15 @@ void app_event(app_context_t *ctx, event_t *event) {
         return;
     }
 
-    if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
-        if (event->keyboard.key == 'r' || event->keyboard.key == 'R') {
+    if (event->type == EVENT_TOUCH) {
+        // Let ui2 handle the touch event
+        ui2_screen_handle_event(screen, event);
+        
+        // If we're still here and it was a press, refresh weather
+        if (event->touch.pressed) {
             refresh_weather_if_needed(1);
         }
-        draw_clock();
     }
+    
+    draw_clock();
 }
