@@ -130,10 +130,10 @@ void reader_view_setup_file_list(reader_state_t *state) {
     ui2_layout_set_gap(btn_row, 1);
 
      int btn_w = 5;
-    ui2_button_t *btn_up = ui2_button_create(0, 0, btn_w, 3, ICON_CHEVRON_UP);
+    ui2_button_t *btn_up = ui2_button_create(0, 0, btn_w, 3, ICON_ARROW_BIG_UP);
     ui2_button_set_callback(btn_up, on_file_list_up_click, list);
 
-    ui2_button_t *btn_down = ui2_button_create(0, 0, btn_w, 3, ICON_CHEVRON_DOWN);
+    ui2_button_t *btn_down = ui2_button_create(0, 0, btn_w, 3, ICON_ARROW_BIG_DOWN);
     ui2_button_set_callback(btn_down, on_file_list_down_click, list);
 
     ui2_button_t *btn_open = ui2_button_create(0, 0, btn_w, 3, ICON_DOWNLOAD);
@@ -142,7 +142,7 @@ void reader_view_setup_file_list(reader_state_t *state) {
     ui2_button_t *btn_get = ui2_button_create(0, 0, btn_w, 3, ICON_UPLOAD);
     ui2_button_set_callback(btn_get, on_file_list_get_click, state);
 
-    ui2_button_t *btn_exit = ui2_button_create(0, 0, btn_w, 3, ICON_X_CIRCLE);
+    ui2_button_t *btn_exit = ui2_button_create(0, 0, btn_w, 3, ICON_X);
     ui2_button_set_callback(btn_exit, on_file_list_exit_click, state);
 
      ui2_layout_add(btn_row, UI2_WIDGET(btn_up));
@@ -363,16 +363,16 @@ void reader_view_setup_toc(reader_state_t *state) {
     ui2_layout_t *btn_row = ui2_layout_create(0, 0, cols, 3, UI2_LAYOUT_HORIZONTAL);
     ui2_layout_set_gap(btn_row, 1);
 
-    ui2_button_t *btn_up = ui2_button_create(0, 0, 6, 3, ICON_CHEVRON_UP);
+    ui2_button_t *btn_up = ui2_button_create(0, 0, 6, 3, ICON_ARROW_BIG_UP);
     ui2_button_set_callback(btn_up, on_toc_up_click, list);
 
     ui2_button_t *btn_jump = ui2_button_create(0, 0, 8, 3, ICON_ARROW_RIGHT);
     ui2_button_set_callback(btn_jump, on_toc_jump_click, state);
 
-    ui2_button_t *btn_down = ui2_button_create(0, 0, 8, 3, ICON_CHEVRON_DOWN);
+    ui2_button_t *btn_down = ui2_button_create(0, 0, 8, 3, ICON_ARROW_BIG_DOWN);
     ui2_button_set_callback(btn_down, on_toc_down_click, list);
 
-    ui2_button_t *btn_back = ui2_button_create(0, 0, 8, 3, ICON_X_CIRCLE);
+    ui2_button_t *btn_back = ui2_button_create(0, 0, 8, 3, ICON_X);
     ui2_button_set_callback(btn_back, on_toc_back_click, state);
 
     ui2_layout_add(btn_row, UI2_WIDGET(btn_up));

@@ -558,7 +558,7 @@ static void build_rom_list_screen(void) {
     ui2_button_set_callback(open, on_open_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(open));
 
-    ui2_button_t *exit = ui2_button_create(0, 0, 3, 3, "\xee\x82\x84");
+    ui2_button_t *exit = ui2_button_create(0, 0, 3, 3, "\xee\x86\xb2");
     ui2_button_set_callback(exit, on_exit_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(exit));
 
