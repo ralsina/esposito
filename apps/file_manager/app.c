@@ -868,13 +868,13 @@ void app_init(app_context_t *ctx) {
 
     int btn_w = cols / 7;
     struct { const char *label; void (*cb)(ui2_button_t *, void *); } btn_defs[] = {
-        {"\xee\x83\x86", on_new_file_click},
-        {"\xee\x83\x97", on_mkdir_click},
-        {"\xee\x83\x86", on_rename_click},
-        {"\xee\x81\xaf", on_copy_click},
-        {"\xee\x83\x89", on_delete_click},
-        {"\xee\x81\xbc", on_open_click},
-        {"\xee\x82\x84", on_exit_click},
+        {"\xe0\xc9", on_new_file_click},
+        {"\xe0\xd9", on_mkdir_click},
+        {"\xe1\x2f", on_rename_click},
+        {"\xe1\x2a", on_copy_click},
+        {"\xe1\x2d", on_delete_click},
+        {"\xe0\xce", on_open_click},
+        {"\xe0\x84", on_exit_click},
     };
     for (int i = 0; i < 7; i++) {
         ui2_button_t *btn = ui2_button_create(0, 0, btn_w, 3, btn_defs[i].label);
