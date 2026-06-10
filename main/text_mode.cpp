@@ -865,13 +865,14 @@ bool text_mode_save_screenshot(void) {
     for (int py = 0; py < disp_h; py++) {
         int gy = py / fh;
         int char_row = py % fh;
-        uint8_t *p = row_buf;
 
         if (gy >= max_gy) {
             memset(row_buf, 0, (size_t)disp_w * 3);
             fwrite(row_buf, 1, (size_t)disp_w * 3, fppm);
             continue;
         }
+
+        memset(row_buf, 0, (size_t)disp_w * 3);
 
         for (int gx = 0; gx < max_gx; gx++) {
             text_cell_t *cell = &grid[gy * max_gx + gx];
@@ -934,37 +935,50 @@ bool text_mode_save_screenshot(void) {
                                         &gw, &gh, &top_offset, &left_offset);
             }
 
-            // Center glyph within cell if it's wider than the cell
-            // (matching display clip rect of font_width + 2)
-            int sample_left = left_offset;
-            if (left_offset + gw > fw || left_offset < 0) {
-                sample_left = (fw - gw) / 2;
+            int cell_px = gx * fw;
+            int glyph_row = -1;
+            if (bitmap && gw > 0 && gh > 0) {
+                glyph_row = char_row - (ascent - top_offset);
             }
 
+            // Fill cell background (fw pixels from cell_px)
             for (int dx = 0; dx < fw; dx++) {
-                uint8_t alpha = 0;
-                if (bitmap && gw > 0 && gh > 0) {
-                    int glyph_row = char_row - (ascent - top_offset);
-                    int glyph_col = dx - sample_left;
-                    if (glyph_row >= 0 && glyph_row < gh && glyph_col >= 0 && glyph_col < gw) {
-                        alpha = bitmap[glyph_row * gw + glyph_col];
-                    }
+                int out_px = cell_px + dx;
+                if (out_px < 0 || out_px >= disp_w) continue;
+                uint8_t *dst = row_buf + out_px * 3;
+                dst[0] = r_bg; dst[1] = g_bg; dst[2] = b_bg;
+            }
+
+            // Overlay glyph at natural metrics, clipped to display clip rect:
+            // cell_px-1 .. cell_px+fw (fw+2 pixels wide, matching TFT_eSPI)
+            if (bitmap && glyph_row >= 0 && glyph_row < gh) {
+                int clip_l = (cell_px - 1 > 0) ? (cell_px - 1) : 0;
+                int clip_r = (cell_px + fw < disp_w - 1) ? (cell_px + fw) : (disp_w - 1);
+                int glyph_base = cell_px + left_offset;
+
+                for (int gc = 0; gc < gw; gc++) {
+                    int out_px = glyph_base + gc;
+                    if (out_px < clip_l || out_px > clip_r) continue;
+                    uint8_t alpha = bitmap[glyph_row * gw + gc];
+
+                    // Apply border attributes only within cell bounds
+                    int dx = out_px - cell_px;
+                    if (alpha < 255 && (attrs & TEXT_ATTR_UNDERLINE) && char_row == fh - 1)
+                        alpha = 255;
+                    if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_TOP) && char_row == 0)
+                        alpha = 255;
+                    if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_LEFT) && dx == 0)
+                        alpha = 255;
+                    if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_RIGHT) && dx == fw - 1)
+                        alpha = 255;
+
+                    int ia = alpha;
+                    int ina = 255 - ia;
+                    uint8_t *dst = row_buf + out_px * 3;
+                    dst[0] = (uint8_t)((r_fg * ia + dst[0] * ina) / 255);
+                    dst[1] = (uint8_t)((g_fg * ia + dst[1] * ina) / 255);
+                    dst[2] = (uint8_t)((b_fg * ia + dst[2] * ina) / 255);
                 }
-
-                if (alpha < 255 && (attrs & TEXT_ATTR_UNDERLINE) && char_row == fh - 1)
-                    alpha = 255;
-                if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_TOP) && char_row == 0)
-                    alpha = 255;
-                if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_LEFT) && dx == 0)
-                    alpha = 255;
-                if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_RIGHT) && dx == fw - 1)
-                    alpha = 255;
-
-                int ia = alpha;
-                int ina = 255 - ia;
-                *p++ = (r_fg * ia + r_bg * ina) / 255;
-                *p++ = (g_fg * ia + g_bg * ina) / 255;
-                *p++ = (b_fg * ia + b_bg * ina) / 255;
             }
         }
 
