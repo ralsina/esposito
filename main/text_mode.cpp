@@ -874,16 +874,20 @@ bool text_mode_save_screenshot(void) {
 
         memset(row_buf, 0, (size_t)disp_w * 3);
 
-        for (int gx = 0; gx < max_gx; gx++) {
+        // Collect cell info for this row
+        struct { uint8_t r_bg, g_bg, b_bg; uint8_t r_fg, g_fg, b_fg;
+                 uint16_t attrs; const uint8_t *bitmap;
+                 int gw, gh, left_offset, glyph_row; int cell_px; } cells[64];
+        int ncells = 0;
+
+        for (int gx = 0; gx < max_gx && ncells < 64; gx++) {
             text_cell_t *cell = &grid[gy * max_gx + gx];
             uint8_t fg_idx = cell->color & 0x0F;
             uint8_t bg_idx = cell->bg_color & 0x0F;
             uint8_t attrs = cell->attributes;
 
             if (attrs & TEXT_ATTR_INVERSE) {
-                uint8_t tmp = fg_idx;
-                fg_idx = bg_idx;
-                bg_idx = tmp;
+                uint8_t tmp = fg_idx; fg_idx = bg_idx; bg_idx = tmp;
             }
 
             uint16_t rgb565_fg = color_palette[fg_idx];
@@ -913,70 +917,82 @@ bool text_mode_save_screenshot(void) {
             const uint8_t *var_data = font_get_variant_data(current_font, variant, &var_size);
             int gw = 0, gh = 0, top_offset = 0, left_offset = 0;
             const uint8_t *bitmap = NULL;
-            int ascent = 0;
-            if (var_data) {
-                ascent = (int)vlw_read_be32(var_data + 16);
-                if (render_cp != ' ') {
+            if (render_cp != ' ') {
+                if (var_data) {
                     bitmap = vlw_find_glyph(var_data, var_size, render_cp,
                                             &gw, &gh, &top_offset, &left_offset);
                 }
-            }
-            if (!bitmap && render_cp != ' ') {
-                size_t sup_size = 0;
-                const uint8_t *sup_data = font_get_supplement_data(current_font, &sup_size);
-                if (sup_data) {
-                    bitmap = vlw_find_glyph(sup_data, sup_size, render_cp,
+                if (!bitmap) {
+                    size_t sup_size = 0;
+                    const uint8_t *sup_data = font_get_supplement_data(current_font, &sup_size);
+                    if (sup_data) {
+                        bitmap = vlw_find_glyph(sup_data, sup_size, render_cp,
+                                                &gw, &gh, &top_offset, &left_offset);
+                    }
+                }
+                if (!bitmap) {
+                    bitmap = vlw_find_glyph(var_data, var_size, '?',
                                             &gw, &gh, &top_offset, &left_offset);
                 }
             }
-            if (!bitmap && render_cp != ' ') {
-                var_data = font_get_variant_data(current_font, variant, &var_size);
-                bitmap = vlw_find_glyph(var_data, var_size, '?',
-                                        &gw, &gh, &top_offset, &left_offset);
-            }
 
-            int cell_px = gx * fw;
             int glyph_row = -1;
             if (bitmap && gw > 0 && gh > 0) {
+                int ascent = var_data ? (int)vlw_read_be32(var_data + 16) : 0;
                 glyph_row = char_row - (ascent - top_offset);
             }
 
-            // Fill cell background (fw pixels from cell_px)
+            cells[ncells].r_bg = r_bg; cells[ncells].g_bg = g_bg; cells[ncells].b_bg = b_bg;
+            cells[ncells].r_fg = r_fg; cells[ncells].g_fg = g_fg; cells[ncells].b_fg = b_fg;
+            cells[ncells].attrs = attrs;
+            cells[ncells].bitmap = (glyph_row >= 0 && glyph_row < gh) ? bitmap : NULL;
+            cells[ncells].gw = gw; cells[ncells].gh = gh;
+            cells[ncells].left_offset = left_offset;
+            cells[ncells].glyph_row = glyph_row;
+            cells[ncells].cell_px = gx * fw;
+            ncells++;
+        }
+
+        // Pass 1: fill all backgrounds
+        for (int ci = 0; ci < ncells; ci++) {
+            int cp = cells[ci].cell_px;
             for (int dx = 0; dx < fw; dx++) {
-                int out_px = cell_px + dx;
+                int out_px = cp + dx;
                 if (out_px < 0 || out_px >= disp_w) continue;
                 uint8_t *dst = row_buf + out_px * 3;
-                dst[0] = r_bg; dst[1] = g_bg; dst[2] = b_bg;
+                dst[0] = cells[ci].r_bg; dst[1] = cells[ci].g_bg; dst[2] = cells[ci].b_bg;
             }
+        }
 
-            // Overlay glyph at natural metrics (no per-cell clip rect,
-            // matching display_draw_text_transparent path used for icons)
-            if (bitmap && glyph_row >= 0 && glyph_row < gh) {
-                int glyph_base = cell_px + left_offset;
+        // Pass 2: overlay all glyphs (on top of backgrounds, no overwrite)
+        for (int ci = 0; ci < ncells; ci++) {
+            if (!cells[ci].bitmap) continue;
+            int cell_px = cells[ci].cell_px;
+            int glyph_base = cell_px + cells[ci].left_offset;
+            uint16_t attrs = cells[ci].attrs;
+            uint8_t r_fg = cells[ci].r_fg, g_fg = cells[ci].g_fg, b_fg = cells[ci].b_fg;
 
-                for (int gc = 0; gc < gw; gc++) {
-                    int out_px = glyph_base + gc;
-                    if (out_px < 0 || out_px >= disp_w) continue;
-                    uint8_t alpha = bitmap[glyph_row * gw + gc];
+            for (int gc = 0; gc < cells[ci].gw; gc++) {
+                int out_px = glyph_base + gc;
+                if (out_px < 0 || out_px >= disp_w) continue;
+                uint8_t alpha = cells[ci].bitmap[cells[ci].glyph_row * cells[ci].gw + gc];
 
-                    // Apply border attributes only within cell bounds
-                    int dx = out_px - cell_px;
-                    if (alpha < 255 && (attrs & TEXT_ATTR_UNDERLINE) && char_row == fh - 1)
-                        alpha = 255;
-                    if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_TOP) && char_row == 0)
-                        alpha = 255;
-                    if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_LEFT) && dx == 0)
-                        alpha = 255;
-                    if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_RIGHT) && dx == fw - 1)
-                        alpha = 255;
+                int dx = out_px - cell_px;
+                if (alpha < 255 && (attrs & TEXT_ATTR_UNDERLINE) && char_row == fh - 1)
+                    alpha = 255;
+                if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_TOP) && char_row == 0)
+                    alpha = 255;
+                if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_LEFT) && dx == 0)
+                    alpha = 255;
+                if (alpha < 255 && (attrs & TEXT_ATTR_BORDER_RIGHT) && dx == fw - 1)
+                    alpha = 255;
 
-                    int ia = alpha;
-                    int ina = 255 - ia;
-                    uint8_t *dst = row_buf + out_px * 3;
-                    dst[0] = (uint8_t)((r_fg * ia + dst[0] * ina) / 255);
-                    dst[1] = (uint8_t)((g_fg * ia + dst[1] * ina) / 255);
-                    dst[2] = (uint8_t)((b_fg * ia + dst[2] * ina) / 255);
-                }
+                int ia = alpha;
+                int ina = 255 - ia;
+                uint8_t *dst = row_buf + out_px * 3;
+                dst[0] = (uint8_t)((r_fg * ia + dst[0] * ina) / 255);
+                dst[1] = (uint8_t)((g_fg * ia + dst[1] * ina) / 255);
+                dst[2] = (uint8_t)((b_fg * ia + dst[2] * ina) / 255);
             }
         }
 
