@@ -885,7 +885,7 @@ void app_init(app_context_t *ctx) {
     ui2_layout_set_gap(bar, 0);
     ui2_layout_add(root, UI2_WIDGET(bar));
 
-    int btn_w = cols / 7;
+    int btn_w = 3;
     struct { const char *label; void (*cb)(ui2_button_t *, void *); } btn_defs[] = {
         {ICON_FILE_PLUS, on_new_file_click},
         {ICON_FOLDER_PLUS, on_mkdir_click},

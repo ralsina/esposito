@@ -110,15 +110,15 @@ static void build_launcher_screen(void) {
     ui2_layout_set_gap(bar, 2);
     ui2_layout_add(root, UI2_WIDGET(bar));
 
-    ui2_button_t *up = ui2_button_create(0, 0, 5, 3, ICON_ARROW_BIG_UP);
+    ui2_button_t *up = ui2_button_create(0, 0, 3, 3, ICON_ARROW_BIG_UP);
     ui2_button_set_callback(up, on_up_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(up));
 
-    ui2_button_t *open = ui2_button_create(0, 0, 5, 3, ICON_CHECK);
+    ui2_button_t *open = ui2_button_create(0, 0, 3, 3, ICON_CHECK);
     ui2_button_set_callback(open, on_open_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(open));
 
-    ui2_button_t *down = ui2_button_create(0, 0, 5, 3, ICON_ARROW_BIG_DOWN);
+    ui2_button_t *down = ui2_button_create(0, 0, 3, 3, ICON_ARROW_BIG_DOWN);
     ui2_button_set_callback(down, on_down_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(down));
 }

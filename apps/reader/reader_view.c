@@ -129,7 +129,7 @@ void reader_view_setup_file_list(reader_state_t *state) {
     ui2_layout_t *btn_row = ui2_layout_create(0, 0, cols, 3, UI2_LAYOUT_HORIZONTAL);
     ui2_layout_set_gap(btn_row, 1);
 
-     int btn_w = 5;
+     int btn_w = 3;
     ui2_button_t *btn_up = ui2_button_create(0, 0, btn_w, 3, ICON_ARROW_BIG_UP);
     ui2_button_set_callback(btn_up, on_file_list_up_click, list);
 
@@ -363,16 +363,16 @@ void reader_view_setup_toc(reader_state_t *state) {
     ui2_layout_t *btn_row = ui2_layout_create(0, 0, cols, 3, UI2_LAYOUT_HORIZONTAL);
     ui2_layout_set_gap(btn_row, 1);
 
-    ui2_button_t *btn_up = ui2_button_create(0, 0, 6, 3, ICON_ARROW_BIG_UP);
+    ui2_button_t *btn_up = ui2_button_create(0, 0, 3, 3, ICON_ARROW_BIG_UP);
     ui2_button_set_callback(btn_up, on_toc_up_click, list);
 
-    ui2_button_t *btn_jump = ui2_button_create(0, 0, 8, 3, ICON_ARROW_BIG_RIGHT);
+    ui2_button_t *btn_jump = ui2_button_create(0, 0, 3, 3, ICON_ARROW_BIG_RIGHT);
     ui2_button_set_callback(btn_jump, on_toc_jump_click, state);
 
-    ui2_button_t *btn_down = ui2_button_create(0, 0, 8, 3, ICON_ARROW_BIG_DOWN);
+    ui2_button_t *btn_down = ui2_button_create(0, 0, 3, 3, ICON_ARROW_BIG_DOWN);
     ui2_button_set_callback(btn_down, on_toc_down_click, list);
 
-    ui2_button_t *btn_back = ui2_button_create(0, 0, 8, 3, ICON_X);
+    ui2_button_t *btn_back = ui2_button_create(0, 0, 3, 3, ICON_X);
     ui2_button_set_callback(btn_back, on_toc_back_click, state);
 
     ui2_layout_add(btn_row, UI2_WIDGET(btn_up));
@@ -466,7 +466,7 @@ void reader_view_setup_receiving(reader_state_t *state) {
 
     ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
 
-    int btn_w = 10;
+    int btn_w = 3;
     int btn_x = (cols - btn_w) / 2;
     int btn_y = (rows - 9) / 2 + 6;
 
