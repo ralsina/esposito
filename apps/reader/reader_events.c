@@ -283,6 +283,9 @@ void on_toc_list_item_activated(int item_index, void *user_data) {
     state->page_cache.count = 1;
     state->page_cache.current = 0;
     state->page_number = entry->page_number;
+    int bp = 0, up = 0;
+    reader_load_current_page(state, &bp, &up);
+    reader_save_current_book_progress(state, false);
 }
 
 void on_file_list_selection_changed(int new_selection, void *user_data) {
