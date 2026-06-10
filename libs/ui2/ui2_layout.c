@@ -42,13 +42,24 @@ static void ui2_layout_draw(ui2_widget_t *widget) {
 }
 
 static bool ui2_layout_handle_key(ui2_widget_t *widget, char key) {
-    (void)key;
     if (!widget->enabled) return false;
+    for (int i = 0; i < widget->child_count; i++) {
+        ui2_widget_t *child = widget->children[i];
+        if (child->enabled && child->vtable && child->vtable->handle_key)
+            if (child->vtable->handle_key(child, key))
+                return true;
+    }
     return false;
 }
 
 static bool ui2_layout_handle_touch(ui2_widget_t *widget, int col, int row, bool pressed) {
     if (!widget->enabled || !widget->visible) return false;
+    for (int i = widget->child_count - 1; i >= 0; i--) {
+        ui2_widget_t *child = widget->children[i];
+        if (child->visible && child->enabled && child->vtable && child->vtable->handle_touch)
+            if (child->vtable->handle_touch(child, col, row, pressed))
+                return true;
+    }
     return false;
 }
 

@@ -162,7 +162,7 @@ static bool ui2_list_handle_key(ui2_widget_t *widget, char key) {
     ui2_list_t *list = (ui2_list_t *)widget;
     if (!widget->enabled || !list->items || list->count <= 0) return false;
 
-    if (key == 'w' || key == 'W') {
+    if (key == 'w' || key == 'W' || (unsigned char)key == 0x99) {
         if (list->selected > 0) {
             int old = list->selected;
             list->selected--;
@@ -173,7 +173,7 @@ static bool ui2_list_handle_key(ui2_widget_t *widget, char key) {
         return true;
     }
 
-    if (key == 's' || key == 'S') {
+    if (key == 's' || key == 'S' || (unsigned char)key == 0x98) {
         if (list->selected < list->count - 1) {
             int old = list->selected;
             list->selected++;
