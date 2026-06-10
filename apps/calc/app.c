@@ -1,6 +1,7 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "ui2.h"
+#include "lucide_icons.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,11 +22,11 @@ static bool decimal_entered = false;
 static ui2_screen_t *screen = NULL;
 
 static const char *toolbar_labels[NUM_TOOLBARS][4] = {
-    {"\xee\x82\x84", "\u00B1", "%", "/"},
+    {"C", "\u00B1", "%", "/"},
     {"7", "8", "9", "*"},
     {"4", "5", "6", "-"},
     {"1", "2", "3", "+"},
-    {"0", ".", "=", "\u2718"}
+    {"0", ".", "=", ICON_X}
 };
 
 static void draw_display(void);
@@ -166,6 +167,10 @@ static void draw_display(void) {
     int val_len = strlen(display_buffer);
     int start_col = cols - 1 - val_len;
     if (start_col < 0) start_col = 0;
+    char spaces[cols + 1];
+    memset(spaces, ' ', cols);
+    spaces[cols] = '\0';
+    text_mode_print_at_attr_bg(0, 1, spaces, TEXT_COLOR_BRIGHT_GREEN, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
     text_mode_print_at_attr_bg(start_col, 1, display_buffer,
                                TEXT_COLOR_BRIGHT_GREEN, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
 }
@@ -212,8 +217,9 @@ static void build_calc_screen(void) {
                 ui2_button_set_callback(btn, button_decimal, NULL);
             } else if (strcmp(label, "=") == 0) {
                 ui2_button_set_callback(btn, button_equals, NULL);
-            } else if (strcmp(label, "\xee\x82\x84") == 0) {
+            } else if (strcmp(label, ICON_X) == 0) {
                 ui2_button_set_callback(btn, button_exit, NULL);
+                ui2_button_set_colors(btn, TEXT_COLOR_WHITE, TEXT_COLOR_RED);
             } else if (label[0] == '+' || label[0] == '-' || label[0] == '*' || label[0] == '/') {
                 ui2_button_set_callback(btn, button_operator, (void*)(intptr_t)label[0]);
             } else if (label[0] >= '0' && label[0] <= '9') {

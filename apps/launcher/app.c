@@ -2,6 +2,7 @@
 #include "text_mode.h"
 #include "hardware.h"
 #include "ui2.h"
+#include "lucide_icons.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -85,7 +86,7 @@ static void build_launcher_screen(void) {
     if (app_count > 0) {
         int list_height = rows - 6;
         launcher_list = ui2_list_create(1, 1, cols - 2, list_height);
-        ui2_list_set_title(launcher_list, "\xee\x83\xb5 App Launcher");
+        ui2_list_set_title(launcher_list, ICON_HOME " App Launcher");
         ui2_list_set_colors(launcher_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
                             TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
 
@@ -109,15 +110,15 @@ static void build_launcher_screen(void) {
     ui2_layout_set_gap(bar, 2);
     ui2_layout_add(root, UI2_WIDGET(bar));
 
-    ui2_button_t *up = ui2_button_create(0, 0, 5, 3, "\xee\x81\xb0");
+    ui2_button_t *up = ui2_button_create(0, 0, 5, 3, ICON_ARROW_BIG_UP);
     ui2_button_set_callback(up, on_up_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(up));
 
-    ui2_button_t *open = ui2_button_create(0, 0, 5, 3, "\xee\x81\xbc");
+    ui2_button_t *open = ui2_button_create(0, 0, 5, 3, ICON_CHECK);
     ui2_button_set_callback(open, on_open_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(open));
 
-    ui2_button_t *down = ui2_button_create(0, 0, 5, 3, "\xee\x81\xad");
+    ui2_button_t *down = ui2_button_create(0, 0, 5, 3, ICON_ARROW_BIG_DOWN);
     ui2_button_set_callback(down, on_down_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(down));
 }

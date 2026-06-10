@@ -1,6 +1,7 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "ui2.h"
+#include "ui2_osk.h"
 #include "app_config.h"
 #include "app_manifest.h"
 #include "hardware.h"
@@ -45,6 +46,7 @@ typedef struct {
     const char *pending_open_apps[FM_OPEN_WITH_MAX];
     int pending_open_count;
     int input_mode;
+    int osk_mode;
     int pending_edit_pane;
     int pending_edit_is_dir;
     char pending_edit_path[FM_MAX_PATH];
@@ -260,6 +262,7 @@ static void clear_pending_open(void) {
 
 static void clear_pending_edit(void) {
     state.input_mode = INPUT_MODE_NONE;
+    state.osk_mode = INPUT_MODE_NONE;
     state.pending_edit_pane = 0;
     state.pending_edit_is_dir = 0;
     state.pending_edit_path[0] = '\0';
@@ -540,6 +543,14 @@ static void start_new_file(void) {
     clear_pending_edit();
     state.input_mode = INPUT_MODE_NEW_FILE;
     snprintf(state.pending_name, sizeof(state.pending_name), "%s", "newfile.txt");
+
+    if (!keyboard_is_available()) {
+        state.osk_mode = state.input_mode;
+        state.input_mode = INPUT_MODE_NONE;
+        ui2_osk_input_text("New File:", state.pending_name, sizeof(state.pending_name), "newfile.txt", false);
+        return;
+    }
+
     render();
 }
 
@@ -563,6 +574,12 @@ static void start_rename_selected(void) {
     state.pending_edit_is_dir = entry->is_dir;
     snprintf(state.pending_edit_path, sizeof(state.pending_edit_path), "%s", entry->path);
     snprintf(state.pending_name, sizeof(state.pending_name), "%s", entry->name);
+
+    if (!keyboard_is_available()) {
+        ui2_osk_input_text("Rename:", state.pending_name, sizeof(state.pending_name), entry->name, false);
+        return;
+    }
+
     render();
 }
 
@@ -716,6 +733,7 @@ static void draw_status_overlay(void) {
 }
 
 static void render(void) {
+    if (ui2_osk_is_active()) return;
     if (state.input_mode != INPUT_MODE_NONE) {
         text_mode_clear(TEXT_COLOR_BLACK);
         ui2_text_input_set_buffer(state.name_input, state.pending_name, sizeof(state.pending_name));
@@ -925,6 +943,22 @@ void app_init(app_context_t *ctx) {
 
 void app_event(app_context_t *ctx, event_t *event) {
     (void)ctx;
+
+    if (ui2_osk_is_active()) {
+        ui2_osk_handle_event(ctx, event);
+        if (!ui2_osk_is_active()) {
+            if (ui2_osk_get_result() == UI2_OSK_RESULT_CONFIRMED) {
+                state.input_mode = state.osk_mode;
+                state.osk_mode = INPUT_MODE_NONE;
+                apply_name_input();
+            } else {
+                clear_pending_edit();
+                set_status("Canceled");
+                render();
+            }
+        }
+        return;
+    }
 
     if (event->type == EVENT_TOUCH) {
         if (ui2_screen_handle_event(state.screen, event))

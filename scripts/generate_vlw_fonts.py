@@ -38,13 +38,14 @@ LUCIDE_CODEPOINTS = set([
     0xE07C, 0xE084, 0xE0F5,          # check-circle, x-circle, home
     0xE05F, 0xE151,                  # book-open, search
     0xE042, 0xE048, 0xE049, 0xE04A,  # arrow-down, arrow-left, arrow-right, arrow-up
-    0xE1E4, 0xE1E1,                  # arrow-big-up, arrow-big-down
+    0xE1E4, 0xE1E1, 0xE1E3, 0xE1E2, # arrow-big-up, arrow-big-down, arrow-big-right, arrow-big-left
     0xE0D7, 0xE0B9,                  # folder, external-link
     0xE0C9, 0xE0D9,                  # file-plus, folder-plus
     0xE0C6, 0xE0B2,                  # file-minus, download
     0xE09E, 0xE18E, 0xE12F,          # copy, trash-2, edit-2
     0xE06C, 0xE1B2,                  # check, x
-    0xE115, 0xE154, 0xE14D, 0xE18D, 0xE19E  # menu, settings, save, trash, upload
+    0xE115, 0xE154, 0xE14D, 0xE18D, 0xE19E, # menu, settings, save, trash, upload
+    0xE455,                           # arrow-down-to-line
 ])
 
 # Character set: printable ASCII + Latin-1 + typographic chars

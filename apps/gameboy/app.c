@@ -10,6 +10,7 @@
 #include "hardware.h"
 #include "text_mode.h"
 #include "ui2.h"
+#include "lucide_icons.h"
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -558,7 +559,7 @@ static void build_rom_list_screen(void) {
     ui2_button_set_callback(open, on_open_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(open));
 
-    ui2_button_t *exit = ui2_button_create(0, 0, 3, 3, "\xee\x86\xb2");
+    ui2_button_t *exit = ui2_button_create(0, 0, 3, 3, ICON_X);
     ui2_button_set_callback(exit, on_exit_click, NULL);
     ui2_layout_add(bar, UI2_WIDGET(exit));
 

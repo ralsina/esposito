@@ -2,6 +2,7 @@
 #include "hardware.h"
 #include "text_mode.h"
 #include "os_core.h"
+#include "lucide_icons.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,7 +64,7 @@ static const char *symbol_layout[KEYBOARD_ROWS][KEYBOARD_COLS] = {
 };
 
 static const char *special_labels[6] = {
-    "\xE2\x9C\x98", "\xE2\x87\xA7", "\xE2\x80\xA2", "\xE2\x8C\xAB", " ", "\xE2\x8F\x8E"
+    ICON_X, ICON_ARROW_BIG_UP, ICON_MENU, ICON_ARROW_BIG_LEFT, " ", ICON_CHECK
 };
 
 static const char *special_keys[6] = {
@@ -182,19 +183,13 @@ bool ui2_osk_input_text(const char *title, char *buffer, int max_len,
     int rows = text_mode_get_rows();
     state->title_y = 0;
     state->input_y = 1;
-    state->keyboard_start_y = 4;
+    state->keyboard_start_y = 2;
     state->input_display_width = cols;
 
     int avail_rows = rows - state->keyboard_start_y;
     int total_key_rows = 5;
     int key_h = avail_rows / total_key_rows;
     if (key_h < 1) key_h = 1;
-    int gap = 0;
-    int used = total_key_rows * key_h;
-    if (used >= avail_rows) {
-        key_h = 1;
-        gap = 0;
-    }
 
     state->total_keys = 0;
     state->key_rows = total_key_rows;
@@ -218,7 +213,7 @@ bool ui2_osk_input_text(const char *title, char *buffer, int max_len,
             state->keys[idx].label[1] = '\0';
             state->total_keys++;
         }
-        key_y += key_h + gap;
+        key_y += key_h;
     }
 
     {
@@ -259,6 +254,7 @@ bool ui2_osk_input_text(const char *title, char *buffer, int max_len,
         }
     }
 
+    g_state = state;
     text_mode_clear(TEXT_COLOR_BLACK);
     draw_input_display();
 
@@ -269,8 +265,6 @@ bool ui2_osk_input_text(const char *title, char *buffer, int max_len,
     update_key_labels();
     draw_all_keys();
     text_mode_flush();
-
-    g_state = state;
     return true;
 }
 
@@ -301,7 +295,7 @@ static void draw_key(const key_rect_t *key) {
         char buf[8];
         strncpy(buf, key->label, sizeof(buf) - 1);
         buf[sizeof(buf) - 1] = '\0';
-        text_mode_print_at_attr(lx, ly, buf, key->fg, TEXT_ATTR_BOLD);
+        text_mode_print_at_attr_bg(lx, ly, buf, key->fg, key->bg, TEXT_ATTR_BOLD);
     }
 }
 
@@ -348,18 +342,9 @@ static void draw_input_display(void) {
     if (!s) return;
 
     int cols = s->input_display_width;
-    int input_h = 2;
-    int input_area_h = input_h + 1;
 
-    for (int y = s->input_y; y < s->input_y + input_area_h; y++) {
-        for (int x = 0; x < cols; x++) {
-            uint8_t attr = TEXT_ATTR_NORMAL;
-            if (y == s->input_y) attr |= TEXT_ATTR_BORDER_TOP;
-            if (y == s->input_y + input_area_h - 1) attr |= TEXT_ATTR_UNDERLINE;
-            if (x == 0) attr |= TEXT_ATTR_BORDER_LEFT;
-            if (x == cols - 1) attr |= TEXT_ATTR_BORDER_RIGHT;
-            text_mode_print_at_attr_bg(x, y, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, attr);
-        }
+    for (int x = 0; x < cols; x++) {
+        text_mode_print_at_attr_bg(x, s->input_y, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE);
     }
 
     const char *display = s->mask_input ? "****************" : s->input_buffer;
@@ -370,17 +355,16 @@ static void draw_input_display(void) {
         offset = text_len - max_w;
         text_len = max_w;
     }
-    int text_x = 1 + (max_w - text_len) / 2;
-    int text_y = s->input_y + input_h / 2;
+    int text_x = 1;
 
     for (int i = 0; i < text_len; i++) {
         int cx = text_x + i;
         if (cx < cols - 1) {
             char str[2] = {display[offset + i], '\0'};
             if (i == s->cursor_pos - offset) {
-                text_mode_print_at_attr_bg(cx, text_y, str, TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
+                text_mode_print_at_attr_bg(cx, s->input_y, str, TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
             } else {
-                text_mode_print_at_attr_bg(cx, text_y, str, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+                text_mode_print_at_attr_bg(cx, s->input_y, str, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE);
             }
         }
     }
@@ -389,7 +373,7 @@ static void draw_input_display(void) {
     if (cursor_display < offset) cursor_display = offset;
     if (cursor_display >= offset + text_len) cursor_display = offset + text_len;
     if (cursor_display == text_len + offset && text_x + (cursor_display - offset) < cols - 1) {
-        text_mode_print_at_attr_bg(text_x + (cursor_display - offset), text_y, "_", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
+        text_mode_print_at_attr_bg(text_x + (cursor_display - offset), s->input_y, "_", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
     }
 }
 
@@ -486,8 +470,7 @@ bool ui2_osk_handle_event(app_context_t *ctx, event_t *event) {
         int col = event->touch.x / char_w;
         int row = event->touch.y / char_h;
 
-        int input_area_h = 3;
-        if (row >= s->input_y && row < s->input_y + input_area_h) {
+        if (row >= s->input_y && row < s->input_y + 1) {
             if (col >= 1 && col < s->input_display_width - 1) {
                 const char *display = s->mask_input ? "****************" : s->input_buffer;
                 int text_len = strlen(display);
