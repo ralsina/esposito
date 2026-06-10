@@ -871,9 +871,9 @@ void app_init(app_context_t *ctx) {
         {"\xe0\xc9", on_new_file_click},
         {"\xe0\xd9", on_mkdir_click},
         {"\xe1\x2f", on_rename_click},
-        {"\xe1\x2a", on_copy_click},
-        {"\xe1\x2d", on_delete_click},
-        {"\xe0\xce", on_open_click},
+        {"\xe0\x9e", on_copy_click},
+        {"\xe1\x8e", on_delete_click},
+        {"\xe0\xd7", on_open_click},
         {"\xe0\x84", on_exit_click},
     };
     for (int i = 0; i < 7; i++) {

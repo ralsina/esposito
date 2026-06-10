@@ -34,15 +34,15 @@ FONTS_DIR = Path(__file__).parent.parent / "source_fonts"
 FALLBACK_FONT = Path("/usr/share/fonts/TTF/DejaVuSansMono.ttf")
 LUCIDE_FONT = Path(__file__).parent.parent / "source_fonts/lucide.woff"
 LUCIDE_CODEPOINTS = set([
-    0xE070, 0xE06D, 0xE07C, 0xE0F5,  # chevron-up, chevron-down, check-circle, home
-    0xE05F, 0xE151, 0xE042, 0xE049,  # book-open, search, arrow-down, arrow-left
-    0xE048, 0xE04A, 0xE053, 0xE054, 0xE061, 0xE06A, 0xE06B,
-    0xE06E, 0xE06F, 0xE076, 0xE077, 0xE082, 0xE084, 0xE0B2, 0xE0B6, 0xE0B7,
-    0xE0B9, 0xE0C0, 0xE0C9, 0xE0D9,  # file-plus, folder-plus
-    0xE0CE, 0xE086, 0xE0CA, 0xE12A,  # folder, external-link, file-minus, copy
-    0xE12D, 0xE0E9, 0xE12F,          # trash-2, download, edit-2
-    0xE112, 0xE115, 0xE11A, 0xE11C, 0xE13D, 0xE140, 0xE145, 0xE14D, 0xE151, 0xE154, 0xE178, 0xE19E,
-    0xE1AE, 0xE1AF, 0xE1B2, 0xE2A5, 0xE400, 0xE4D3
+    0xE070, 0xE06D, 0xE06E, 0xE06F,  # chevron-up, chevron-down, chevron-left, chevron-right
+    0xE07C, 0xE084, 0xE0F5,          # check-circle, x-circle, home
+    0xE05F, 0xE151,                  # book-open, search
+    0xE042, 0xE048, 0xE049, 0xE04A,  # arrow-down, arrow-left, arrow-right, arrow-up
+    0xE0D7, 0xE0B9,                  # folder, external-link
+    0xE0C9, 0xE0D9,                  # file-plus, folder-plus
+    0xE0C6, 0xE0B2,                  # file-minus, download
+    0xE09E, 0xE18E, 0xE12F,          # copy, trash-2, edit-2
+    0xE115, 0xE154, 0xE14D, 0xE18D, 0xE19E  # menu, settings, save, trash, upload
 ])
 
 # Character set: printable ASCII + Latin-1 + typographic chars
