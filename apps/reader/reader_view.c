@@ -182,7 +182,7 @@ void reader_view_setup_reading(reader_state_t *state) {
     state->btn_jump = ui2_button_create(toc_btn_x, btn_row, btn_width, 1, "\xee\x81\x9f");
     ui2_button_set_callback(state->btn_jump, on_reading_toc_click, state);
 
-    state->btn_find = ui2_button_create(find_btn_x, btn_row, btn_width, 1, "\xee\x85\x85");
+    state->btn_find = ui2_button_create(find_btn_x, btn_row, btn_width, 1, "\xe1\x51");
     ui2_button_set_callback(state->btn_find, on_reading_find_click, state);
 
     state->btn_goto = ui2_button_create(goto_btn_x, btn_row, btn_width, 1, "\xee\x81\x82");
