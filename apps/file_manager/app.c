@@ -4,6 +4,7 @@
 #include "app_config.h"
 #include "app_manifest.h"
 #include "hardware.h"
+#include "lucide_icons.h"
 
 #include <dirent.h>
 #include <stdio.h>
@@ -868,13 +869,13 @@ void app_init(app_context_t *ctx) {
 
     int btn_w = cols / 7;
     struct { const char *label; void (*cb)(ui2_button_t *, void *); } btn_defs[] = {
-        {"\xee\x83\x89", on_new_file_click},
-        {"\xee\x83\x99", on_mkdir_click},
-        {"\xee\x84\xaf", on_rename_click},
-        {"\xee\x82\x9e", on_copy_click},
-        {"\xee\x86\x8e", on_delete_click},
-        {"\xee\x83\x97", on_open_click},
-        {"\xee\x82\x84", on_exit_click},
+        {ICON_FILE_PLUS, on_new_file_click},
+        {ICON_FOLDER_PLUS, on_mkdir_click},
+        {ICON_EDIT_2, on_rename_click},
+        {ICON_COPY, on_copy_click},
+        {ICON_TRASH_2, on_delete_click},
+        {ICON_CHECK_CIRCLE, on_open_click},
+        {ICON_X_CIRCLE, on_exit_click},
     };
     for (int i = 0; i < 7; i++) {
         ui2_button_t *btn = ui2_button_create(0, 0, btn_w, 3, btn_defs[i].label);

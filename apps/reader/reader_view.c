@@ -9,6 +9,7 @@
 #include "ui2_list.h"
 #include "ui2_text_input.h"
 #include "ui2_layout.h"
+#include "lucide_icons.h"
 #include "hardware.h"
 #include "ui2_osk.h"
 
@@ -129,19 +130,19 @@ void reader_view_setup_file_list(reader_state_t *state) {
     ui2_layout_set_gap(btn_row, 1);
 
      int btn_w = 5;
-    ui2_button_t *btn_up = ui2_button_create(0, 0, btn_w, 3, "\xee\x81\xb0");
+    ui2_button_t *btn_up = ui2_button_create(0, 0, btn_w, 3, ICON_CHEVRON_UP);
     ui2_button_set_callback(btn_up, on_file_list_up_click, list);
 
-    ui2_button_t *btn_down = ui2_button_create(0, 0, btn_w, 3, "\xee\x81\xad");
+    ui2_button_t *btn_down = ui2_button_create(0, 0, btn_w, 3, ICON_CHEVRON_DOWN);
     ui2_button_set_callback(btn_down, on_file_list_down_click, list);
 
-    ui2_button_t *btn_open = ui2_button_create(0, 0, btn_w, 3, "\xee\x82\xb2");
+    ui2_button_t *btn_open = ui2_button_create(0, 0, btn_w, 3, ICON_DOWNLOAD);
     ui2_button_set_callback(btn_open, on_file_list_open_click, state);
 
-    ui2_button_t *btn_get = ui2_button_create(0, 0, btn_w, 3, "\xee\x86\x9e");
+    ui2_button_t *btn_get = ui2_button_create(0, 0, btn_w, 3, ICON_UPLOAD);
     ui2_button_set_callback(btn_get, on_file_list_get_click, state);
 
-    ui2_button_t *btn_exit = ui2_button_create(0, 0, btn_w, 3, "\xee\x82\x84");
+    ui2_button_t *btn_exit = ui2_button_create(0, 0, btn_w, 3, ICON_X_CIRCLE);
     ui2_button_set_callback(btn_exit, on_file_list_exit_click, state);
 
      ui2_layout_add(btn_row, UI2_WIDGET(btn_up));
@@ -179,16 +180,16 @@ void reader_view_setup_reading(reader_state_t *state) {
 
     ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
 
-    state->btn_jump = ui2_button_create(toc_btn_x, btn_row, btn_width, 1, "\xee\x81\x9f");
+    state->btn_jump = ui2_button_create(toc_btn_x, btn_row, btn_width, 1, ICON_BOOK_OPEN);
     ui2_button_set_callback(state->btn_jump, on_reading_toc_click, state);
 
-    state->btn_find = ui2_button_create(find_btn_x, btn_row, btn_width, 1, "\xee\x85\x91");
+    state->btn_find = ui2_button_create(find_btn_x, btn_row, btn_width, 1, ICON_SEARCH);
     ui2_button_set_callback(state->btn_find, on_reading_find_click, state);
 
-    state->btn_goto = ui2_button_create(goto_btn_x, btn_row, btn_width, 1, "\xee\x81\x89");
+    state->btn_goto = ui2_button_create(goto_btn_x, btn_row, btn_width, 1, ICON_ARROW_RIGHT);
     ui2_button_set_callback(state->btn_goto, on_reading_goto_click, state);
 
-    state->btn_back = ui2_button_create(back_btn_x, btn_row, btn_width, 1, "\xee\x81\x88");
+    state->btn_back = ui2_button_create(back_btn_x, btn_row, btn_width, 1, ICON_ARROW_LEFT);
     ui2_button_set_callback(state->btn_back, on_reading_back_click, state);
 
     ui2_layout_add(root, UI2_WIDGET(state->btn_jump));
@@ -362,16 +363,16 @@ void reader_view_setup_toc(reader_state_t *state) {
     ui2_layout_t *btn_row = ui2_layout_create(0, 0, cols, 3, UI2_LAYOUT_HORIZONTAL);
     ui2_layout_set_gap(btn_row, 1);
 
-    ui2_button_t *btn_up = ui2_button_create(0, 0, 6, 3, "\xee\x81\xb0");
+    ui2_button_t *btn_up = ui2_button_create(0, 0, 6, 3, ICON_CHEVRON_UP);
     ui2_button_set_callback(btn_up, on_toc_up_click, list);
 
-    ui2_button_t *btn_jump = ui2_button_create(0, 0, 8, 3, "\xee\x81\x89");
+    ui2_button_t *btn_jump = ui2_button_create(0, 0, 8, 3, ICON_ARROW_RIGHT);
     ui2_button_set_callback(btn_jump, on_toc_jump_click, state);
 
-    ui2_button_t *btn_down = ui2_button_create(0, 0, 8, 3, "\xee\x81\xad");
+    ui2_button_t *btn_down = ui2_button_create(0, 0, 8, 3, ICON_CHEVRON_DOWN);
     ui2_button_set_callback(btn_down, on_toc_down_click, list);
 
-    ui2_button_t *btn_back = ui2_button_create(0, 0, 8, 3, "\xee\x82\x84");
+    ui2_button_t *btn_back = ui2_button_create(0, 0, 8, 3, ICON_X_CIRCLE);
     ui2_button_set_callback(btn_back, on_toc_back_click, state);
 
     ui2_layout_add(btn_row, UI2_WIDGET(btn_up));
