@@ -934,11 +934,18 @@ bool text_mode_save_screenshot(void) {
                                         &gw, &gh, &top_offset, &left_offset);
             }
 
+            // Center glyph within cell if it's wider than the cell
+            // (matching display clip rect of font_width + 2)
+            int sample_left = left_offset;
+            if (left_offset + gw > fw || left_offset < 0) {
+                sample_left = (fw - gw) / 2;
+            }
+
             for (int dx = 0; dx < fw; dx++) {
                 uint8_t alpha = 0;
                 if (bitmap && gw > 0 && gh > 0) {
                     int glyph_row = char_row - (ascent - top_offset);
-                    int glyph_col = dx - left_offset;
+                    int glyph_col = dx - sample_left;
                     if (glyph_row >= 0 && glyph_row < gh && glyph_col >= 0 && glyph_col < gw) {
                         alpha = bitmap[glyph_row * gw + glyph_col];
                     }
