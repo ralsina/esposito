@@ -30,8 +30,20 @@ except ImportError:
     print("Install freetype-py:  pip install freetype-py")
     sys.exit(1)
 
+FONTS_DIR = Path(__file__).parent.parent / "source_fonts"
+FALLBACK_FONT = Path("/usr/share/fonts/TTF/DejaVuSansMono.ttf")
+LUCIDE_FONT = Path(__file__).parent.parent / "source_fonts/lucide.woff"
+LUCIDE_CODEPOINTS = set([
+    0xE070, 0xE06D, 0xE07C, 0xE0F5,  # chevron-up, chevron-down, check-circle, home
+    0xE042, 0xE048, 0xE049, 0xE04A, 0xE053, 0xE054, 0xE061, 0xE06A, 0xE06B,
+    0xE06E, 0xE06F, 0xE076, 0xE077, 0xE082, 0xE084, 0xE0B2, 0xE0B6, 0xE0B7,
+    0xE0B9, 0xE0C0, 0xE0C6, 0xE0C9, 0xE0D7, 0xE0DC, 0xE112, 0xE115, 0xE11A,
+    0xE11C, 0xE13D, 0xE140, 0xE145, 0xE14D, 0xE151, 0xE154, 0xE178, 0xE19E,
+    0xE1AE, 0xE1AF, 0xE1B2, 0xE2A5, 0xE400, 0xE4D3
+])
+
 # Character set: printable ASCII + Latin-1 + typographic chars
-# Box-drawing and symbols go in the supplement font (see generate_symbol_font.py)
+# Use Lucide icons for arrows, checks, etc. instead of unicode glyphs
 CHARSET = (
     list(range(0x20, 0x7F))            # Printable ASCII
     + list(range(0xA0, 0x100))         # Latin-1 Supplement
@@ -40,9 +52,7 @@ CHARSET = (
     + [0x2018, 0x2019]                  # single curly quotes
     + [0x201C, 0x201D]                  # double curly quotes
     + list(range(0x2500, 0x2580))      # Box drawing
-    + [0x2190, 0x2191, 0x2192, 0x2193] # ← ↑ → ↓
-    + [0x2194, 0x2195]                  # ↔ ↕
-    + [0x2713, 0x2717, 0x2718]          # ✓ ✗ ✘
+    # Use Lucide icons for arrows instead of unicode glyphs
     + [0x2261]                          # ≡
     + [0x2699]                          # ⚙
     + [0x23CE]                          # ⏎
@@ -58,15 +68,12 @@ CHARSET = (
     + [0x2B07]                          # ⬇ (download)
     + [0x21E7, 0x21E9]                  # ⇧ ⇩ (shift, download)
     + [0x232B]                          # ⌫ (backspace)
+    # Lucide icons (PUA range 0xE000-0xF8FF)
+    + list(LUCIDE_CODEPOINTS)
 )
 
 # Font sizes to generate: (name, ttf_filename, pixel_size)
 # Mixed weights match TFT_eSPI bitmap fonts: Font 1/2 were medium, Font 4 was bold.
-
-FONTS_DIR = Path(__file__).parent.parent / "source_fonts"
-FALLBACK_FONT = Path("/usr/share/fonts/TTF/DejaVuSansMono.ttf")
-EMOJI_FONT = Path("/usr/share/fonts/TTF/NotoEmoji-Regular.ttf")
-EMOJI_MAP = {}
 
 
   # Mapped codepoint → real emoji codepoint
@@ -237,10 +244,10 @@ def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
         fallback_face = freetype.Face(str(FALLBACK_FONT))
         fallback_face.set_pixel_sizes(0, pixel_size + 2)
 
-    emoji_face = None
-    if EMOJI_FONT.exists():
-        emoji_face = freetype.Face(str(EMOJI_FONT))
-        emoji_face.set_pixel_sizes(0, pixel_size)
+    lucide_face = None
+    if LUCIDE_FONT.exists():
+        lucide_face = freetype.Face(str(LUCIDE_FONT))
+        lucide_face.set_pixel_sizes(0, pixel_size)
 
     glyphs = []
 
@@ -266,19 +273,17 @@ def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
                 glyphs.append(glyph)
                 continue
 
-        # Try fallback font (DejaVu Sans Mono)
-        if fallback_face:
-            glyph = render_codepoint(fallback_face, codepoint)
+        # Try Lucide font for icon codepoints
+        if codepoint in LUCIDE_CODEPOINTS and lucide_face:
+            glyph = render_codepoint(lucide_face, codepoint)
             if glyph:
                 glyphs.append(glyph)
                 continue
 
-        # Try emoji font for mapped codepoints
-        if codepoint in EMOJI_MAP and emoji_face:
-            real_cp = EMOJI_MAP[codepoint]
-            glyph = render_codepoint(emoji_face, real_cp)
+        # Try fallback font (DejaVu Sans Mono) for any missing glyphs
+        if fallback_face:
+            glyph = render_codepoint(fallback_face, codepoint)
             if glyph:
-                glyph["unicode"] = codepoint
                 glyphs.append(glyph)
                 continue
 

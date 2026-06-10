@@ -3,6 +3,7 @@
 #include "wifi.h"
 #include "core_json.h"
 #include "ui2.h"
+#include "ui2_button.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -838,7 +839,7 @@ void app_init(app_context_t *ctx) {
     
     // Create exit button
     int btn_y = text_mode_get_rows() - 3;
-    exit_button = ui2_button_create(2, btn_y, text_mode_get_cols() - 4, 3, "Press here to exit");
+    exit_button = ui2_button_create(2, btn_y, 3, 1, "\xee\x82\x84");  // x-circle icon (U+E084)
     ui2_button_set_colors(exit_button, TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_RED);
     ui2_button_set_callback(exit_button, exit_button_callback, NULL);
     

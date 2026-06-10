@@ -361,12 +361,12 @@ const uint8_t *font_get_variant_data(font_id_t id, font_variant_t variant, size_
     if (id == FONT_BOOT) {
         // Return the embedded boot font VLW data
         if (variant == FONT_VARIANT_REGULAR) {
-            if (out_size) *out_size = sizeof(hack_10);
-            return (const uint8_t *)hack_10;
+            if (out_size) *out_size = sizeof(hack_6);
+            return (const uint8_t *)hack_6;
         }
         // Fallback to regular for missing variants
-        if (out_size) *out_size = sizeof(hack_10);
-        return (const uint8_t *)hack_10;
+        if (out_size) *out_size = sizeof(hack_6);
+        return (const uint8_t *)hack_6;
     }
 
     // For SD fonts, ensure the font is cached in the flash partition
