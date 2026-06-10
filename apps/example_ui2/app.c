@@ -84,7 +84,7 @@ void app_init(app_context_t *ctx) {
                               TEXT_COLOR_BRIGHT_GREEN, TEXT_ATTR_NORMAL);
     ui2_layout_add(root, UI2_WIDGET(status));
 
-    ui2_button_t *quit = ui2_button_create(cols - 14, rows - 2, 12, 2, "Quit");
+    ui2_button_t *quit = ui2_button_create(cols - 14, rows - 2, 12, 2, "\xee\x82\x84");
     ui2_button_set_callback(quit, on_quit_clicked, NULL);
     ui2_layout_add(root, UI2_WIDGET(quit));
 

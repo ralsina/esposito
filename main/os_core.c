@@ -828,10 +828,10 @@ void os_event_loop(void) {
                     keyboard_set_backlight(0);
 
                     // Reduce CPU frequency to minimum
-                    os_set_cpu_freq_mhz(80);
+                    os_set_cpu_freq_mhz(40);
 
                     screensaver_active = true;
-                    ESP_LOGI(TAG, "Screensaver activated after %d min idle (display=0%%, keyboard backlight=0%%, CPU=80 MHz)", ss_timeout_min);
+                    ESP_LOGI(TAG, "Screensaver activated after %d min idle (display=0%%, keyboard backlight=0%%, CPU=40 MHz)", ss_timeout_min);
                 }
             }
         }

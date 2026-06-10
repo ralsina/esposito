@@ -76,6 +76,7 @@ def parse_variant_name(vlw_path: Path):
     # For "hack_bold": family="hack", suffix="_bold"
     # For "hack": family="hack", suffix=""
     # For "supplement": family="supplement", suffix=""
+    # For "lucide-10": family="lucide", suffix=""
     family_base = base  # default: no suffix
     variant_suffix = ""
 

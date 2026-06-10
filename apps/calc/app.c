@@ -21,7 +21,7 @@ static bool decimal_entered = false;
 static ui2_screen_t *screen = NULL;
 
 static const char *toolbar_labels[NUM_TOOLBARS][4] = {
-    {"C", "\u00B1", "%", "/"},
+    {"\xee\x82\x84", "\u00B1", "%", "/"},
     {"7", "8", "9", "*"},
     {"4", "5", "6", "-"},
     {"1", "2", "3", "+"},
@@ -212,7 +212,7 @@ static void build_calc_screen(void) {
                 ui2_button_set_callback(btn, button_decimal, NULL);
             } else if (strcmp(label, "=") == 0) {
                 ui2_button_set_callback(btn, button_equals, NULL);
-            } else if (strcmp(label, "\u2718") == 0) {
+            } else if (strcmp(label, "\xee\x82\x84") == 0) {
                 ui2_button_set_callback(btn, button_exit, NULL);
             } else if (label[0] == '+' || label[0] == '-' || label[0] == '*' || label[0] == '/') {
                 ui2_button_set_callback(btn, button_operator, (void*)(intptr_t)label[0]);
