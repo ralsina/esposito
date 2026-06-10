@@ -1529,7 +1529,7 @@ CONFIG_ESP_PHY_IRAM_OPT=y
 # default:
 # CONFIG_PM_SLEEP_FUNC_IN_IRAM is not set
 # default:
-# CONFIG_PM_ENABLE is not set
+CONFIG_PM_ENABLE=y
 # default:
 # CONFIG_PM_SLP_IRAM_OPT is not set
 # end of Power Management

@@ -48,3 +48,5 @@ Icons are available as C preprocessor constants in `libs/ui2/lucide_icons.h`, us
 
 Apps use them by including the header and passing the constant to display functions:
 `display_draw_scaled_text_bg(1, 1, ICON_FOLDER, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, 2)`.
+
+![reader app showing icons](reader2.png)
