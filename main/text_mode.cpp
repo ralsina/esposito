@@ -949,16 +949,14 @@ bool text_mode_save_screenshot(void) {
                 dst[0] = r_bg; dst[1] = g_bg; dst[2] = b_bg;
             }
 
-            // Overlay glyph at natural metrics, clipped to display clip rect:
-            // cell_px-1 .. cell_px+fw (fw+2 pixels wide, matching TFT_eSPI)
+            // Overlay glyph at natural metrics (no per-cell clip rect,
+            // matching display_draw_text_transparent path used for icons)
             if (bitmap && glyph_row >= 0 && glyph_row < gh) {
-                int clip_l = (cell_px - 1 > 0) ? (cell_px - 1) : 0;
-                int clip_r = (cell_px + fw < disp_w - 1) ? (cell_px + fw) : (disp_w - 1);
                 int glyph_base = cell_px + left_offset;
 
                 for (int gc = 0; gc < gw; gc++) {
                     int out_px = glyph_base + gc;
-                    if (out_px < clip_l || out_px > clip_r) continue;
+                    if (out_px < 0 || out_px >= disp_w) continue;
                     uint8_t alpha = bitmap[glyph_row * gw + gc];
 
                     // Apply border attributes only within cell bounds
