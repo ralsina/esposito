@@ -1,10 +1,7 @@
 #include "os_core.h"
 #include "app_config.h"
 #include "text_mode.h"
-#include "ui.h"
-#include "ui_list.h"
-#include "ui_text_input.h"
-#include "ui2_osk.h"
+#include "ui2.h"
 #include "hardware.h"
 #include "core_json.h"
 #include <stdio.h>
@@ -52,15 +49,13 @@ static const char *GTS_ROOT_R4_PEM =
     "vepuoxtGzi4CZ68zJpiq1UvSqTbFJjtbD4seiMHl\n"
     "-----END CERTIFICATE-----\n";
 
-static char lines[MAX_LINES][MAX_LINE_LEN];
-static const char *items[MAX_LINES];
-static int line_count = 0;
+static ui2_buffer_t *buffer = NULL;
+static ui2_text_input_t *text_input = NULL;
 static char input_buffer[INPUT_BUF_LEN];
 static char api_key[API_KEY_MAX] = {0};
 static char response_buf[RESPONSE_BUF];
-
-static ui_list_widget_t *list = NULL;
-static ui_text_input_widget_t *text_input = NULL;
+static int cols = 0;
+static int rows = 0;
 
 static bool load_api_key(void) {
     FILE *f = fopen(API_KEY_PATH, "r");
@@ -84,25 +79,13 @@ static void json_escape(const char *input, char *output, size_t output_size) {
     for (size_t i = 0; input[i] && j < output_size - 1; i++) {
         char c = input[i];
         switch (c) {
-            case '"':
-                if (j < output_size - 2) { output[j++] = '\\'; output[j++] = '"'; }
-                break;
-            case '\\':
-                if (j < output_size - 2) { output[j++] = '\\'; output[j++] = '\\'; }
-                break;
-            case '\n':
-                if (j < output_size - 2) { output[j++] = '\\'; output[j++] = 'n'; }
-                break;
-            case '\r':
-                if (j < output_size - 2) { output[j++] = '\\'; output[j++] = 'r'; }
-                break;
-            case '\t':
-                if (j < output_size - 2) { output[j++] = '\\'; output[j++] = 't'; }
-                break;
+            case '"': if (j < output_size - 2) { output[j++] = '\\'; output[j++] = '"'; } break;
+            case '\\': if (j < output_size - 2) { output[j++] = '\\'; output[j++] = '\\'; } break;
+            case '\n': if (j < output_size - 2) { output[j++] = '\\'; output[j++] = 'n'; } break;
+            case '\r': if (j < output_size - 2) { output[j++] = '\\'; output[j++] = 'r'; } break;
+            case '\t': if (j < output_size - 2) { output[j++] = '\\'; output[j++] = 't'; } break;
             default:
-                if ((unsigned char)c >= 32) {
-                    output[j++] = c;
-                }
+                if ((unsigned char)c >= 32) output[j++] = c;
                 break;
         }
     }
@@ -130,9 +113,7 @@ static const char *call_openrouter(const char *prompt) {
     os_log(TAG, "POST result: %d, response: %s", result, response_buf);
 
     if (result <= 0) {
-        if (response_buf[0]) {
-            return response_buf;
-        }
+        if (response_buf[0]) return response_buf;
         snprintf(response_buf, sizeof(response_buf), "HTTP error: %d", result);
         return response_buf;
     }
@@ -159,36 +140,22 @@ static const char *call_openrouter(const char *prompt) {
     return response_buf;
 }
 
-static void add_line(const char *line) {
-    if (line_count < MAX_LINES) {
-        strncpy(lines[line_count], line, MAX_LINE_LEN - 1);
-        lines[line_count][MAX_LINE_LEN - 1] = '\0';
-        items[line_count] = lines[line_count];
-        line_count++;
-    } else {
-        memmove(lines[0], lines[1], (MAX_LINES - 1) * MAX_LINE_LEN);
-        memmove((void *)items[0], (const void *)items[1], (MAX_LINES - 1) * sizeof(char *));
-        strncpy(lines[MAX_LINES - 1], line, MAX_LINE_LEN - 1);
-        lines[MAX_LINES - 1][MAX_LINE_LEN - 1] = '\0';
-        items[MAX_LINES - 1] = lines[MAX_LINES - 1];
-    }
-}
-
-static void update_list(void) {
-    ui_list_set_items(list, items, line_count);
-    ui_list_scroll_to_item(list, line_count - 1);
-    ui_list_set_selection(list, line_count - 1);
+static void add_line(const char *text, uint8_t fg, uint8_t bg, uint8_t attrs) {
+    char line[MAX_LINE_LEN];
+    strncpy(line, text, MAX_LINE_LEN - 1);
+    line[MAX_LINE_LEN - 1] = '\0';
+    ui2_buffer_add_line(buffer, line, fg, bg, attrs);
 }
 
 static void render(void) {
     text_mode_clear(TEXT_COLOR_BLACK);
-    ui_list_draw(list);
-    ui_text_input_draw(text_input);
+    UI2_WIDGET(buffer)->vtable->draw(UI2_WIDGET(buffer));
+    UI2_WIDGET(text_input)->vtable->draw(UI2_WIDGET(text_input));
     text_mode_flush();
 }
 
-static void add_response(const char *speaker, const char *text) {
-    int max_cols = text_mode_get_cols();
+static void add_response(const char *speaker, const char *text, uint8_t fg, uint8_t bg) {
+    int max_cols = cols;
     int first_prefix = snprintf(NULL, 0, "  %s: ", speaker);
     int cont_prefix = 2;
     int first_width = max_cols - first_prefix - 1;
@@ -206,9 +173,7 @@ static void add_response(const char *speaker, const char *text) {
         int col = 0;
 
         while (*text && col < width && *text != '\n' && *text != '\r') {
-            if (*text == ' ' && col > 0) {
-                last_space = text;
-            }
+            if (*text == ' ' && col > 0) last_space = text;
             text++;
             col++;
         }
@@ -234,7 +199,7 @@ static void add_response(const char *speaker, const char *text) {
         } else {
             snprintf(line, sizeof(line), "  %.*s", line_len, start);
         }
-        add_line(line);
+        add_line(line, fg, bg, TEXT_ATTR_NORMAL);
 
         while (*text == ' ') text++;
     }
@@ -242,86 +207,74 @@ static void add_response(const char *speaker, const char *text) {
 
 static void show_thinking(void) {
     text_mode_clear(TEXT_COLOR_BLACK);
-    ui_list_draw(list);
-    text_mode_print_at_attr(0, text_mode_get_rows() - 1,
+    UI2_WIDGET(buffer)->vtable->draw(UI2_WIDGET(buffer));
+    text_mode_print_at_attr(0, rows - 1,
                             "  waiting for response...", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
     text_mode_flush();
 }
 
 static void save_checkpoint(void) {
-    printf("save_checkpoint: starting, line_count=%d\n", line_count);
+    printf("save_checkpoint: starting, count=%d\n", ui2_buffer_get_count(buffer));
     size_t total = 0;
-    for (int i = 0; i < line_count; i++) {
-        total += strlen(lines[i]) + 1;
+    for (int i = 0; i < ui2_buffer_get_count(buffer); i++) {
+        ui2_buffer_line_t *line = &buffer->lines[(buffer->head + i) % buffer->max_lines];
+        total += strlen(line->text) + 1;
     }
-    os_log(TAG, "save_checkpoint: %d lines, %u bytes", line_count, (unsigned)total);
+    os_log(TAG, "save_checkpoint: %d lines, %u bytes", ui2_buffer_get_count(buffer), (unsigned)total);
     char *buf = malloc(total + 1);
-    if (!buf) {
-        printf("save_checkpoint: malloc failed\n");
-        return;
-    }
+    if (!buf) return;
     char *p = buf;
-    for (int i = 0; i < line_count; i++) {
-        size_t len = strlen(lines[i]);
-        memcpy(p, lines[i], len);
+    for (int i = 0; i < ui2_buffer_get_count(buffer); i++) {
+        ui2_buffer_line_t *line = &buffer->lines[(buffer->head + i) % buffer->max_lines];
+        size_t len = strlen(line->text);
+        memcpy(p, line->text, len);
         p += len;
         *p++ = '\n';
     }
     *p = '\0';
     os_log(TAG, "save_checkpoint: saving key=%s", CHECKPOINT_KEY);
-    bool ok = config_set_string(CHECKPOINT_KEY, buf);
-    printf("save_checkpoint: config_set_string returned %d\n", ok);
+    config_set_string(CHECKPOINT_KEY, buf);
     free(buf);
-    printf("save_checkpoint: done\n");
 }
 
 static void load_checkpoint(void) {
     os_log(TAG, "load_checkpoint: loading key=%s", CHECKPOINT_KEY);
     size_t data_size = 0;
     char *data = config_read_all_alloc(CHECKPOINT_KEY, &data_size);
-    if (!data) {
-        os_log(TAG, "load_checkpoint: no data found");
-        return;
-    }
+    if (!data) return;
     os_log(TAG, "load_checkpoint: data=%u bytes", (unsigned)data_size);
 
     char *p = data;
-    while (*p && line_count < MAX_LINES) {
+    while (*p && ui2_buffer_get_count(buffer) < MAX_LINES) {
         char *nl = strchr(p, '\n');
         size_t len = nl ? (size_t)(nl - p) : strlen(p);
         if (len >= MAX_LINE_LEN) len = MAX_LINE_LEN - 1;
-        memcpy(lines[line_count], p, len);
-        lines[line_count][len] = '\0';
-        items[line_count] = lines[line_count];
-        line_count++;
+        p[len] = '\0';
+        ui2_buffer_add_line(buffer, p, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
         p = nl ? nl + 1 : p + len;
     }
     config_free(data);
-    os_log(TAG, "load_checkpoint: loaded %d lines", line_count);
+    os_log(TAG, "load_checkpoint: loaded %d lines", ui2_buffer_get_count(buffer));
 }
 
-static void on_confirm(ui_text_input_widget_t *widget, void *user_data) {
+static void on_confirm(void *user_data) {
     (void)user_data;
     char saved_input[INPUT_BUF_LEN];
-    strncpy(saved_input, widget->buffer, INPUT_BUF_LEN - 1);
+    strncpy(saved_input, input_buffer, INPUT_BUF_LEN - 1);
     saved_input[INPUT_BUF_LEN - 1] = '\0';
 
-    if (saved_input[0] == '\0') {
-        return;
-    }
+    if (saved_input[0] == '\0') return;
 
     char line[MAX_LINE_LEN];
     snprintf(line, sizeof(line), "  You: %s", saved_input);
-    add_line(line);
-    update_list();
-    ui_text_input_clear(text_input);
+    add_line(line, TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
+    ui2_text_input_clear(text_input);
     render();
 
     show_thinking();
 
     const char *answer = call_openrouter(saved_input);
-    add_response("Lali", answer);
-    update_list();
+    add_response("Lali", answer, TEXT_COLOR_BRIGHT_GREEN, TEXT_COLOR_BLACK);
     render();
 }
 
@@ -336,59 +289,48 @@ void app_init(app_context_t *ctx) {
 
     input_buffer[0] = '\0';
 
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
+    cols = text_mode_get_cols();
+    rows = text_mode_get_rows();
 
-    list = ui_list_create(0, 0, cols, rows - 3);
-    ui_list_set_title(list, "Lali");
-    ui_list_set_items(list, items, 0);
+    buffer = ui2_buffer_create(0, 0, cols, rows - 3, MAX_LINES);
+    ui2_buffer_set_scroll_to_bottom(buffer, true);
 
-    text_input = ui_text_input_create(0, rows - 3, cols, 3);
-    ui_text_input_set_buffer(text_input, input_buffer, INPUT_BUF_LEN);
-    ui_text_input_set_label(text_input, ">");
+    text_input = ui2_text_input_create(0, rows - 3, cols, 3);
+    ui2_text_input_set_buffer(text_input, input_buffer, INPUT_BUF_LEN);
+    ui2_text_input_set_title(text_input, "Lali");
+    ui2_text_input_set_label(text_input, ">");
 
-    // Show keyboard hints only if keyboard is available
     bool has_keyboard = keyboard_is_available();
     if (has_keyboard) {
-        ui_text_input_set_hints(text_input, "Enter to send", "FN+W/S scroll history");
+        ui2_text_input_set_hints(text_input, "Enter to send", "W/S scroll history");
     } else {
-        ui_text_input_set_hints(text_input, "Touch input to type", "Tap list to scroll");
+        ui2_text_input_set_hints(text_input, "Touch input to type", "Tap buffer to scroll");
     }
 
-    ui_text_input_set_callbacks(text_input, NULL, on_confirm, NULL, NULL);
-    ui_text_input_set_focus(text_input, true);
+    ui2_text_input_set_callbacks(text_input, on_confirm, NULL, NULL);
 
     os_log(TAG, "app_init: loading checkpoint");
     load_checkpoint();
-    os_log(TAG, "app_init: loaded %d lines", line_count);
-    if (line_count > 0) {
-        update_list();
-    }
+    os_log(TAG, "app_init: loaded %d lines", ui2_buffer_get_count(buffer));
+    ui2_buffer_set_scroll_to_bottom(buffer, true);
 
     if (!load_api_key()) {
         char line[MAX_LINE_LEN];
         snprintf(line, sizeof(line), "  ! No API key at %s", API_KEY_PATH);
-        add_line(line);
-        update_list();
+        add_line(line, TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
     }
 
     render();
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
-    // Check if OSK is active and handle its events first
     if (ui2_osk_is_active()) {
         ui2_osk_handle_event(NULL, (event_t*)event);
-
-        // Check if OSK just completed
         if (!ui2_osk_is_active()) {
             ui2_osk_result_t result = ui2_osk_get_result();
-
             if (result == UI2_OSK_RESULT_CONFIRMED) {
-                // OSK completed successfully - get the input and process it
-                on_confirm(NULL, NULL);
+                on_confirm(NULL);
             } else {
-                // OSK was cancelled - just redraw
                 render();
             }
         }
@@ -400,38 +342,25 @@ void app_event(app_context_t *ctx, event_t *event) {
         uint8_t modifiers = event->keyboard.modifiers;
 
         if ((modifiers & MODIFIER_FN) && (key == 'w' || key == 'W')) {
-            ui_list_handle_key(list, 'w');
+            UI2_WIDGET(buffer)->vtable->handle_key(UI2_WIDGET(buffer), 'w');
         } else if ((modifiers & MODIFIER_FN) && (key == 's' || key == 'S')) {
-            ui_list_handle_key(list, 's');
+            UI2_WIDGET(buffer)->vtable->handle_key(UI2_WIDGET(buffer), 's');
         } else {
-            ui_text_input_handle_key(text_input, key);
+            UI2_WIDGET(text_input)->vtable->handle_key(UI2_WIDGET(text_input), key);
         }
         render();
     } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
-        // Convert pixel coordinates to character coordinates
         int cw = text_mode_get_char_width();
         int ch = text_mode_get_char_height();
         int x_col = event->touch.x / cw;
         int y_col = event->touch.y / ch;
 
-        int cols = text_mode_get_cols();
-        int rows = text_mode_get_rows();
-
-        // Check if touch is on the text input area
         if (y_col >= rows - 3) {
-            // Launch OSK for text input when no physical keyboard
             if (!keyboard_is_available()) {
-                if (ui2_osk_input_text("Message:", input_buffer, INPUT_BUF_LEN, input_buffer, false)) {
-                    // OSK started - will be handled in next event loop
-                    // Clear the input buffer to avoid double-processing
-                    // input_buffer[0] = '\0';
-                    // ui_text_input_clear(text_input);
-                    // render();
-                }
+                ui2_osk_input_text("Message:", input_buffer, INPUT_BUF_LEN, input_buffer, false);
             }
         } else if (y_col < rows - 3) {
-            // Handle list scrolling with touch
-            ui_list_handle_touch(list, event);
+            UI2_WIDGET(buffer)->vtable->handle_touch(UI2_WIDGET(buffer), x_col, y_col, true);
             render();
         }
     }
@@ -439,15 +368,15 @@ void app_event(app_context_t *ctx, event_t *event) {
 
 void app_checkpoint(app_context_t *ctx) {
     (void)ctx;
-    printf("lali checkpoint called, line_count=%d\n", line_count);
+    printf("lali checkpoint called, count=%d\n", ui2_buffer_get_count(buffer));
     save_checkpoint();
 }
 
 void app_close(app_context_t *ctx) {
     (void)ctx;
-    ui_list_destroy(list);
-    ui_text_input_destroy(text_input);
+    UI2_WIDGET(buffer)->vtable->destroy(UI2_WIDGET(buffer));
+    UI2_WIDGET(text_input)->vtable->destroy(UI2_WIDGET(text_input));
     text_mode_clear(TEXT_COLOR_BLACK);
-    list = NULL;
+    buffer = NULL;
     text_input = NULL;
 }

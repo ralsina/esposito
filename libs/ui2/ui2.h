@@ -12,5 +12,6 @@
 #include "ui2_text.h"
 #include "ui2_osk.h"
 #include "ui2_tabview.h"
+#include "ui2_buffer.h"
 
 #endif
