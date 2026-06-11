@@ -1,6 +1,7 @@
 #include "os_core.h"
 #include "app_config.h"
 #include "text_mode.h"
+#include "ui2.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -13,6 +14,7 @@
 #define MAX_HISTORY 20
 #define MAX_SCROLLBACK 200
 #define COPY_BUF 512
+#define VIEW_MAX_LINES 500
 
 typedef struct {
     char line[MAX_LINE];
@@ -26,24 +28,23 @@ typedef struct {
 
     char cwd[256];
 
-    char scrollback[MAX_SCROLLBACK][TEXT_MODE_COLS];
-    int scrollback_count;
+    ui2_buffer_t *buffer;
+    bool viewing_file;
+    ui2_buffer_t *view_buffer;
 } shell_t;
 
 static shell_t *shell;
+static int cols, rows;
 
 static void refresh_all(void);
 static void refresh_input(void);
 
-static void sb_add(const char *s) {
-    int idx = shell->scrollback_count % MAX_SCROLLBACK;
-    strncpy(shell->scrollback[idx], s, TEXT_MODE_COLS - 1);
-    shell->scrollback[idx][TEXT_MODE_COLS - 1] = '\0';
-    shell->scrollback_count++;
+static void sb_add(const char *s, uint8_t fg, uint8_t bg, uint8_t attrs) {
+    ui2_buffer_add_line(shell->buffer, s, fg, bg, attrs);
 }
 
 static void sb_clear(void) {
-    shell->scrollback_count = 0;
+    ui2_buffer_clear(shell->buffer);
 }
 
 static void path_normalize(char *path) {
@@ -96,7 +97,7 @@ static void cmd_ls(const char *arg) {
     if (!dir) {
         char errmsg[65];
         snprintf(errmsg, sizeof(errmsg), "ls: cannot open '%s'", path);
-        sb_add(errmsg);
+        sb_add(errmsg, TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
         return;
     }
 
@@ -107,20 +108,20 @@ static void cmd_ls(const char *arg) {
         char full[256];
         snprintf(full, sizeof(full), "%s/%s", path, entry->d_name);
         struct stat st;
-        char line[TEXT_MODE_COLS];
-        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
-            snprintf(line, sizeof(line), "  %s/", entry->d_name);
-        } else {
-            snprintf(line, sizeof(line), "  %s", entry->d_name);
-        }
-        sb_add(line);
-        count++;
+        char line[65];
+            if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
+                snprintf(line, sizeof(line), "  %s/", entry->d_name);
+            } else {
+                snprintf(line, sizeof(line), "  %s", entry->d_name);
+            }
+            sb_add(line, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+            count++;
     }
     closedir(dir);
 
     char total[32];
     snprintf(total, sizeof(total), "total: %d", count);
-    sb_add(total);
+    sb_add(total, TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 }
 
 static void cmd_cd(const char *arg) {
@@ -144,11 +145,11 @@ static void cmd_cd(const char *arg) {
 
     struct stat st;
     if (stat(new_cwd, &st) != 0) {
-        sb_add("cd: no such directory");
+        sb_add("cd: no such directory", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
         return;
     }
     if (!S_ISDIR(st.st_mode)) {
-        sb_add("cd: not a directory");
+        sb_add("cd: not a directory", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
         return;
     }
 
@@ -164,7 +165,7 @@ static void cmd_cd(const char *arg) {
 
 static void cmd_cp(const char *src, const char *dst) {
     if (!src || !dst) {
-        sb_add("usage: cp <src> <dst>");
+        sb_add("usage: cp <src> <dst>", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
         return;
     }
 
@@ -174,14 +175,14 @@ static void cmd_cp(const char *src, const char *dst) {
 
     FILE *in = fopen(src_path, "r");
     if (!in) {
-        sb_add("cp: cannot open source");
+        sb_add("cp: cannot open source", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
         return;
     }
 
     FILE *out = fopen(dst_path, "w");
     if (!out) {
         fclose(in);
-        sb_add("cp: cannot create destination");
+        sb_add("cp: cannot create destination", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
         return;
     }
 
@@ -193,12 +194,12 @@ static void cmd_cp(const char *src, const char *dst) {
 
     fclose(in);
     fclose(out);
-    sb_add("cp: done");
+    sb_add("cp: done", TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 }
 
 static void cmd_mv(const char *src, const char *dst) {
     if (!src || !dst) {
-        sb_add("usage: mv <src> <dst>");
+        sb_add("usage: mv <src> <dst>", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
         return;
     }
 
@@ -207,10 +208,54 @@ static void cmd_mv(const char *src, const char *dst) {
     path_resolve(dst, dst_path, sizeof(dst_path));
 
     if (rename(src_path, dst_path) == 0) {
-        sb_add("mv: done");
+        sb_add("mv: done", TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
     } else {
-        sb_add("mv: failed");
+        sb_add("mv: failed", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
     }
+}
+
+static void cmd_view(const char *arg) {
+    if (!arg) {
+        sb_add("usage: view <file>", TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+        return;
+    }
+
+    char path[256];
+    path_resolve(arg, path, sizeof(path));
+
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        char err[64];
+        snprintf(err, sizeof(err), "view: cannot open '%s'", path);
+        sb_add(err, TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+        return;
+    }
+
+    shell->view_buffer = ui2_buffer_create(0, 0, cols, rows, VIEW_MAX_LINES);
+    ui2_buffer_set_scroll_to_bottom(shell->view_buffer, false);
+
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        size_t len = strlen(line);
+        if (len > 0 && line[len - 1] == '\n') line[len - 1] = '\0';
+        ui2_buffer_add_line(shell->view_buffer, line,
+                            TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+    }
+    fclose(f);
+
+    shell->viewing_file = true;
+    text_mode_clear(TEXT_COLOR_BLACK);
+    UI2_WIDGET(shell->view_buffer)->vtable->draw(UI2_WIDGET(shell->view_buffer));
+    text_mode_flush();
+}
+
+static void exit_viewer(void) {
+    if (shell->view_buffer) {
+        UI2_WIDGET(shell->view_buffer)->vtable->destroy(UI2_WIDGET(shell->view_buffer));
+        shell->view_buffer = NULL;
+    }
+    shell->viewing_file = false;
+    refresh_all();
 }
 
 static void history_add(const char *line) {
@@ -259,9 +304,9 @@ static void execute(char *cmd) {
     history_add(full_cmd);
 
     {
-        char echo_buf[TEXT_MODE_COLS];
+        char echo_buf[65];
         snprintf(echo_buf, sizeof(echo_buf), "$ %s", full_cmd);
-        sb_add(echo_buf);
+        sb_add(echo_buf, TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
     }
 
     if (strcmp(args[0], "ls") == 0) {
@@ -272,13 +317,16 @@ static void execute(char *cmd) {
         cmd_cp(argc > 1 ? args[1] : NULL, argc > 2 ? args[2] : NULL);
     } else if (strcmp(args[0], "mv") == 0) {
         cmd_mv(argc > 1 ? args[1] : NULL, argc > 2 ? args[2] : NULL);
+    } else if (strcmp(args[0], "view") == 0) {
+        cmd_view(argc > 1 ? args[1] : NULL);
+        return;
     } else if (argc >= 2) {
         os_open_app_with_file(args[0], args[1]);
         return;
     } else {
-        char msg[TEXT_MODE_COLS];
+        char msg[65];
         snprintf(msg, sizeof(msg), "shell: unknown: %s", args[0]);
-        sb_add(msg);
+        sb_add(msg, TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
     }
 
     shell->line[0] = '\0';
@@ -290,24 +338,13 @@ static void execute(char *cmd) {
 }
 
 static void refresh_all(void) {
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
     int scroll_rows = rows - 5;
     int sep_row = scroll_rows;
     int status_row = scroll_rows + 1;
 
     text_mode_clear(TEXT_COLOR_BLACK);
 
-    {
-        int total = shell->scrollback_count;
-        int start = total > scroll_rows ? total - scroll_rows : 0;
-        for (int r = 0; r < scroll_rows; r++) {
-            int idx = start + r;
-            if (idx < total) {
-                text_mode_print_at(0, r, shell->scrollback[idx % MAX_SCROLLBACK]);
-            }
-        }
-    }
+    UI2_WIDGET(shell->buffer)->vtable->draw(UI2_WIDGET(shell->buffer));
 
     {
         char sep[65];
@@ -333,8 +370,6 @@ static void refresh_all(void) {
 }
 
 static void refresh_input(void) {
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
     int input_row = rows - 3;
     int prompt_len = 2;
     int max_chars = cols - prompt_len;
@@ -358,9 +393,8 @@ static void refresh_input(void) {
 
     if (display_len > 0) {
         char buf[65];
-        int n = display_len < 64 ? display_len : 64;
-        strncpy(buf, shell->line + offset, n);
-        buf[n] = '\0';
+        strncpy(buf, shell->line + offset, display_len);
+        buf[display_len] = '\0';
         text_mode_print_at(prompt_len, input_row, buf);
     }
 
@@ -389,6 +423,11 @@ void app_init(app_context_t *ctx) {
     ctx->timer_interval_ms = 0;
 
     text_mode_init();
+    cols = text_mode_get_cols();
+    rows = text_mode_get_rows();
+
+    shell->buffer = ui2_buffer_create(0, 0, cols, rows - 5, MAX_SCROLLBACK);
+    ui2_buffer_set_scroll_to_bottom(shell->buffer, true);
 
     config_get_string("cwd", "/sdcard", shell->cwd, sizeof(shell->cwd));
     shell->history_count = config_get_int("hcount", 0);
@@ -400,9 +439,9 @@ void app_init(app_context_t *ctx) {
     }
     shell->history_idx = -1;
 
-    sb_add("Esposito Shell");
-    sb_add("builtins: ls cd cp mv");
-    sb_add("type <app> <file> to launch");
+    sb_add("Esposito Shell", TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
+    sb_add("builtins: ls cd cp mv view", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+    sb_add("type <app> <file> to launch", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 
     refresh_all();
 }
@@ -411,6 +450,27 @@ void app_event(app_context_t *ctx, event_t *event) {
     if (!shell) return;
     if (event->type != EVENT_KEYBOARD) return;
     if (!event->keyboard.pressed) return;
+
+    // Viewer mode
+    if (shell->viewing_file) {
+        char key = event->keyboard.key;
+        if (key == 'q' || key == 'Q' || key == 27) {
+            exit_viewer();
+        } else if (key == 'w' || key == 'W' || (unsigned char)key == 0x99) {
+            UI2_WIDGET(shell->view_buffer)->vtable->handle_key(
+                UI2_WIDGET(shell->view_buffer), 'w');
+            text_mode_clear(TEXT_COLOR_BLACK);
+            UI2_WIDGET(shell->view_buffer)->vtable->draw(UI2_WIDGET(shell->view_buffer));
+            text_mode_flush();
+        } else if (key == 's' || key == 'S' || (unsigned char)key == 0x98) {
+            UI2_WIDGET(shell->view_buffer)->vtable->handle_key(
+                UI2_WIDGET(shell->view_buffer), 's');
+            text_mode_clear(TEXT_COLOR_BLACK);
+            UI2_WIDGET(shell->view_buffer)->vtable->draw(UI2_WIDGET(shell->view_buffer));
+            text_mode_flush();
+        }
+        return;
+    }
 
     char key = event->keyboard.key;
     uint8_t mod = event->keyboard.modifiers;
@@ -533,6 +593,10 @@ void app_close(app_context_t *ctx) {
         config_set_string(key, shell->history[i]);
     }
 
+    if (shell->view_buffer) {
+        UI2_WIDGET(shell->view_buffer)->vtable->destroy(UI2_WIDGET(shell->view_buffer));
+    }
+    UI2_WIDGET(shell->buffer)->vtable->destroy(UI2_WIDGET(shell->buffer));
     free(shell);
     shell = NULL;
 
