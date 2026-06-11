@@ -28,6 +28,15 @@
 #include <setjmp.h>
 #include "esp_timer.h"
 
+// strdup reimplementation that uses app_malloc so it matches app_free
+char *strdup_impl(const char *s) {
+    if (!s) return NULL;
+    size_t len = strlen(s) + 1;
+    char *p = (char *)app_malloc(len);
+    if (p) memcpy(p, s, len);
+    return p;
+}
+
 static const os_symtab_entry_t symtab[] = {
     {"display_clear",           display_clear},
     {"display_draw_text",       display_draw_text},
@@ -147,7 +156,7 @@ static const os_symtab_entry_t symtab[] = {
     {"strcpy",                  strcpy},
     {"strncpy",                 strncpy},
     {"strcat",                  strcat},
-    {"strdup",                  strdup},
+    {"strdup",                  strdup_impl},
     {"strchr",                  strchr},
     {"strrchr",                 strrchr},
     {"strstr",                  strstr},

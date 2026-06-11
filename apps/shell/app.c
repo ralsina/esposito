@@ -255,6 +255,10 @@ static void exit_viewer(void) {
         shell->view_buffer = NULL;
     }
     shell->viewing_file = false;
+    shell->line[0] = '\0';
+    shell->cursor = 0;
+    shell->len = 0;
+    shell->history_idx = -1;
     refresh_all();
 }
 
@@ -341,6 +345,8 @@ static void refresh_all(void) {
     int scroll_rows = rows - 5;
     int sep_row = scroll_rows;
     int status_row = scroll_rows + 1;
+
+    if (!shell->buffer) return;
 
     text_mode_clear(TEXT_COLOR_BLACK);
 
