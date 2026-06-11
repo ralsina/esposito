@@ -283,6 +283,27 @@ def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
         if codepoint in LUCIDE_CODEPOINTS and lucide_face:
             glyph = render_codepoint(lucide_face, codepoint)
             if glyph:
+                # Force to monospace cell width: Lucide icons use their own
+                # advance which is wider than the monospace character cell.
+                gw = glyph["width"]
+                if gw > modal_advance:
+                    scale = modal_advance / float(gw)
+                    new_w = modal_advance
+                    old_alpha = glyph["bitmap"]
+                    new_alpha = bytearray(new_w * glyph["height"])
+                    for row in range(glyph["height"]):
+                        for dst_col in range(new_w):
+                            src_center = (dst_col + 0.5) * gw / new_w
+                            src_l = int(src_center)
+                            frac = src_center - src_l
+                            lv = old_alpha[row * gw + src_l]
+                            rv = old_alpha[row * gw + min(src_l + 1, gw - 1)]
+                            new_alpha[row * new_w + dst_col] = int(lv * (1.0 - frac) + rv * frac + 0.5)
+                    glyph["bitmap"] = bytes(new_alpha)
+                    glyph["width"] = new_w
+                    gw = new_w
+                glyph["advance"] = modal_advance
+                glyph["left_offset"] = (modal_advance - gw) // 2
                 glyphs.append(glyph)
                 continue
 
