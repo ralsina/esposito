@@ -470,7 +470,7 @@ void reader_view_setup_receiving(reader_state_t *state) {
     int btn_x = (cols - btn_w) / 2;
     int btn_y = (rows - 9) / 2 + 6;
 
-    state->btn_cancel = ui2_button_create(btn_x, btn_y, btn_w, 3, "\xE2\x9C\x98");
+    state->btn_cancel = ui2_button_create(btn_x, btn_y, btn_w, 3, ICON_X);
     ui2_button_set_callback(state->btn_cancel, on_cancel_click, state);
 
     ui2_layout_add(root, UI2_WIDGET(state->btn_cancel));
