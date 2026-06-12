@@ -240,6 +240,7 @@ def process_book(book, output_dir, keep_epub=False):
 
     # Add markdown filename to metadata
     metadata["markdown_file"] = md_path.name
+    metadata["size"] = md_path.stat().st_size
 
     # Clean up EPUB if requested
     if not keep_epub:

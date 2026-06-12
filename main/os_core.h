@@ -116,6 +116,8 @@ bool os_get_time_status(os_time_status_t *status);
 bool os_time_is_synchronized(void);
 int64_t os_time_last_sync(void);
 int os_http_get(const char *url, char *out, size_t out_size, int timeout_ms);
+int os_http_download(const char *url, const char *path, void (*progress)(int percent, const char *status));
+bool os_download_via_os(const char *url, const char *path, size_t expected_size);
 int os_http_post(const char *url, const char *post_data, const char *extra_headers[],
                  const char *ca_pem, char *out, size_t out_size, int timeout_ms);
 size_t os_settings_get_string(const char *key_path,
@@ -150,6 +152,10 @@ bool os_semaphore_take(os_semaphore_handle_t *sem, int timeout_ms);
 void os_semaphore_delete(os_semaphore_handle_t *sem);
 
 bool os_set_cpu_freq_mhz(int freq_mhz);
+
+// Capability checking: returns true if the given capability is available on this device.
+// Recognized capabilities: keyboard, touch, wifi, psram
+bool os_has_capability(const char *cap);
 
 #ifdef __cplusplus
 }

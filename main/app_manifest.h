@@ -10,19 +10,33 @@ extern "C" {
 
 #define APP_MANIFEST_NAME_MAX 256
 #define APP_MANIFEST_EXT_MAX 128
+#define APP_MANIFEST_DESC_MAX 128
+#define APP_MANIFEST_LDESC_MAX 512
+#define APP_MANIFEST_VER_MAX 16
+#define APP_MANIFEST_CAP_MAX 128
 
 // Per-app manifest describing how the OS interacts with an SD-card app.
 // Loaded from /sdcard/apps/<appname>/manifest.cfg at runtime.
 // All fields have sensible defaults when the file is absent.
 typedef struct {
     char display_name[APP_MANIFEST_NAME_MAX]; // Human-readable name shown in launcher
+    char short_description[APP_MANIFEST_DESC_MAX];  // Short description (list views)
+    char long_description[APP_MANIFEST_LDESC_MAX];  // Long description (detail views)
+    char homepage[APP_MANIFEST_NAME_MAX];           // Project homepage URL
+    char version[APP_MANIFEST_VER_MAX];       // Version string, e.g. "1.0"
     char extensions[APP_MANIFEST_EXT_MAX];    // Comma-separated list, e.g. "txt,md,c"
+    char requires[APP_MANIFEST_CAP_MAX];      // Comma-separated capabilities, e.g. "keyboard,touch"
     bool show_in_launcher;                    // Whether to list in app launcher
 } app_sd_manifest_t;
 
 // Read manifest for app_name (its directory name on the SD card).
 // Always fills defaults; returns true if a manifest.cfg was found and parsed.
 bool app_manifest_read(const char *app_name, app_sd_manifest_t *out);
+
+// Write manifest.cfg for app_name from the given manifest struct.
+// Creates parent directories as needed.
+// Returns true on success.
+bool app_manifest_write(const char *app_name, const app_sd_manifest_t *manifest);
 
 // Convenience: get just the display name for an app into out[0..out_size-1].
 char *app_manifest_get_display_name(const char *app_name, char *out, size_t out_size);

@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-#define APP_LOADER_MAX_APPS 32
+#define APP_LOADER_MAX_APPS 64
 #define APP_LOADER_MAX_NAME_LEN 256
 
 // App loader initialization

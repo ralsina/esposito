@@ -11,12 +11,6 @@
 
 static const char *TAG = "settings";
 
-extern int app_loader_scan(char (*app_names)[256], int max_apps);
-extern int app_loader_get_count(void);
-typedef struct { char display_name[256]; char extensions[128]; bool show_in_launcher; } app_sd_manifest_t;
-extern bool app_manifest_read(const char *app_name, app_sd_manifest_t *out);
-extern int remove(const char *path);
-extern int mkdir(const char *path, int mode);
 extern const char *ota_firmware_version(void);
 extern bool ota_check_for_update(char *latest_version, size_t max_len);
 extern void ota_apply_update(void);
@@ -30,8 +24,6 @@ typedef enum {
     STATE_ENTER_LOCATION,
     STATE_FONT_SELECTION,
     STATE_FONT_SIZE_SELECTION,
-    STATE_APP_LIST,
-    STATE_APP_DETAIL,
     STATE_MESSAGE,
 } app_state_t;
 
@@ -59,17 +51,6 @@ static int font_family_selected = 0;
 static int font_size_selected = 0;
 static char selected_family[24];
 
-static ui2_list_t *app_list_widget;
-static int app_list_selected = 0;
-
-#define MAX_APPS 32
-static char app_list_names[MAX_APPS][256];
-static char app_list_display[MAX_APPS][256];
-static const char *app_list_items[MAX_APPS];
-static int app_list_count = 0;
-static char app_detail_name[64];
-static app_sd_manifest_t app_detail_manifest;
-
 #define MAX_FONTS 64
 static char font_family_labels[MAX_FONTS][24];
 static const char *font_family_items[MAX_FONTS];
@@ -84,7 +65,6 @@ typedef enum {
     SECTION_TIME,
     SECTION_DISPLAY,
     SECTION_DEBUG,
-    SECTION_APPS,
     SECTION_SYSTEM,
     SECTION_COUNT,
 } settings_section_t;
@@ -104,7 +84,6 @@ typedef enum {
     ACTION_SET_SCREENSAVER_TIMEOUT,
     ACTION_SET_PALETTE,
     ACTION_TOGGLE_SERIAL,
-    ACTION_LIST_APPS,
     ACTION_CHECK_UPDATE,
     ACTION_APPLY_UPDATE,
 } settings_action_t;
@@ -115,7 +94,7 @@ typedef struct {
 } section_option_t;
 
 static const char *section_labels[SECTION_COUNT] = {
-    "WiFi", "Time", "Display", "Debug", "Apps", "System",
+    "WiFi", "Time", "Display", "Debug", "System",
 };
 
 static const section_option_t wifi_options[] = {
@@ -142,10 +121,6 @@ static const section_option_t display_options[] = {
 
 static const section_option_t debug_options[] = {
     {"Serial UART", ACTION_TOGGLE_SERIAL},
-};
-
-static const section_option_t apps_options[] = {
-    {"Manage Apps", ACTION_LIST_APPS},
 };
 
 static const section_option_t system_options[] = {
@@ -338,7 +313,6 @@ static const section_option_t *section_options(settings_section_t section, int *
         case SECTION_TIME: if (count_out) *count_out = (int)(sizeof(time_options) / sizeof(time_options[0])); return time_options;
         case SECTION_DISPLAY: if (count_out) *count_out = (int)(sizeof(display_options) / sizeof(display_options[0])); return display_options;
         case SECTION_DEBUG: if (count_out) *count_out = (int)(sizeof(debug_options) / sizeof(debug_options[0])); return debug_options;
-        case SECTION_APPS: if (count_out) *count_out = (int)(sizeof(apps_options) / sizeof(apps_options[0])); return apps_options;
         case SECTION_SYSTEM: if (count_out) *count_out = (int)(sizeof(system_options) / sizeof(system_options[0])); return system_options;
         default: return NULL;
     }
@@ -407,11 +381,6 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
         case ACTION_TOGGLE_SERIAL:
             snprintf(out, out_size, "%s", serial_log_output_is_enabled() ? "on" : "off");
             break;
-        case ACTION_LIST_APPS: {
-            int count = app_loader_get_count();
-            snprintf(out, out_size, "%d apps", count);
-            break;
-        }
         case ACTION_CHECK_UPDATE:
             snprintf(out, out_size, "%s", ota_firmware_version());
             break;
@@ -424,7 +393,6 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
 static void build_font_size_items(const char *family);
 static void render(void);
 static void on_scan_activated(int item_index, void *user_data);
-static void on_app_list_activated(int item_index, void *user_data);
 
 static void execute_main_action(settings_action_t action) {
     switch (action) {
@@ -603,34 +571,6 @@ static void execute_main_action(settings_action_t action) {
             ota_apply_update();
             break;
         }
-        case ACTION_LIST_APPS: {
-            app_list_count = app_loader_scan(app_list_names, MAX_APPS);
-            if (app_list_count > MAX_APPS) app_list_count = MAX_APPS;
-            for (int i = 0; i < app_list_count; i++) {
-                app_sd_manifest_t manifest;
-                if (app_manifest_read(app_list_names[i], &manifest)) {
-                    snprintf(app_list_display[i], sizeof(app_list_display[i]), "%s", manifest.display_name);
-                } else {
-                    snprintf(app_list_display[i], sizeof(app_list_display[i]), "%s", app_list_names[i]);
-                }
-                app_list_items[i] = app_list_display[i];
-            }
-            app_list_selected = 0;
-            if (!app_list_widget) {
-                app_list_widget = ui2_list_create(1, 1, text_mode_get_cols() - 2, text_mode_get_rows() - 5);
-                ui2_list_set_title(app_list_widget, "Installed Apps");
-                ui2_list_set_border(app_list_widget, true);
-                ui2_list_set_scrollbar_width(app_list_widget, true);
-                ui2_list_set_callbacks(app_list_widget, NULL, on_app_list_activated, NULL);
-            }
-            if (app_list_count > 0) {
-                ui2_list_set_items(app_list_widget, app_list_items, app_list_count);
-                ui2_list_set_selection(app_list_widget, app_list_selected);
-            }
-            state = STATE_APP_LIST;
-            render();
-            break;
-        }
     }
 }
 
@@ -806,46 +746,6 @@ static void on_scan_activated(int item_index, void *user_data) {
     }
 }
 
-static void on_app_list_activated(int item_index, void *user_data) {
-    (void)user_data;
-    if (item_index < 0 || item_index >= app_list_count) return;
-    app_list_selected = item_index;
-    snprintf(app_detail_name, sizeof(app_detail_name), "%s", app_list_names[item_index]);
-    app_manifest_read(app_detail_name, &app_detail_manifest);
-    state = STATE_APP_DETAIL;
-    render();
-}
-
-static void delete_dir_contents(const char *dir_path) {
-    DIR *dir = opendir(dir_path);
-    if (!dir) return;
-    char full_path[128];
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') continue;
-        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
-        remove(full_path);
-    }
-    closedir(dir);
-}
-
-static void uninstall_app(const char *app_name) {
-    char path[128];
-    snprintf(path, sizeof(path), "/sdcard/apps/%s", app_name);
-    delete_dir_contents(path);
-    remove(path);
-    set_status("App uninstalled");
-}
-
-static void reset_app_config(const char *app_name) {
-    char path[128];
-    snprintf(path, sizeof(path), "/sdcard/apps/%s/config", app_name);
-    delete_dir_contents(path);
-    remove(path);
-    mkdir(path, 0755);
-    set_status("App config reset");
-}
-
 static ui2_text_input_t *get_text_input_for_state(void) {
     switch (state) {
         case STATE_ENTER_SSID: return ssid_input;
@@ -883,17 +783,6 @@ static void handle_scan_key(char key) {
     }
     app_state_t prev = state;
     if (scan_list && UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), key))
-        if (state == prev) render();
-}
-
-static void handle_app_list_key(char key) {
-    if (key == 27) {
-        state = STATE_MAIN;
-        render();
-        return;
-    }
-    app_state_t prev = state;
-    if (app_list_widget && UI2_WIDGET(app_list_widget)->vtable->handle_key(UI2_WIDGET(app_list_widget), key))
         if (state == prev) render();
 }
 
@@ -973,46 +862,6 @@ static void handle_font_size_key(char key) {
         render();
 }
 
-static void handle_app_detail_key(char key) {
-    if (key == '\n' || key == '\r') {
-        state = STATE_APP_LIST;
-        render();
-        return;
-    }
-    if (key == 27) {
-        state = STATE_APP_LIST;
-        render();
-        return;
-    }
-    if (key == 'd' || key == 'D') {
-        uninstall_app(app_detail_name);
-        app_list_count = app_loader_scan(app_list_names, MAX_APPS);
-        if (app_list_count > MAX_APPS) app_list_count = MAX_APPS;
-        for (int i = 0; i < app_list_count; i++) {
-            app_sd_manifest_t manifest;
-            if (app_manifest_read(app_list_names[i], &manifest))
-                snprintf(app_list_display[i], sizeof(app_list_display[i]), "%s", manifest.display_name);
-            else
-                snprintf(app_list_display[i], sizeof(app_list_display[i]), "%s", app_list_names[i]);
-            app_list_items[i] = app_list_display[i];
-        }
-        app_list_selected = 0;
-        if (app_list_widget) {
-            ui2_list_set_items(app_list_widget, app_list_items, app_list_count);
-            ui2_list_set_selection(app_list_widget, 0);
-        }
-        state = STATE_APP_LIST;
-        render();
-        return;
-    }
-    if (key == 'r' || key == 'R') {
-        reset_app_config(app_detail_name);
-        state = STATE_APP_LIST;
-        render();
-        return;
-    }
-}
-
 static void handle_message_key(char key) {
     (void)key;
     state = STATE_MAIN;
@@ -1053,32 +902,6 @@ void render(void) {
             if (font_size_list)
                 UI2_WIDGET(font_size_list)->vtable->draw(UI2_WIDGET(font_size_list));
             break;
-        case STATE_APP_LIST:
-            text_mode_clear(TEXT_COLOR_BLACK);
-            if (app_list_count > 0 && app_list_widget) {
-                UI2_WIDGET(app_list_widget)->vtable->draw(UI2_WIDGET(app_list_widget));
-            } else {
-                int cols = text_mode_get_cols();
-                text_mode_print_at_attr_bg((cols - 16) / 2, 5, "No apps found",
-                                           TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
-            }
-            break;
-        case STATE_APP_DETAIL: {
-            text_mode_clear(TEXT_COLOR_BLACK);
-            int cols = text_mode_get_cols();
-            int row = 2;
-            text_mode_print_at_attr_bg(2, row, "App Info", TEXT_COLOR_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
-            row += 2;
-            text_mode_printf_at(2, row, "Name: %s", app_detail_name); row++;
-            text_mode_printf_at(2, row, "Display: %s", app_detail_manifest.display_name); row++;
-            if (app_detail_manifest.extensions[0]) {
-                text_mode_printf_at(2, row, "Opens: %s", app_detail_manifest.extensions); row++;
-            }
-            row++;
-            text_mode_print_at_attr_bg((cols - 22) / 2, row, "Enter/ESC: Back  D: Uninstall  R: Reset",
-                                       TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
-            break;
-        }
         case STATE_MESSAGE:
             draw_message();
             break;
@@ -1210,7 +1033,6 @@ void app_close(app_context_t *ctx) {
     destroy_list(&scan_list);
     destroy_list(&font_family_list);
     destroy_list(&font_size_list);
-    destroy_list(&app_list_widget);
 
     for (int s = 0; s < SECTION_COUNT; s++) {
         tab_content[s].list = NULL;
@@ -1297,12 +1119,6 @@ void app_event(app_context_t *ctx, event_t *event) {
                 break;
             case STATE_FONT_SIZE_SELECTION:
                 handle_font_size_key(key);
-                break;
-            case STATE_APP_LIST:
-                handle_app_list_key(key);
-                break;
-            case STATE_APP_DETAIL:
-                handle_app_detail_key(key);
                 break;
             case STATE_MESSAGE:
                 handle_message_key(key);
@@ -1403,17 +1219,6 @@ void app_event(app_context_t *ctx, event_t *event) {
                     state = STATE_MAIN;
                     render();
                 }
-                break;
-            case STATE_APP_LIST:
-                if (app_list_widget) {
-                    app_state_t prev = state;
-                    UI2_WIDGET(app_list_widget)->vtable->handle_touch(UI2_WIDGET(app_list_widget), x_col, y_col, true);
-                    if (state == prev) render();
-                }
-                break;
-            case STATE_APP_DETAIL:
-                state = STATE_APP_LIST;
-                render();
                 break;
         }
     } else if (event->type == EVENT_TIMER) {

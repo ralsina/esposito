@@ -1,7 +1,3 @@
-/*
- * Minimal coreJSON-style API used by the clock app.
- * This is a small embedded parser that supports validation and key search.
- */
 #ifndef CORE_JSON_H_
 #define CORE_JSON_H_
 

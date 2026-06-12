@@ -1,0 +1,200 @@
+[
+  {
+    "id": "app_store",
+    "name": "App Store",
+    "short_description": "Install and manage apps",
+    "long_description": "Download, install, and uninstall apps from the Esposito app catalog.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/app_store",
+    "version": "1.0",
+    "requires": "",
+    "extensions": "",
+    "size": 230848
+  },
+  {
+    "id": "breakout",
+    "name": "Breakout",
+    "short_description": "Breakout game",
+    "long_description": "Classic Breakout arcade game. Bounce the ball and break all the bricks.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/breakout",
+    "version": "1.0",
+    "requires": "keyboard",
+    "extensions": "",
+    "size": 27708
+  },
+  {
+    "id": "calc",
+    "name": "Calculator",
+    "short_description": "Calculator",
+    "long_description": "A simple four-function calculator with keyboard input.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/calc",
+    "version": "1.0",
+    "requires": "keyboard",
+    "extensions": "",
+    "size": 77380
+  },
+  {
+    "id": "clock",
+    "name": "Clock",
+    "short_description": "Digital clock with NTP sync",
+    "long_description": "A full-screen digital clock that syncs time via NTP. Shows date and time.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/clock",
+    "version": "1.0",
+    "requires": "",
+    "extensions": "",
+    "size": 93456
+  },
+  {
+    "id": "example_ui2",
+    "name": "UI2 Example",
+    "short_description": "Demo of the ui2 widget library",
+    "long_description": "Interactive demonstration of all ui2 widgets: buttons, labels, lists, layouts, and more.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/example_ui2",
+    "version": "1.0",
+    "requires": "",
+    "extensions": "",
+    "size": 67144
+  },
+  {
+    "id": "file_manager",
+    "name": "File Manager",
+    "short_description": "Browse and manage files",
+    "long_description": "Navigate the SD card filesystem: browse directories, view files, delete and rename items.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/file_manager",
+    "version": "1.0",
+    "requires": "",
+    "extensions": "",
+    "size": 114044
+  },
+  {
+    "id": "gameboy",
+    "name": "GB Emulator",
+    "short_description": "Game Boy emulator",
+    "long_description": "Play Game Boy and Game Boy Color ROMs on your device. Uses the Arduboy library.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/gameboy",
+    "version": "1.0",
+    "requires": "keyboard",
+    "extensions": "gb,gbc",
+    "size": 262492
+  },
+  {
+    "id": "hecto",
+    "name": "Hecto",
+    "short_description": "Paged Text Editor with Large File Support",
+    "long_description": "A paged text editor designed for large files. Navigate by pages, search, and edit.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/hecto",
+    "version": "0.1.0",
+    "requires": "keyboard",
+    "extensions": "txt,c,h,md,cfg",
+    "size": 31000
+  },
+  {
+    "id": "kilo",
+    "name": "Kilo Editor",
+    "short_description": "Text editor",
+    "long_description": "A terminal-based text editor inspired by Kilo. Supports syntax highlighting and file editing.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/kilo",
+    "version": "1.0",
+    "requires": "keyboard",
+    "extensions": "txt,md,markdown,c,h,py,sh,json,yaml,yml,ini,cfg,log",
+    "size": 30736
+  },
+  {
+    "id": "lali",
+    "name": "Lali",
+    "short_description": "Card game",
+    "long_description": "A fun card game to play on your Esposito device. Requires keyboard input.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/lali",
+    "version": "1.0",
+    "requires": "keyboard",
+    "extensions": "",
+    "size": 89800
+  },
+  {
+    "id": "lua",
+    "name": "Lua",
+    "short_description": "Lua interpreter",
+    "long_description": "Run Lua scripts on your device. Includes a REPL and can execute .lua files from the SD card.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/lua",
+    "version": "1.0",
+    "requires": "keyboard",
+    "extensions": "lua",
+    "size": 51396
+  },
+  {
+    "id": "numbers",
+    "name": "Numbers",
+    "short_description": "Math puzzle game (Arduboy port)",
+    "long_description": "A math puzzle game ported from Arduboy. Solve number puzzles with keyboard controls.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/numbers",
+    "version": "1.0.0",
+    "requires": "keyboard",
+    "extensions": "",
+    "size": 27356
+  },
+  {
+    "id": "paint",
+    "name": "Paint",
+    "short_description": "Drawing app",
+    "long_description": "Draw on the touch screen with different colors and brush sizes. Simple and fun.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/paint",
+    "version": "1.0",
+    "requires": "touch",
+    "extensions": "",
+    "size": 26616
+  },
+  {
+    "id": "reader",
+    "name": "Reader",
+    "short_description": "Markdown document reader",
+    "long_description": "Read Markdown and plain text documents. Renders formatted text from the SD card.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/reader",
+    "version": "1.0",
+    "requires": "",
+    "extensions": "md,markdown,txt",
+    "size": 162104
+  },
+  {
+    "id": "settings",
+    "name": "Settings",
+    "short_description": "System settings and configuration",
+    "long_description": "Configure WiFi, display settings, and manage system preferences.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/settings",
+    "version": "1.0",
+    "requires": "",
+    "extensions": "",
+    "size": 117016
+  },
+  {
+    "id": "shell",
+    "name": "Shell",
+    "short_description": "System shell",
+    "long_description": "A command-line shell for Esposito. Run commands, navigate the filesystem, and execute scripts.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/shell",
+    "version": "1.0",
+    "requires": "keyboard",
+    "extensions": "",
+    "size": 80116
+  },
+  {
+    "id": "snake",
+    "name": "Snake",
+    "short_description": "Classic snake game",
+    "long_description": "Play the classic Snake game. Eat food, grow longer, and avoid hitting walls.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/snake",
+    "version": "1.0",
+    "requires": "keyboard",
+    "extensions": "",
+    "size": 31328
+  },
+  {
+    "id": "terminado",
+    "name": "Terminado",
+    "short_description": "Terminal emulator",
+    "long_description": "A VT100 terminal emulator. Run terminal-based apps and connect to serial devices.",
+    "homepage": "https://github.com/ralsina/esposito/tree/main/apps/terminado",
+    "version": "1.0",
+    "requires": "keyboard",
+    "extensions": "",
+    "size": 36912
+  }
+]

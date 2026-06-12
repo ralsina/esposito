@@ -334,7 +334,6 @@ static bool search_array( const char * buf,
     }
     query_pos++;
     if( query_pos == query_len ) {
-        /* If the query ends on the index, return that element. */
     }
     while( index < value_end && buf[ index ] != ']' ) {
         size_t child_start = index;

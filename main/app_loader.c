@@ -35,9 +35,14 @@ int app_loader_scan(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps) {
                 if (f) {
                     fclose(f);
                     // Skip apps that declare launcher=no in their manifest
-                    app_sd_manifest_t manifest;
-                    app_manifest_read(entry->d_name, &manifest);
-                    if (!manifest.show_in_launcher) continue;
+                    app_sd_manifest_t *manifest = malloc(sizeof(app_sd_manifest_t));
+                    bool show = true;
+                    if (manifest) {
+                        app_manifest_read(entry->d_name, manifest);
+                        show = manifest->show_in_launcher;
+                        free(manifest);
+                    }
+                    if (!show) continue;
                     snprintf(app_names[count], APP_LOADER_MAX_NAME_LEN, "%s", entry->d_name);
                     count++;
                 }
@@ -110,6 +115,37 @@ bool app_loader_load(const char *app_name) {
 
     if (!ctx->init) {
         ESP_LOGE(TAG, "ELF missing app_init entry point");
+        elf_loader_unload(handle);
+        return false;
+    }
+
+    // Check required capabilities from manifest
+    app_sd_manifest_t *manifest = malloc(sizeof(app_sd_manifest_t));
+    bool caps_ok = true;
+    if (manifest) {
+        app_manifest_read(app_name, manifest);
+        if (manifest->requires[0]) {
+            char caps[APP_MANIFEST_CAP_MAX];
+            strncpy(caps, manifest->requires, sizeof(caps) - 1);
+            caps[sizeof(caps) - 1] = '\0';
+            char *token = strtok(caps, ",");
+            while (token) {
+                while (*token == ' ') token++;
+                char *end = token + strlen(token);
+                while (end > token && end[-1] == ' ') end--;
+                *end = '\0';
+                if (token[0] && !os_has_capability(token)) {
+                    ESP_LOGE(TAG, "App '%s' requires capability '%s' which is not available",
+                             app_name, token);
+                    caps_ok = false;
+                    break;
+                }
+                token = strtok(NULL, ",");
+            }
+        }
+        free(manifest);
+    }
+    if (!caps_ok) {
         elf_loader_unload(handle);
         return false;
     }

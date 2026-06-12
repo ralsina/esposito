@@ -8,6 +8,39 @@ static int border_offset(const ui2_text_t *text) {
     return text->draw_border ? 1 : 0;
 }
 
+static int content_x(const ui2_text_t *text);
+static int content_y(const ui2_text_t *text);
+
+static void draw_wrapped_content(ui2_text_t *text, int ox, int oy, int cw, int ch) {
+    if (!text->content || cw <= 0 || ch <= 0) return;
+    const char *p = text->content;
+    int line = 0;
+
+    while (*p && line < ch) {
+        while (*p == ' ') p++;
+        if (!*p) break;
+
+        int len = 0;
+        int last_space = -1;
+        while (p[len] && len < cw) {
+            if (p[len] == ' ') last_space = len;
+            if (p[len] == '\n') { len++; break; }
+            len++;
+        }
+        if (len >= cw && last_space > 0) len = last_space;
+
+        char buf[cw + 1];
+        memcpy(buf, p, len);
+        buf[len] = '\0';
+        text_mode_print_at_attr_bg(ox, oy + line, buf,
+                                   text->content_fg, TEXT_COLOR_BLACK, text->content_attr);
+
+        line++;
+        p += len;
+        while (*p == ' ') p++;
+    }
+}
+
 static void ui2_text_draw(ui2_widget_t *widget) {
     ui2_text_t *text = (ui2_text_t *)widget;
     if (!widget->visible) return;
@@ -25,6 +58,10 @@ static void ui2_text_draw(ui2_widget_t *widget) {
                                        text->border_fg, TEXT_COLOR_BLACK, attr);
         }
     }
+
+    draw_wrapped_content(text, content_x(text), content_y(text),
+                         ui2_text_get_content_width(text),
+                         ui2_text_get_content_height(text));
 }
 
 static const ui2_widget_vtable_t text_vtable = {
@@ -58,13 +95,35 @@ ui2_text_t *ui2_text_create(int x, int y, int width, int height) {
 }
 
 void ui2_text_destroy(ui2_widget_t *widget) {
-    free(widget);
+    if (!widget) return;
+    ui2_text_t *text = (ui2_text_t *)widget;
+    free(text->content);
+    free(text);
 }
 
 void ui2_text_set_border(ui2_text_t *text, bool draw, uint8_t border_fg) {
     if (!text) return;
     text->draw_border = draw;
     text->border_fg = border_fg;
+}
+
+void ui2_text_set_content(ui2_text_t *text, const char *str, uint8_t fg, uint8_t attr) {
+    if (!text) return;
+    free(text->content);
+    text->content = NULL;
+    if (str) {
+        size_t len = strlen(str);
+        text->content = (char *)malloc(len + 1);
+        if (text->content) memcpy(text->content, str, len + 1);
+    }
+    text->content_fg = fg;
+    text->content_attr = attr;
+}
+
+void ui2_text_clear_content(ui2_text_t *text) {
+    if (!text) return;
+    free(text->content);
+    text->content = NULL;
 }
 
 static int content_x(const ui2_text_t *text) {
