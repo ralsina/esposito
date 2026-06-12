@@ -1,5 +1,6 @@
 #include "serial_rx.h"
-#include "hardware.h" // For serial_write
+#include "hardware.h"
+#include "text_mode.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -45,21 +46,22 @@ static void send_response(uint8_t type, uint16_t seq) {
     resp[0] = SERIAL_RX_SYNC1;
     resp[1] = SERIAL_RX_SYNC2;
     resp[2] = type;
-    
-    // Payload length: 2 bytes
     resp[3] = 0;
     resp[4] = 2;
-    
-    // Sequence number: 2 bytes
     resp[5] = (seq >> 8) & 0xFF;
     resp[6] = (seq & 0xFF);
-    
-    // CRC16 over the 2-byte payload
     uint16_t crc = compute_crc16(&resp[5], 2);
     resp[7] = (crc >> 8) & 0xFF;
     resp[8] = (crc & 0xFF);
-    
-    serial_write((const char *)resp, 9);
+
+    size_t written = serial_write((const char *)resp, 9);
+
+    int debug_row = text_mode_get_rows() - 1;
+    if (written != 9) {
+        text_mode_printf_at_color(0, debug_row, TEXT_COLOR_RED, "W err(%d)", (int)written);
+    } else {
+        text_mode_printf_at_color(0, debug_row, TEXT_COLOR_GREEN, "W %02x s%d", type, seq);
+    }
 }
 
 void serial_rx_init(const serial_rx_config_t *config) {
@@ -176,6 +178,7 @@ static void handle_packet_start(const uint8_t *payload, size_t len) {
     
     rx_state = SERIAL_RX_STATE_RECEIVING;
     send_response(RESP_ACK, 0xFFFF);
+    text_mode_printf_at_color(0, text_mode_get_rows() - 2, TEXT_COLOR_BLUE, "START ok %s", current_file);
 }
 
 static void handle_packet_data(const uint8_t *payload, size_t len) {
@@ -194,13 +197,7 @@ static void handle_packet_data(const uint8_t *payload, size_t len) {
     const uint8_t *data = &payload[2];
     size_t data_len = len - 2;
 
-    // Visual indicator: Blink LED for each received packet
-    extern void led_set_rgb(uint8_t r, uint8_t g, uint8_t b);
-    if (seq % 2 == 0) {
-        led_set_rgb(32, 32, 32); // Dim white for even chunks
-    } else {
-        led_set_rgb(64, 0, 64); // Dim purple for odd chunks
-    }
+    text_mode_printf_at_color(0, text_mode_get_rows() - 3, TEXT_COLOR_CYAN, "D %d", seq);
 
     if (seq == next_expected_seq) {
         if (data_len > 0 && file_handle) {
@@ -246,7 +243,8 @@ static void handle_packet_end(const uint8_t *payload, size_t len) {
     
     rx_state = SERIAL_RX_STATE_SUCCESS;
     send_response(RESP_ACK, 0xFFFF);
-    
+    text_mode_printf_at_color(0, text_mode_get_rows() - 1, TEXT_COLOR_GREEN, "END");
+
     if (client_config.on_complete) {
         client_config.on_complete(rx_state, current_file, NULL);
     }

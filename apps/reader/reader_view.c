@@ -142,6 +142,9 @@ void reader_view_setup_file_list(reader_state_t *state) {
     ui2_button_t *btn_get = ui2_button_create(0, 0, btn_w, 3, ICON_ARROW_DOWN_TO_LINE);
     ui2_button_set_callback(btn_get, on_file_list_get_click, state);
 
+    ui2_button_t *btn_shop = ui2_button_create(0, 0, btn_w, 3, ICON_EXTERNAL_LINK);
+    ui2_button_set_callback(btn_shop, on_file_list_shop_click, state);
+
     ui2_button_t *btn_exit = ui2_button_create(0, 0, btn_w, 3, ICON_X);
     ui2_button_set_callback(btn_exit, on_file_list_exit_click, state);
 
@@ -149,6 +152,7 @@ void reader_view_setup_file_list(reader_state_t *state) {
      ui2_layout_add(btn_row, UI2_WIDGET(btn_down));
      ui2_layout_add(btn_row, UI2_WIDGET(btn_open));
      ui2_layout_add(btn_row, UI2_WIDGET(btn_get));
+     ui2_layout_add(btn_row, UI2_WIDGET(btn_shop));
      ui2_layout_add(btn_row, UI2_WIDGET(btn_exit));
 
     ui2_layout_add(root, UI2_WIDGET(btn_row));
@@ -540,6 +544,9 @@ void reader_view_update_progress(const reader_state_t *state, size_t received, s
     char info[48];
     int pct = total > 0 ? (int)(received * 100 / total) : 0;
     snprintf(info, sizeof(info), "%d%%  (%d/%d KB)", pct, (int)(received / 1024), (int)(total / 1024));
+    for (int x = 0; x < bar_width; x++) {
+        text_mode_print_at_color(bar_x + x, bar_y - 1, " ", TEXT_COLOR_BLACK);
+    }
     text_mode_print_at_attr(bar_x, bar_y - 1, info, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
 
     text_mode_flush();

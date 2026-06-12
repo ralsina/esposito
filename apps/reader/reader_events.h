@@ -15,6 +15,7 @@ void on_file_list_get_click(ui2_button_t *button, void *user_data);
 void on_file_list_open_click(ui2_button_t *button, void *user_data);
 void on_file_list_down_click(ui2_button_t *button, void *user_data);
 void on_file_list_exit_click(ui2_button_t *button, void *user_data);
+void on_file_list_shop_click(ui2_button_t *button, void *user_data);
 void on_toc_up_click(ui2_button_t *button, void *user_data);
 void on_toc_jump_click(ui2_button_t *button, void *user_data);
 void on_toc_down_click(ui2_button_t *button, void *user_data);

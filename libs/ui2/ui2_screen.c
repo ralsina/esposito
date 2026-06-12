@@ -23,6 +23,11 @@ struct ui2_screen_s {
     uint8_t focus_prev_mods;
     ui2_shortcut_entry_t shortcuts[UI2_MAX_SHORTCUTS];
     int shortcut_count;
+
+    char toast_msg[64];
+    uint8_t toast_fg;
+    uint8_t toast_bg;
+    int toast_ticks;
 };
 
 static int collect_focusable(ui2_widget_t *widget, ui2_widget_t **arr, int max, int index) {
@@ -214,6 +219,28 @@ bool ui2_screen_handle_event(ui2_screen_t *screen, event_t *event) {
     return false;
 }
 
+void ui2_screen_toast_show(ui2_screen_t *screen, const char *msg, uint8_t fg, uint8_t bg, int duration_ticks) {
+    if (!screen || !msg) return;
+    strncpy(screen->toast_msg, msg, sizeof(screen->toast_msg) - 1);
+    screen->toast_msg[sizeof(screen->toast_msg) - 1] = '\0';
+    screen->toast_fg = fg;
+    screen->toast_bg = bg;
+    screen->toast_ticks = duration_ticks;
+}
+
+void ui2_screen_toast_tick(ui2_screen_t *screen) {
+    if (!screen || screen->toast_ticks <= 0) return;
+    screen->toast_ticks--;
+    if (screen->toast_ticks <= 0) {
+        screen->toast_msg[0] = '\0';
+        screen->dirty = true;
+    }
+}
+
+bool ui2_screen_toast_active(ui2_screen_t *screen) {
+    return screen && screen->toast_ticks > 0 && screen->toast_msg[0] != '\0';
+}
+
 void ui2_screen_render(ui2_screen_t *screen) {
     if (!screen || !screen->root) return;
     if (screen->dirty) {
@@ -222,5 +249,17 @@ void ui2_screen_render(ui2_screen_t *screen) {
     }
     ui2_widget_t *root_w = UI2_WIDGET(screen->root);
     root_w->vtable->draw(root_w);
+
+    if (screen->toast_ticks > 0 && screen->toast_msg[0]) {
+        int cols = text_mode_get_cols();
+        int msglen = strlen(screen->toast_msg);
+        int x = (cols - msglen) / 2;
+        if (x < 0) x = 0;
+        for (int cx = 0; cx < cols; cx++) {
+            text_mode_print_at_attr_bg(cx, 0, " ", screen->toast_fg, screen->toast_bg, TEXT_ATTR_NORMAL);
+        }
+        text_mode_print_at_attr_bg(x, 0, screen->toast_msg, screen->toast_fg, screen->toast_bg, TEXT_ATTR_BOLD);
+    }
+
     text_mode_flush();
 }

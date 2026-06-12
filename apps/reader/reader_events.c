@@ -173,6 +173,12 @@ void on_file_list_exit_click(ui2_button_t *button, void *user_data) {
     }
 }
 
+void on_file_list_shop_click(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    os_load_app("bookshop");
+}
+
 void on_file_list_get_click(ui2_button_t *button, void *user_data) {
     (void)button;
     reader_state_t *state = (reader_state_t *)user_data;

@@ -30,6 +30,10 @@ ui2_widget_t *ui2_screen_focus_get(ui2_screen_t *screen);
 bool ui2_screen_handle_event(ui2_screen_t *screen, event_t *event);
 void ui2_screen_render(ui2_screen_t *screen);
 
+void ui2_screen_toast_show(ui2_screen_t *screen, const char *msg, uint8_t fg, uint8_t bg, int duration_ticks);
+void ui2_screen_toast_tick(ui2_screen_t *screen);
+bool ui2_screen_toast_active(ui2_screen_t *screen);
+
 #ifdef __cplusplus
 }
 #endif

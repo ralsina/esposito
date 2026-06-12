@@ -12,7 +12,7 @@ It loads after theme.css so you can override it.*/
             rgba(from var(--b16-base0D) r g b / 0.3),
             rgba(from var(--b16-base0D) r g b / 0.3)
         ),
-        url("/esposito.jpg");
+        url("/nicolino.jpg");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -108,6 +108,11 @@ It loads after theme.css so you can override it.*/
     display: flex;
     gap: 1rem;
     justify-content: center;
+}
+
+/* Centered figures */
+figure {
+    text-align: center;
 }
 
 div.warning {
