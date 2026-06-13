@@ -1,0 +1,135 @@
+{#-
+  gallery_cards.tmpl - Gallery card grid template
+
+  Renders a grid of gallery cards with:
+  - Optional description paragraph
+  - Card grid with thumbnail images and titles
+
+  Variables:
+  - title: Grid title (not rendered here, passed from caller)
+  - description: Optional description text
+  - items: Array of {link, title, thumb_link} tuples
+
+  Used by: Gallery index pages
+-#}
+<section class="gallery-cards">
+
+  {% if description %}
+  <p class="gallery-cards-description">{{ description }}</p>
+  {% endif %}
+
+  {% if items %}
+  <div class="gallery-card-grid">
+    {% for item in items %}
+    <a href="{{ item.link }}" class="gallery-card">
+      {% if item.thumb_link %}
+      <div class="gallery-card-image">
+        <img src="{{ item.thumb_link | thumb_url }}" alt="" loading="lazy" />
+      </div>
+      {% else %}
+      <div class="gallery-card-image gallery-card-placeholder">
+        <span class="placeholder-icon">🖼️</span>
+      </div>
+      {% endif %}
+      <div class="gallery-card-title">{{ item.title }}</div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="no-items">No galleries found.</p>
+  {% endif %}
+</section>
+
+<style>
+.gallery-cards {
+  margin: 2rem 0;
+}
+
+.gallery-cards-description {
+  margin-bottom: 2rem;
+  color: var(--b16-base04);
+  font-size: 1.1em;
+}
+
+.gallery-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin: 1rem 0;
+}
+
+.gallery-card {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--b16-base03);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  background: var(--b16-base01);
+}
+
+.gallery-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+  border-color: var(--b16-base0D);
+}
+
+.gallery-card-image {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--b16-base00);
+}
+
+.gallery-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.gallery-card:hover .gallery-card-image img {
+  transform: scale(1.05);
+}
+
+.gallery-card-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--b16-base02) 0%, var(--b16-base01) 100%);
+}
+
+.placeholder-icon {
+  font-size: 3rem;
+  opacity: 0.5;
+}
+
+.gallery-card-title {
+  padding: 1rem;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--b16-base05);
+  text-align: center;
+  border-top: 1px solid var(--b16-base02);
+}
+
+.no-items {
+  color: var(--b16-base04);
+  font-style: italic;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .gallery-card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .gallery-card-title {
+    font-size: 1em;
+    padding: 0.75rem;
+  }
+}
+</style>
