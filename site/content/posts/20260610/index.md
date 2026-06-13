@@ -37,7 +37,7 @@ The old `libs/ui/` is retained for reference but all active apps now depend on `
 The ui2 library bundles a curated set of **Lucide** icons embedded directly in every font
 `.fpack` bundle. No separate icon font or runtime loading required.
 
-{{% figure src="reader2.png" caption="Icons!" link="reader2.png" %}}
+{{% figure src="/posts/20260610/reader2.png" caption="Icons!" link="/posts/20260610/reader2.png" %}}
 
 Icons are available as C preprocessor constants in `libs/ui2/lucide_icons.h`, using proper
 3-byte UTF-8 encoding for the E000-FFFF Private Use Area codepoints. Available icons include:

@@ -12,7 +12,7 @@ ROMs are loaded from the SD card into flash memory and memory-mapped for fast
 access. The 160x144 Game Boy display is centered on the 320x240 screen with black
 borders, just like the real thing.
 
-{{% figure src="peanut_gb.png" caption="Game Boy emulation on a $5 microcontroller" link="https://github.com/ralsina/esposito/tree/main/apps/peanut_gb" %}}
+{{% figure src="/posts/20260531/peanut_gb.png" caption="Game Boy emulation on a $5 microcontroller" link="https://github.com/ralsina/esposito/tree/main/apps/peanut_gb" %}}
 
 ### Controls
 
