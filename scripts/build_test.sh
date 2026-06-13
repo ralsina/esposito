@@ -43,7 +43,11 @@ for app_dir in apps/*/; do
     fi
 done
 
-# Step 4: Copy all apps to SD card
+# Step 4: Package SDK
+echo "=== Packaging SDK ==="
+scripts/package_sdk.sh build/
+
+# Step 5: Copy all apps to SD card
 echo "=== Copying apps to SD card ==="
 for app_elf in build/apps/*.elf; do
     app_name=$(basename "$app_elf" .elf)
@@ -58,7 +62,7 @@ for app_elf in build/apps/*.elf; do
     fi
 done
 
- # Step 4b: Copy font packs to SD card
+ # Step 5b: Copy font packs to SD card
 echo "=== Copying font packs to SD card ==="
 mkdir -p "$SD_MOUNT/fonts/fpack"
 for fpack in fonts/*.fpack; do
@@ -77,7 +81,7 @@ echo "║  Press ENTER when ready to flash the firmware.   ║"
 echo "╚══════════════════════════════════════════════════╝"
 read -r
 
-# Step 5: Flash
+# Step 6: Flash
 echo "=== Flashing firmware ==="
 idf.py flash
 

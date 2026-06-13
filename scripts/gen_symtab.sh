@@ -92,7 +92,7 @@ for sym_spec in "${SYMBOLS[@]}"; do
         provider_name="${sym_spec##*:}"
     fi
 
-    addr=$("${TOOLCHAIN_PREFIX}-nm" "$FIRMWARE_ELF" 2>/dev/null | grep " [TDWAi] $provider_name$" | head -1 | awk '{print $1}')
+    addr=$("${TOOLCHAIN_PREFIX}-nm" "$FIRMWARE_ELF" 2>&1 | grep " [TDWAi] $provider_name$" | head -1 | awk '{print $1}')
     if [ -n "$addr" ]; then
         echo "PROVIDE($export_name = 0x$addr);" >> "$OUTPUT_LD"
     else
