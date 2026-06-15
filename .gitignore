@@ -1,4 +1,5 @@
 ./build
+linux/build/
 .claude/
 # Python
 __pycache__/
