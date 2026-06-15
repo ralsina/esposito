@@ -708,6 +708,230 @@ static void selection_update(void) {
     }
 }
 
+static void normalize_selection(int *start_row, int *start_col, int *end_row, int *end_col) {
+    if (state->sel_start_row < state->sel_end_row ||
+        (state->sel_start_row == state->sel_end_row && state->sel_start_col < state->sel_end_col)) {
+        *start_row = state->sel_start_row;
+        *start_col = state->sel_start_col;
+        *end_row = state->sel_end_row;
+        *end_col = state->sel_end_col;
+    } else {
+        *start_row = state->sel_end_row;
+        *start_col = state->sel_end_col;
+        *end_row = state->sel_start_row;
+        *end_col = state->sel_start_col;
+    }
+}
+
+static void selection_copy(void) {
+    if (!state->selection_active || !state->clipboard_buffer) return;
+
+    int start_row, start_col, end_row, end_col;
+    normalize_selection(&start_row, &start_col, &end_row, &end_col);
+
+    char *buf = state->clipboard_buffer;
+    int pos = 0;
+    for (int i = start_row; i <= end_row && i < state->line_count; i++) {
+        if (!state->lines[i]) continue;
+        int line_len = strlen(state->lines[i]);
+        int from = (i == start_row) ? start_col : 0;
+        int to = (i == end_row) ? end_col : line_len;
+        if (to > line_len) to = line_len;
+        int count = to - from;
+        if (count > 0 && pos + count < MAX_CLIPBOARD_SIZE) {
+            memcpy(buf + pos, state->lines[i] + from, count);
+            pos += count;
+        }
+        if (i < end_row && pos < MAX_CLIPBOARD_SIZE - 1) {
+            buf[pos++] = '\n';
+        }
+    }
+    buf[pos] = '\0';
+    state->clipboard_size = pos;
+}
+
+static void selection_delete(void) {
+    if (!state->selection_active) return;
+
+    int start_row, start_col, end_row, end_col;
+    normalize_selection(&start_row, &start_col, &end_row, &end_col);
+
+    if (start_row == end_row) {
+        char *line = state->lines[start_row];
+        if (line) {
+            int len = strlen(line);
+            int count = end_col - start_col;
+            if (count > 0 && end_col <= len) {
+                memmove(line + start_col, line + end_col, len - end_col + 1);
+            }
+        }
+    } else {
+        char *start_line = state->lines[start_row];
+        char *end_line = state->lines[end_row];
+
+        if (start_line) {
+            start_line[start_col] = '\0';
+        }
+
+        if (start_line && end_line) {
+            int tail_len = strlen(end_line) - end_col;
+            if (tail_len > 0) {
+                int new_len = start_col + tail_len;
+                char *new_line = realloc(start_line, new_len + 1);
+                if (new_line) {
+                    state->lines[start_row] = new_line;
+                    memcpy(new_line + start_col, end_line + end_col, tail_len);
+                    new_line[new_len] = '\0';
+                }
+            }
+        }
+
+        if (end_line) free(end_line);
+
+        int remove_count = end_row - start_row;
+        for (int i = start_row + 1; i + remove_count < state->line_count; i++) {
+            state->lines[i] = state->lines[i + remove_count];
+        }
+        state->line_count -= remove_count;
+    }
+
+    state->cursor_row = start_row;
+    state->cursor_col = start_col;
+    state->dirty = 1;
+    selection_clear();
+}
+
+static void paste_from_clipboard(void) {
+    if (!state->clipboard_buffer || state->clipboard_size <= 0) {
+        strcpy(state->statusmsg, "Nothing to paste");
+        return;
+    }
+
+    // Delete selection if active (but keep clipboard intact)
+    bool had_selection = state->selection_active;
+    if (had_selection) {
+        int saved_start_row = state->sel_start_row;
+        int saved_start_col = state->sel_start_col;
+        int saved_end_row = state->sel_end_row;
+        int saved_end_col = state->sel_end_col;
+        selection_delete();
+        // restore selection for copy after we finish... actually just delete and move on
+    }
+
+    char *buf = state->clipboard_buffer;
+    int buf_len = state->clipboard_size;
+
+    // Count lines in clipboard
+    int paste_lines = 1;
+    for (int i = 0; i < buf_len; i++) {
+        if (buf[i] == '\n') paste_lines++;
+    }
+
+    // Check if we have room
+    if (state->line_count + paste_lines - 1 >= state->line_alloc) {
+        strcpy(state->statusmsg, "Paste would exceed line limit");
+        return;
+    }
+
+    // Save the tail of the current line
+    char *current_line = state->lines[state->cursor_row];
+    int cur_len = current_line ? strlen(current_line) : 0;
+    char *tail = NULL;
+    int tail_len = cur_len - state->cursor_col;
+    if (tail_len > 0) {
+        tail = malloc(tail_len + 1);
+        if (tail) {
+            memcpy(tail, current_line + state->cursor_col, tail_len);
+            tail[tail_len] = '\0';
+        }
+    }
+
+    // Truncate current line at cursor
+    if (current_line) {
+        current_line[state->cursor_col] = '\0';
+    }
+
+    // Parse clipboard into lines
+    char *paste_parts[128];
+    int paste_count = 0;
+    int part_start = 0;
+    for (int i = 0; i <= buf_len && paste_count < 128; i++) {
+        if (i == buf_len || buf[i] == '\n') {
+            int part_len = i - part_start;
+            paste_parts[paste_count] = malloc(part_len + 1);
+            if (paste_parts[paste_count]) {
+                memcpy(paste_parts[paste_count], buf + part_start, part_len);
+                paste_parts[paste_count][part_len] = '\0';
+            }
+            paste_count++;
+            part_start = i + 1;
+        }
+    }
+
+    if (paste_count == 0) {
+        free(tail);
+        return;
+    }
+
+    // Extend first line with first paste part
+    if (paste_parts[0]) {
+        int first_len = strlen(paste_parts[0]);
+        char *new_line = realloc(state->lines[state->cursor_row], state->cursor_col + first_len + 1);
+        if (new_line) {
+            state->lines[state->cursor_row] = new_line;
+            memcpy(new_line + state->cursor_col, paste_parts[0], first_len);
+            new_line[state->cursor_col + first_len] = '\0';
+        }
+    }
+
+    // Insert middle lines (no tail)
+    int insert_row = state->cursor_row;
+    for (int p = 1; p < paste_count; p++) {
+        // Shift lines down
+        for (int j = state->line_count; j > insert_row + 1; j--) {
+            state->lines[j] = state->lines[j - 1];
+        }
+        state->line_count++;
+
+        int part_len = strlen(paste_parts[p]);
+        char *paste_line = malloc(part_len + 1);
+        if (paste_line) {
+            memcpy(paste_line, paste_parts[p], part_len + 1);
+        } else {
+            paste_line = malloc(1);
+            if (paste_line) paste_line[0] = '\0';
+        }
+        state->lines[insert_row + 1] = paste_line;
+        insert_row++;
+    }
+
+    // Append tail to last inserted line
+    if (tail && tail_len > 0) {
+        char *last_line = state->lines[insert_row];
+        int last_len = last_line ? strlen(last_line) : 0;
+        char *extended = realloc(last_line, last_len + tail_len + 1);
+        if (extended) {
+            state->lines[insert_row] = extended;
+            memcpy(extended + last_len, tail, tail_len);
+            extended[last_len + tail_len] = '\0';
+        }
+        free(tail);
+    }
+
+    // Set cursor position
+    state->cursor_row = insert_row;
+    state->cursor_col = state->lines[insert_row] ? strlen(state->lines[insert_row]) - (tail ? tail_len : 0) : 0;
+    if (state->cursor_col < 0) state->cursor_col = 0;
+
+    // Free temp paste parts
+    for (int p = 0; p < paste_count; p++) {
+        free(paste_parts[p]);
+    }
+
+    state->dirty = 1;
+    snprintf(state->statusmsg, sizeof(state->statusmsg), "Pasted %d lines", paste_lines);
+}
+
 // Handle keyboard event
 static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
     // Only handle key press events, not release
@@ -783,13 +1007,37 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                     os_load_app("file_picker");
                 }
                 return;
+            case 'c':
+            case 'C':
+                selection_copy();
+                if (state->selection_active) {
+                    snprintf(state->statusmsg, sizeof(state->statusmsg), "Copied %d bytes", state->clipboard_size);
+                    state->selection_active = false;
+                } else {
+                    strcpy(state->statusmsg, "Nothing to copy");
+                }
+                return;
+            case 'x':
+            case 'X':
+                selection_copy();
+                if (state->selection_active) {
+                    selection_delete();
+                    snprintf(state->statusmsg, sizeof(state->statusmsg), "Cut %d bytes", state->clipboard_size);
+                } else {
+                    strcpy(state->statusmsg, "Nothing to cut");
+                }
+                return;
+            case 'v':
+            case 'V':
+                paste_from_clipboard();
+                return;
             case 'q':
             case 'Q':
                 os_exit();
                 return;
             case 'h':
             case 'H':
-                strcpy(state->statusmsg, "Help: Ctrl+S=Save Ctrl+N=New Ctrl+Q=Quit");
+                strcpy(state->statusmsg, "Help: Ctrl+S=Save Ctrl+N=New Ctrl+Q=Quit Ctrl+C=Copy Ctrl+X=Cut Ctrl+V=Paste");
                 return;
         }
     }
