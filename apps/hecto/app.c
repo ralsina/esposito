@@ -52,6 +52,7 @@ static void navigate_prev_page(void);
 static void navigate_first_page(void);
 static void navigate_last_page(void);
 void app_checkpoint(app_context_t *ctx);
+static void selection_clear(void);
 
 // Initialize editor state
 static void init_state(void) {
@@ -245,6 +246,24 @@ static void render_content(void) {
         return;
     }
 
+    // Normalize selection range for rendering
+    int sel_start_row = 0, sel_start_col = 0, sel_end_row = 0, sel_end_col = 0;
+    bool has_selection = state->selection_active;
+    if (has_selection) {
+        if (state->sel_start_row < state->sel_end_row ||
+            (state->sel_start_row == state->sel_end_row && state->sel_start_col < state->sel_end_col)) {
+            sel_start_row = state->sel_start_row;
+            sel_start_col = state->sel_start_col;
+            sel_end_row = state->sel_end_row;
+            sel_end_col = state->sel_end_col;
+        } else {
+            sel_start_row = state->sel_end_row;
+            sel_start_col = state->sel_end_col;
+            sel_end_row = state->sel_start_row;
+            sel_end_col = state->sel_start_col;
+        }
+    }
+
     // Render visible lines (no need to clear entire area, just update what changes)
     int display_y = 1;
     for (int i = state->scroll_offset; i < state->line_count && display_y < state->screen_rows - 1; i++) {
@@ -262,11 +281,32 @@ static void render_content(void) {
                 visible_len = state->screen_cols;
             }
 
-            // Render the visible portion of the line
+            // Render the visible portion of the line, with selection highlighting
             if (visible_len > 0) {
                 for (int x = 0; x < visible_len; x++) {
-                    char ch[2] = {state->lines[i][start_col + x], '\0'};
-                    text_mode_print_at(x, display_y, ch);
+                    int col = start_col + x;
+                    char ch[2] = {state->lines[i][col], '\0'};
+
+                    // Check if this character is within the selection
+                    bool selected = false;
+                    if (has_selection && i >= sel_start_row && i <= sel_end_row) {
+                        if (i == sel_start_row && i == sel_end_row) {
+                            selected = (col >= sel_start_col && col < sel_end_col);
+                        } else if (i == sel_start_row) {
+                            selected = (col >= sel_start_col);
+                        } else if (i == sel_end_row) {
+                            selected = (col < sel_end_col);
+                        } else {
+                            selected = true;
+                        }
+                    }
+
+                    if (selected) {
+                        text_mode_print_at_attr_bg(x, display_y, ch,
+                                                   TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+                    } else {
+                        text_mode_print_at(x, display_y, ch);
+                    }
                 }
             }
 
@@ -429,11 +469,11 @@ static void open_file(const char *path) {
         }
     }
 
-    // Reset cursor
+    // Reset cursor and selection
+    selection_clear();
     state->cursor_row = 0;
     state->cursor_col = 0;
     state->scroll_offset = 0;
-    state->dirty = 0;
 
     snprintf(state->statusmsg, sizeof(state->statusmsg), "Opened: %s (%lu bytes, %d pages)",
              strrchr(path, '/') ? strrchr(path, '/') + 1 : path, state->file_size, state->total_pages);
@@ -470,7 +510,8 @@ static void new_file(void) {
         state->line_count = 1;
     }
 
-    // Reset cursor
+    // Reset cursor and selection
+    selection_clear();
     state->cursor_row = 0;
     state->cursor_col = 0;
     state->scroll_offset = 0;
@@ -536,6 +577,8 @@ static void navigate_next_page(void) {
         return;
     }
 
+    selection_clear();
+
     // Check if next page is in cache
     if (page_cache_can_next(&state->page_cache)) {
         page_cache_next(&state->page_cache);
@@ -580,6 +623,8 @@ static void navigate_prev_page(void) {
         return;
     }
 
+    selection_clear();
+
     // Check if previous page is in cache
     if (page_cache_can_prev(&state->page_cache)) {
         page_cache_prev(&state->page_cache);
@@ -607,6 +652,7 @@ static void navigate_first_page(void) {
         return;
     }
 
+    selection_clear();
     page_cache_init(&state->page_cache);
     page_cache_add(&state->page_cache, 0, state->screen_cols, state->content_rows);
 
@@ -631,6 +677,7 @@ static void navigate_first_page(void) {
 static void navigate_last_page(void) {
     if (!state->file) return;
 
+    selection_clear();
     long current_offset = page_cache_current_pos(&state->page_cache);
     while (state->current_page < state->total_pages - 1) {
         long next_offset = estimate_next_page_offset(state->file, current_offset, state->lines_per_page);
@@ -648,6 +695,17 @@ static void navigate_last_page(void) {
     state->scroll_offset = 0;
 
     snprintf(state->statusmsg, sizeof(state->statusmsg), "Page %d/%d", state->current_page + 1, state->total_pages);
+}
+
+static void selection_clear(void) {
+    state->selection_active = false;
+}
+
+static void selection_update(void) {
+    if (state->selection_active) {
+        state->sel_end_row = state->cursor_row;
+        state->sel_end_col = state->cursor_col;
+    }
 }
 
 // Handle keyboard event
@@ -737,6 +795,19 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
     }
 
     // Handle Fn+WASD for arrow keys (like kilo)
+    // Fn2 acts as shift for text selection
+    if (modifier & MODIFIER_FN2) {
+        if (!state->selection_active) {
+            state->selection_active = true;
+            state->sel_start_row = state->cursor_row;
+            state->sel_start_col = state->cursor_col;
+            state->sel_end_row = state->cursor_row;
+            state->sel_end_col = state->cursor_col;
+        }
+    } else {
+        selection_clear();
+    }
+
     if (modifier & (MODIFIER_FN | MODIFIER_FN2)) {
         switch (event->keyboard.key) {
             case 'w':
@@ -757,7 +828,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                 } else if (state->file && state->current_page > 0) {
                     navigate_prev_page();
                 }
-                return; // Return to prevent further processing
+                break;
             case 's':
             case 'S':
                 os_log(TAG, "Fn+S (DOWN)");
@@ -776,7 +847,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                 } else if (state->file && state->current_page < state->total_pages - 1) {
                     navigate_next_page();
                 }
-                return; // Return to prevent further processing
+                break;
             case 'a':
             case 'A':
                 os_log(TAG, "Fn+A (LEFT)");
@@ -787,7 +858,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                         state->col_offset = state->cursor_col;
                     }
                 }
-                return; // Return to prevent further processing
+                break;
             case 'd':
             case 'D':
                 os_log(TAG, "Fn+D (RIGHT)");
@@ -800,8 +871,23 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                     state->col_offset = state->cursor_col - state->screen_cols + 2;
                     os_log(TAG, "SCROLLED: new col_offset=%d", state->col_offset);
                 }
-                return; // Return to prevent further processing
+                break;
         }
+        selection_update();
+        return;
+    }
+
+    // Handle selection for arrow keys with Fn2
+    if (modifier & MODIFIER_FN2) {
+        if (!state->selection_active) {
+            state->selection_active = true;
+            state->sel_start_row = state->cursor_row;
+            state->sel_start_col = state->cursor_col;
+            state->sel_end_row = state->cursor_row;
+            state->sel_end_col = state->cursor_col;
+        }
+    } else {
+        selection_clear();
     }
 
     // Handle actual arrow keys if available
@@ -814,6 +900,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                 if (state->cursor_col < state->col_offset) {
                     state->col_offset = state->cursor_col;
                 }
+                selection_update();
             }
             break;
         case KEY_RIGHT:
@@ -827,6 +914,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                 state->col_offset = state->cursor_col - state->screen_cols + 2;
                 os_log(TAG, "SCROLLED: new col_offset=%d", state->col_offset);
             }
+            selection_update();
             break;
         case KEY_UP:
             os_log(TAG, "UP key");
@@ -842,6 +930,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                 if (state->cursor_row < state->scroll_offset) {
                     state->scroll_offset--;
                 }
+                selection_update();
             } else if (state->file && state->current_page > 0) {
                 navigate_prev_page();
             }
@@ -860,6 +949,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                 if (state->cursor_row - state->scroll_offset >= state->content_rows) {
                     state->scroll_offset++;
                 }
+                selection_update();
             } else if (state->file && state->current_page < state->total_pages - 1) {
                 navigate_next_page();
             }
@@ -896,6 +986,9 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
             if (event->keyboard.key >= 32 && event->keyboard.key <= 126) {
                 // Check if we're transitioning from empty to having content
                 bool was_empty = (state->line_count == 1 && state->lines[0] && state->lines[0][0] == '\0');
+
+                // Clear selection when typing
+                selection_clear();
 
                 // Validate cursor position first
                 if (state->cursor_row >= state->line_count) {
@@ -966,6 +1059,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
             break;
         case KEY_DELETE:
             os_log(TAG, "DELETE key");
+            selection_clear();
             if (state->cursor_row < state->line_count && state->lines[state->cursor_row]) {
                 char *line = state->lines[state->cursor_row];
                 int len = strlen(line);
@@ -980,6 +1074,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
             break;
         case KEY_BACKSPACE:
             os_log(TAG, "BACKSPACE key");
+            selection_clear();
             if (state->cursor_row < state->line_count && state->lines[state->cursor_row]) {
                 char *line = state->lines[state->cursor_row];
                 int len = strlen(line);
@@ -1002,6 +1097,7 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
             break;
         case KEY_ENTER:
             os_log(TAG, "ENTER key");
+            selection_clear();
             if (state->cursor_row < state->line_count) {
                 // Split line at cursor position
                 char *current_line = state->lines[state->cursor_row];
@@ -1075,6 +1171,7 @@ static void handle_touch_event(event_t *event) {
         }
 
         if (target_row >= 0 && target_row < state->line_count && state->lines[target_row]) {
+            selection_clear();
             state->cursor_row = target_row;
             int len = strlen(state->lines[target_row]);
             int target_col = state->col_offset + cell_x;
