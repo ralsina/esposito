@@ -81,6 +81,9 @@ typedef struct {
 
     // Temp file tracking
     bool is_temp;    // true if this is a temporary unsaved file
+
+    // Syntax highlighting
+    int highlight_lang; // 0=none, 1=markdown
 } editor_state_t;
 
 // Page cache functions

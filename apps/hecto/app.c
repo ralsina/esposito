@@ -35,6 +35,14 @@ static editor_state_t *state = NULL;
 
 #define TEMP_FILE_PATH "/sdcard/.hecto_tmp"
 
+// Syntax highlighting constants
+#define HIGHLIGHT_NONE     0
+#define HIGHLIGHT_MARKDOWN 1
+
+#define MD_HEADING_COLOR   TEXT_COLOR_BRIGHT_CYAN
+#define MD_BOLD_COLOR      TEXT_COLOR_BRIGHT_WHITE
+#define MD_EMPHASIS_COLOR  TEXT_COLOR_BRIGHT_GREEN
+
 // Forward declarations
 static void init_state(void);
 static void cleanup_state(void);
@@ -56,6 +64,7 @@ static void navigate_first_page(void);
 static void navigate_last_page(void);
 void app_checkpoint(app_context_t *ctx);
 static void selection_clear(void);
+static bool line_is_heading(const char *line);
 
 // Initialize editor state
 static void init_state(void) {
@@ -109,7 +118,7 @@ static void init_state(void) {
         state->clipboard_buffer[0] = '\0';
     }
 
-    // Set initial mode
+    // Set initial mode and highlighting
     state->mode = 'i';
     state->cursor_row = 0;
     state->cursor_col = 0;
@@ -247,6 +256,14 @@ static void render_status_bar(void) {
     }
 }
 
+// Check if line starts with markdown heading (# through ######)
+static bool line_is_heading(const char *line) {
+    if (!line || line[0] != '#') return false;
+    int level = 0;
+    while (line[level] == '#' && level < 6) level++;
+    return level > 0 && (line[level] == ' ' || line[level] == '\0');
+}
+
 // Render content area
 static void render_content(void) {
     // Show message if no content
@@ -304,10 +321,44 @@ static void render_content(void) {
             }
 
             // Render the visible portion of the line, with selection highlighting
+            bool is_heading = (state->highlight_lang == HIGHLIGHT_MARKDOWN &&
+                               line_is_heading(state->lines[i]));
+            bool in_bold = false;
+            bool in_emphasis = false;
+            bool pending_bold_star = false;
+
             if (visible_len > 0) {
+                const char *raw_line = state->lines[i];
+                int raw_len = len;
+
                 for (int x = 0; x < visible_len; x++) {
                     int col = start_col + x;
-                    char ch[2] = {state->lines[i][col], '\0'};
+                    char ch[2] = {raw_line[col], '\0'};
+                    uint8_t hcolor = 0;
+
+                    // Determine highlight color for this character
+                    if (state->highlight_lang == HIGHLIGHT_MARKDOWN && !is_heading) {
+                        if (pending_bold_star) {
+                            pending_bold_star = false;
+                            hcolor = MD_BOLD_COLOR;
+                        } else if (col + 1 < raw_len && raw_line[col] == '*' && raw_line[col + 1] == '*') {
+                            in_bold = !in_bold;
+                            pending_bold_star = true;
+                            hcolor = MD_BOLD_COLOR;
+                        } else if (raw_line[col] == '*' && !in_bold) {
+                            in_emphasis = !in_emphasis;
+                            hcolor = MD_EMPHASIS_COLOR;
+                        } else if (raw_line[col] == '_' && !in_bold) {
+                            in_emphasis = !in_emphasis;
+                            hcolor = MD_EMPHASIS_COLOR;
+                        } else if (in_bold) {
+                            hcolor = MD_BOLD_COLOR;
+                        } else if (in_emphasis) {
+                            hcolor = MD_EMPHASIS_COLOR;
+                        }
+                    } else if (is_heading) {
+                        hcolor = MD_HEADING_COLOR;
+                    }
 
                     // Check if this character is within the selection
                     bool selected = false;
@@ -326,6 +377,9 @@ static void render_content(void) {
                     if (selected) {
                         text_mode_print_at_attr_bg(x, display_y, ch,
                                                    TEXT_COLOR_BLACK, TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
+                    } else if (hcolor) {
+                        text_mode_print_at_attr_bg(x, display_y, ch,
+                                                   hcolor, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
                     } else {
                         text_mode_print_at(x, display_y, ch);
                     }
@@ -470,6 +524,13 @@ static void open_file(const char *path) {
 
     state->is_temp = false;
 
+    // Detect language from file extension
+    const char *ext = strrchr(state->filename, '.');
+    if (ext && (strcmp(ext, ".md") == 0 || strcmp(ext, ".markdown") == 0))
+        state->highlight_lang = HIGHLIGHT_MARKDOWN;
+    else
+        state->highlight_lang = HIGHLIGHT_NONE;
+
     // Get file size
     fseek(state->file, 0, SEEK_END);
     state->file_size = ftell(state->file);
@@ -533,6 +594,7 @@ static void new_file(void) {
         state->current_page = 0;
         state->total_pages = 1;
         state->dirty = 0;
+        state->highlight_lang = HIGHLIGHT_NONE;
         page_cache_init(&state->page_cache);
         page_cache_add(&state->page_cache, 0, state->screen_cols, state->content_rows);
         load_page_at_offset(0);
