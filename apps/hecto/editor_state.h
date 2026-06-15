@@ -68,6 +68,12 @@ typedef struct {
     char statusmsg[MAX_STATUS_MSG];
     char mode; // 'v' view, 'i' insert
 
+    // Text prompt mode
+    bool prompt_mode;
+    char prompt_buf[128];
+    int prompt_len;
+    void (*prompt_callback)(const char *input);
+
     // Display
     int screen_rows;
     int screen_cols;

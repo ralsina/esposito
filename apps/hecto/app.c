@@ -39,7 +39,8 @@ static void cleanup_state(void);
 static void render_menu_bar(void);
 static void render_status_bar(void);
 static void render_content(void);
-static void handle_keyboard_event(event_t *event);
+static void handle_keyboard_event(app_context_t *ctx, event_t *event);
+static void handle_touch_event(event_t *event);
 static void load_page_at_offset(long offset);
 static void save_current_page(void);
 static void open_file(const char *path);
@@ -50,6 +51,7 @@ static void navigate_next_page(void);
 static void navigate_prev_page(void);
 static void navigate_first_page(void);
 static void navigate_last_page(void);
+void app_checkpoint(app_context_t *ctx);
 
 // Initialize editor state
 static void init_state(void) {
@@ -77,13 +79,6 @@ static void init_state(void) {
 
     os_log(TAG, "Screen: %dx%d, Content: %d rows",
            state->screen_cols, state->screen_rows, state->content_rows);
-
-    memset(state, 0, sizeof(editor_state_t));
-
-    // Get screen dimensions
-    state->screen_cols = text_mode_get_cols();
-    state->screen_rows = text_mode_get_rows();
-    state->content_rows = state->screen_rows - 2; // Menu bar + status bar
 
     // Initialize page cache
     page_cache_init(&state->page_cache);
@@ -173,20 +168,15 @@ static void cleanup_state(void) {
 
 // Render menu bar
 static void render_menu_bar(void) {
-    text_mode_print_at_attr_bg(0, 0, "File", TEXT_COLOR_BLACK, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
-    text_mode_print_at(5, 0, " ");
-    text_mode_print_at_attr_bg(6, 0, "Edit", TEXT_COLOR_BLACK, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
-    text_mode_print_at(11, 0, " ");
-    text_mode_print_at_attr_bg(12, 0, "View", TEXT_COLOR_BLACK, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
-    text_mode_print_at(17, 0, " ");
-    text_mode_print_at_attr_bg(18, 0, "Search", TEXT_COLOR_BLACK, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
-    text_mode_print_at(25, 0, " ");
-    text_mode_print_at_attr_bg(26, 0, "Help", TEXT_COLOR_BLACK, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
-
-    // Fill rest with spaces
-    for (int x = 31; x < state->screen_cols; x++) {
-        text_mode_print_at(x, 0, " ");
+    // Fill the entire menu bar row with spaces on white background
+    for (int x = 0; x < state->screen_cols; x++) {
+        text_mode_print_at_attr_bg(x, 0, " ", TEXT_COLOR_BLACK, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
     }
+
+    // Print menu items with black text on white background
+    text_mode_print_at_attr_bg(1, 0, "Open", TEXT_COLOR_BLACK, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(8, 0, "Save", TEXT_COLOR_BLACK, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+    text_mode_print_at_attr_bg(15, 0, "Help", TEXT_COLOR_BLACK, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
 }
 
 // Render status bar
@@ -196,6 +186,13 @@ static void render_status_bar(void) {
     // Clear status bar
     for (int x = 0; x < state->screen_cols; x++) {
         text_mode_print_at(x, y, " ");
+    }
+
+    if (state->prompt_mode) {
+        text_mode_print_at_attr_bg(0, y, state->statusmsg, TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
+        text_mode_print_at(strlen(state->statusmsg), y, state->prompt_buf);
+        text_mode_set_cursor(strlen(state->statusmsg) + state->prompt_len, y);
+        return;
     }
 
     // Position info
@@ -515,9 +512,23 @@ static void save_file(void) {
              strrchr(state->filename, '/') ? strrchr(state->filename, '/') + 1 : state->filename);
 }
 
-// Save file as (placeholder for now)
+static void save_file_as_callback(const char *filename) {
+    if (!filename || !filename[0]) {
+        strcpy(state->statusmsg, "Invalid filename");
+        return;
+    }
+    strncpy(state->filename, filename, sizeof(state->filename) - 1);
+    state->filename[sizeof(state->filename) - 1] = '\0';
+    save_file();
+}
+
+// Save file as
 static void save_file_as(void) {
-    strcpy(state->statusmsg, "Save as: Not implemented yet");
+    state->prompt_mode = true;
+    state->prompt_len = 0;
+    state->prompt_buf[0] = '\0';
+    state->prompt_callback = save_file_as_callback;
+    strcpy(state->statusmsg, "Save file as: ");
 }
 
 // Navigate to next page
@@ -620,17 +631,29 @@ static void navigate_first_page(void) {
 
 // Navigate to last page
 static void navigate_last_page(void) {
-    if (!state->file || state->current_page == state->total_pages - 1) {
-        return;
+    if (!state->file) return;
+
+    long current_offset = page_cache_current_pos(&state->page_cache);
+    while (state->current_page < state->total_pages - 1) {
+        long next_offset = estimate_next_page_offset(state->file, current_offset, state->content_rows);
+        if (next_offset <= current_offset) break;
+
+        page_cache_add(&state->page_cache, next_offset, state->screen_cols, state->content_rows);
+        page_cache_next(&state->page_cache);
+        current_offset = next_offset;
+        state->current_page++;
     }
 
-    // For last page, we need to seek near end and work backwards
-    // This is a simplified version
-    strcpy(state->statusmsg, "Last page: Not fully implemented");
+    load_page_at_offset(current_offset);
+    state->cursor_row = 0;
+    state->cursor_col = 0;
+    state->scroll_offset = 0;
+
+    snprintf(state->statusmsg, sizeof(state->statusmsg), "Page %d/%d", state->current_page + 1, state->total_pages);
 }
 
 // Handle keyboard event
-static void handle_keyboard_event(event_t *event) {
+static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
     // Only handle key press events, not release
     if (!event->keyboard.pressed) {
         return;
@@ -638,13 +661,45 @@ static void handle_keyboard_event(event_t *event) {
 
     uint8_t key = event->keyboard.raw_key_code;
     uint8_t modifier = event->keyboard.modifiers;
+    char ch = event->keyboard.key;
 
     os_log(TAG, "KB event: key=%d raw=0x%02x mod=0x%02x",
-           event->keyboard.key, key, modifier);
+           ch, key, modifier);
+
+    // Handle interactive prompt input mode first
+    if (state->prompt_mode) {
+        if (ch == 27) { // ESC key
+            state->prompt_mode = false;
+            strcpy(state->statusmsg, "Canceled");
+            return;
+        }
+        if (ch == '\b' || key == KEY_BACKSPACE) {
+            if (state->prompt_len > 0) {
+                state->prompt_len--;
+                state->prompt_buf[state->prompt_len] = '\0';
+            }
+            return;
+        }
+        if (ch == '\n' || key == KEY_ENTER) {
+            state->prompt_mode = false;
+            if (state->prompt_callback) {
+                state->prompt_callback(state->prompt_buf);
+            }
+            return;
+        }
+        if (ch >= 32 && ch <= 126) {
+            if (state->prompt_len < sizeof(state->prompt_buf) - 1) {
+                state->prompt_buf[state->prompt_len++] = ch;
+                state->prompt_buf[state->prompt_len] = '\0';
+            }
+            return;
+        }
+        return;
+    }
 
     // Function key combinations using Ctrl (SYMBOL key)
     if (modifier & MODIFIER_CTRL) {
-        switch (event->keyboard.key) {
+        switch (ch) {
             case 'n':
             case 'N':
                 new_file();
@@ -655,7 +710,22 @@ static void handle_keyboard_event(event_t *event) {
                 return;
             case 'o':
             case 'O':
-                strcpy(state->statusmsg, "Open: Use file picker");
+                if (config_bind_app("file_picker")) {
+                    config_set_string("root_path", "/sdcard");
+                    config_set_string("start_path", "/sdcard");
+                    config_set_string("glob", "*.txt,*.c,*.h,*.md,*.cfg");
+                    config_set_string("title", "Open File");
+                    config_set_string("return_app", "hecto");
+                    config_set_string("target_app", "hecto");
+                    config_set_string("result_key", "open_filepath");
+                    config_set_int("cancel_to_launcher", 0);
+                    config_unbind_app();
+
+                    // Save checkpoint first
+                    app_checkpoint(ctx);
+
+                    os_load_app("file_picker");
+                }
                 return;
             case 'q':
             case 'Q':
@@ -962,12 +1032,91 @@ static void handle_keyboard_event(event_t *event) {
     }
 }
 
+static void handle_touch_event(event_t *event) {
+    if (!event->touch.pressed) {
+        return;
+    }
+
+    int cell_x = 0, cell_y = 0;
+    text_mode_pixel_to_cell(event->touch.x, event->touch.y, &cell_x, &cell_y);
+
+    os_log(TAG, "Touch event cell: x=%d y=%d (pixel x=%d y=%d)", cell_x, cell_y, event->touch.x, event->touch.y);
+
+    if (cell_y == 0) {
+        // Menu bar clicked
+        if (cell_x >= 1 && cell_x <= 4) { // "Open"
+            event_t fake_ev = {
+                .type = EVENT_KEYBOARD,
+                .keyboard = {
+                    .key = 'o',
+                    .pressed = true,
+                    .modifiers = MODIFIER_CTRL,
+                    .raw_key_code = 0
+                }
+            };
+            handle_keyboard_event(NULL, &fake_ev);
+        } else if (cell_x >= 8 && cell_x <= 11) { // "Save"
+            save_file();
+        } else if (cell_x >= 15 && cell_x <= 18) { // "Help"
+            strcpy(state->statusmsg, "Help: Tap text to place cursor. Open=Ctrl+O, Save=Ctrl+S.");
+        }
+    } else if (cell_y > 0 && cell_y < state->screen_rows - 1) {
+        // Content area clicked - map to logical text cell
+        int target_row = state->scroll_offset + (cell_y - 1);
+        if (target_row < 0) target_row = 0;
+        if (target_row >= state->line_count) {
+            target_row = state->line_count - 1;
+        }
+
+        if (target_row >= 0 && target_row < state->line_count && state->lines[target_row]) {
+            state->cursor_row = target_row;
+            int len = strlen(state->lines[target_row]);
+            int target_col = state->col_offset + cell_x;
+            if (target_col < 0) target_col = 0;
+            if (target_col > len) target_col = len;
+            state->cursor_col = target_col;
+
+            snprintf(state->statusmsg, sizeof(state->statusmsg), "Cursor placed at line %d", target_row + 1);
+        }
+    }
+}
+
 // App initialization
 void app_init(app_context_t *ctx) {
-    ctx->subscriptions = EVENT_KEYBOARD;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
     ctx->timer_interval_ms = 0;
 
     init_state();
+
+    // Check for startup file first
+    char filename[256] = {0};
+    size_t startup_len = os_consume_startup_file(filename, sizeof(filename));
+
+    if (startup_len > 0 && filename[0]) {
+        open_file(filename);
+    } else {
+        // Check config for last file or file picker result
+        config_bind_app("hecto");
+        char saved_file[256] = {0};
+
+        // File picker result
+        config_get_string("open_filepath", "", saved_file, sizeof(saved_file));
+        if (saved_file[0]) {
+            config_delete("open_filepath");
+            open_file(saved_file);
+        } else {
+            // Restore last session
+            config_get_string("editor_file", "", saved_file, sizeof(saved_file));
+            if (saved_file[0]) {
+                open_file(saved_file);
+                int saved_offset = config_get_int("editor_offset", 0);
+                if (saved_offset > 0 && saved_offset < state->line_count) {
+                    state->cursor_row = saved_offset;
+                }
+            }
+        }
+        config_unbind_app();
+    }
 
     // Initial render (with full clear since this is startup)
     text_mode_clear(TEXT_COLOR_BLACK);
@@ -982,21 +1131,23 @@ void app_init(app_context_t *ctx) {
 // Handle events
 void app_event(app_context_t *ctx, event_t *event) {
     if (event->type == EVENT_KEYBOARD) {
-        handle_keyboard_event(event);
-
-        // Render only what's needed (no full clear)
-        render_menu_bar();
-        render_content();
-        render_status_bar();
-        text_mode_flush();
+        handle_keyboard_event(ctx, event);
+    } else if (event->type == EVENT_TOUCH) {
+        handle_touch_event(event);
     }
+
+    // Render only what's needed (no full clear)
+    render_menu_bar();
+    render_content();
+    render_status_bar();
+    text_mode_flush();
 }
 
 // Checkpoint (save state)
 void app_checkpoint(app_context_t *ctx) {
     // Save current file and cursor position
     if (state && state->filename[0]) {
-        config_bind_app("editor2");
+        config_bind_app("hecto");
         config_set_string("editor_file", state->filename);
         config_set_int("editor_offset", state->cursor_row);
         config_unbind_app();
