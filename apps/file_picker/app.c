@@ -50,6 +50,8 @@ static const char *entry_ptrs[FP_MAX_ENTRIES];
 static uint8_t entry_attrs[FP_MAX_ENTRIES];
 static bool switch_pending = false;
 
+static void rebuild_screen(void);
+
 static int ascii_tolower(int ch) {
     if (ch >= 'A' && ch <= 'Z') {
         return ch - 'A' + 'a';
@@ -323,6 +325,7 @@ static void select_current_file(void) {
     if (entry->is_dir) {
         snprintf(picker.cwd, sizeof(picker.cwd), "%s", entry->path);
         scan_directory();
+        rebuild_screen();
         return;
     }
 
@@ -468,7 +471,7 @@ static void load_config(void) {
 }
 
 void app_init(app_context_t *ctx) {
-    ctx->subscriptions = EVENT_KEYBOARD;
+    ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH;
 
     os_log(TAG, "File Picker init");
 
@@ -492,6 +495,17 @@ void app_init(app_context_t *ctx) {
 void app_event(app_context_t *ctx, event_t *event) {
     (void)ctx;
     if (switch_pending) return;
+
+    // Handle touch events
+    if (event->type == EVENT_TOUCH) {
+        if (!event->touch.pressed) return;
+        if (ui2_screen_handle_event(screen, event)) {
+            ui2_screen_render(screen);
+            draw_overlays();
+            text_mode_flush();
+        }
+        return;
+    }
 
     if (event->type != EVENT_KEYBOARD || !event->keyboard.pressed) {
         return;

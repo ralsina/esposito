@@ -40,7 +40,7 @@ typedef struct {
     char **lines;
     int line_count;
     int line_alloc;  // Allocated capacity
-    int lines_per_page;
+    int lines_per_page; // Lines loaded per page (for page estimation)
 
     // Editing state
     int cursor_row;  // Logical line number (0-based)

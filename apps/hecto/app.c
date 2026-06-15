@@ -83,8 +83,9 @@ static void init_state(void) {
     // Initialize page cache
     page_cache_init(&state->page_cache);
 
-    // Allocate line buffer
-    state->line_alloc = state->content_rows + 10;
+    // Allocate line buffer (larger pages for smoother scrolling)
+    state->lines_per_page = 100;
+    state->line_alloc = state->lines_per_page + 10;
     state->lines = malloc(sizeof(char*) * state->line_alloc);
     if (state->lines) {
         memset(state->lines, 0, sizeof(char*) * state->line_alloc);
@@ -349,10 +350,7 @@ static void load_page_at_offset(long offset) {
 
     // Read lines up to allocation limit
     char buffer[512];
-    int lines_to_read = state->content_rows + 10; // Read a few extra lines
-    if (lines_to_read > state->line_alloc) {
-        lines_to_read = state->line_alloc;
-    }
+    int lines_to_read = state->line_alloc;
 
     while (fgets(buffer, sizeof(buffer), state->file) && state->line_count < lines_to_read) {
         // Remove newline
@@ -413,7 +411,7 @@ static void open_file(const char *path) {
     fseek(state->file, 0, SEEK_SET);
 
     // Calculate total pages accurately
-    state->total_pages = calculate_total_pages(state->file, state->content_rows);
+    state->total_pages = calculate_total_pages(state->file, state->lines_per_page);
     state->current_page = 0;
 
     // Initialize page cache
@@ -425,7 +423,7 @@ static void open_file(const char *path) {
 
     // Preload next page if available
     if (state->total_pages > 1) {
-        long next_offset = estimate_next_page_offset(state->file, 0, state->content_rows);
+        long next_offset = estimate_next_page_offset(state->file, 0, state->lines_per_page);
         if (next_offset > 0) {
             page_cache_add(&state->page_cache, next_offset, state->screen_cols, state->content_rows);
         }
@@ -547,7 +545,7 @@ static void navigate_next_page(void) {
     } else {
         // Need to load new page - estimate offset
         long current_offset = page_cache_current_pos(&state->page_cache);
-        long next_offset = estimate_next_page_offset(state->file, current_offset, state->content_rows);
+        long next_offset = estimate_next_page_offset(state->file, current_offset, state->lines_per_page);
 
         if (next_offset > current_offset) {
             // Add to cache
@@ -558,7 +556,7 @@ static void navigate_next_page(void) {
 
                 // Preload next page if available
                 if (state->current_page < state->total_pages - 1) {
-                    long future_offset = estimate_next_page_offset(state->file, next_offset, state->content_rows);
+                    long future_offset = estimate_next_page_offset(state->file, next_offset, state->lines_per_page);
                     if (future_offset > next_offset) {
                         page_cache_add(&state->page_cache, future_offset, state->screen_cols, state->content_rows);
                     }
@@ -620,7 +618,7 @@ static void navigate_first_page(void) {
 
     // Preload next page if available
     if (state->total_pages > 1) {
-        long next_offset = estimate_next_page_offset(state->file, 0, state->content_rows);
+        long next_offset = estimate_next_page_offset(state->file, 0, state->lines_per_page);
         if (next_offset > 0) {
             page_cache_add(&state->page_cache, next_offset, state->screen_cols, state->content_rows);
         }
@@ -635,7 +633,7 @@ static void navigate_last_page(void) {
 
     long current_offset = page_cache_current_pos(&state->page_cache);
     while (state->current_page < state->total_pages - 1) {
-        long next_offset = estimate_next_page_offset(state->file, current_offset, state->content_rows);
+        long next_offset = estimate_next_page_offset(state->file, current_offset, state->lines_per_page);
         if (next_offset <= current_offset) break;
 
         page_cache_add(&state->page_cache, next_offset, state->screen_cols, state->content_rows);
@@ -756,6 +754,8 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                     if (state->cursor_row < state->scroll_offset) {
                         state->scroll_offset--;
                     }
+                } else if (state->file && state->current_page > 0) {
+                    navigate_prev_page();
                 }
                 return; // Return to prevent further processing
             case 's':
@@ -773,6 +773,8 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                     if (state->cursor_row - state->scroll_offset >= state->content_rows) {
                         state->scroll_offset++;
                     }
+                } else if (state->file && state->current_page < state->total_pages - 1) {
+                    navigate_next_page();
                 }
                 return; // Return to prevent further processing
             case 'a':
@@ -840,6 +842,8 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                 if (state->cursor_row < state->scroll_offset) {
                     state->scroll_offset--;
                 }
+            } else if (state->file && state->current_page > 0) {
+                navigate_prev_page();
             }
             break;
         case KEY_DOWN:
@@ -856,6 +860,8 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                 if (state->cursor_row - state->scroll_offset >= state->content_rows) {
                     state->scroll_offset++;
                 }
+            } else if (state->file && state->current_page < state->total_pages - 1) {
+                navigate_next_page();
             }
             break;
         case KEY_PGUP:
