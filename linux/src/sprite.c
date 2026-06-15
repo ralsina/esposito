@@ -16,6 +16,12 @@ typedef struct {
 } sprite_t;
 
 static sprite_t *active_sprite = NULL;
+static SDL_mutex *render_mutex = NULL;
+
+static void ensure_mutex(void) {
+    if (!render_mutex)
+        render_mutex = SDL_CreateMutex();
+}
 
 static sprite_t *get_sprite(void *handle) {
     return (sprite_t *)handle;
@@ -148,16 +154,22 @@ void sprite_push_rotated_zoom(void *handle, int x, int y, float angle, float sca
     }
     SDL_UnlockSurface(surf);
 
+    ensure_mutex();
+    SDL_LockMutex(render_mutex);
     SDL_Renderer *renderer = text_mode_get_renderer();
-    if (!renderer) { SDL_FreeSurface(surf); return; }
+    if (!renderer) { SDL_UnlockMutex(render_mutex); SDL_FreeSurface(surf); return; }
 
     SDL_Texture *tex = SDL_CreateTextureFromSurface(renderer, surf);
     SDL_FreeSurface(surf);
-    if (!tex) return;
+    if (!tex) { SDL_UnlockMutex(render_mutex); return; }
 
     SDL_Rect dst_rect = {x, y, w, h};
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, tex, NULL, &dst_rect);
+    SDL_RenderPresent(renderer);
     SDL_DestroyTexture(tex);
+    SDL_UnlockMutex(render_mutex);
 }
 
 void sprite_set_pivot(void *handle, float pivot_x, float pivot_y) {
@@ -170,7 +182,10 @@ void sprite_set_pivot(void *handle, float pivot_x, float pivot_y) {
 void sprite_destroy(void *handle) {
     sprite_t *s = get_sprite(handle);
     if (!s) return;
+    ensure_mutex();
+    SDL_LockMutex(render_mutex);
     if (active_sprite == s) active_sprite = NULL;
+    SDL_UnlockMutex(render_mutex);
     free(s->pixels);
     free(s);
 }

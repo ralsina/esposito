@@ -1,6 +1,7 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "graphics_mode.h"
+#include "hardware.h"
 #include "app_config.h"
 #include <SDL2/SDL.h>
 #include <stdio.h>
@@ -77,6 +78,10 @@ static uint8_t sdl_to_mods(SDL_Keymod mod) {
 }
 
 static void flush_display(void) {
+    // Sprite-based rendering (e.g. gameboy display task) manages
+    // the screen independently — don't interfere
+    if (sprite_get_active())
+        return;
     if (graphics_mode_is_active())
         graphics_flush();
     else
