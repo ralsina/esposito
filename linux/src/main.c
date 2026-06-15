@@ -1,5 +1,6 @@
 #include "os_core.h"
 #include "text_mode.h"
+#include "graphics_mode.h"
 #include "app_config.h"
 #include <SDL2/SDL.h>
 #include <stdio.h>
@@ -75,6 +76,13 @@ static uint8_t sdl_to_mods(SDL_Keymod mod) {
     return m;
 }
 
+static void flush_display(void) {
+    if (graphics_mode_is_active())
+        graphics_flush();
+    else
+        text_mode_flush();
+}
+
 int main(int argc, char *argv[]) {
     // Determine app name for config binding
     const char *app_name = "hello_world";
@@ -88,6 +96,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to initialize text mode\n");
         return 1;
     }
+    SDL_SetWindowTitle(text_mode_get_window(), app_name);
 
     // Bind config for this app
     config_bind_app(app_name);
@@ -109,7 +118,7 @@ int main(int argc, char *argv[]) {
     Uint32 timer_tick = 0;
 
     // Initial render
-    text_mode_flush();
+    flush_display();
 
     while (running) {
         SDL_Event sdl_event;
@@ -141,7 +150,7 @@ int main(int argc, char *argv[]) {
                     ev.keyboard.raw_key_code = sdl_to_raw_key(sdl_event.key.keysym.sym);
 
                     ctx.event_fn(&ctx, &ev);
-                    text_mode_flush();
+                    flush_display();
                     break;
                 }
 
@@ -154,7 +163,7 @@ int main(int argc, char *argv[]) {
                     ev.touch.y = sdl_event.button.y;
                     ev.touch.pressed = (sdl_event.type == SDL_MOUSEBUTTONDOWN);
                     ctx.event_fn(&ctx, &ev);
-                    text_mode_flush();
+                    flush_display();
                     break;
                 }
             }
@@ -168,7 +177,7 @@ int main(int argc, char *argv[]) {
                 memset(&ev, 0, sizeof(ev));
                 ev.type = EVENT_TIMER;
                 ctx.event_fn(&ctx, &ev);
-                text_mode_flush();
+                flush_display();
                 timer_tick = now;
             }
         }

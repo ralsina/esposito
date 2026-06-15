@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <SDL2/SDL.h>
 
 #define TEXT_MODE_COLS 64
 #define TEXT_MODE_ROWS 30
@@ -80,6 +81,14 @@ void text_mode_free_snapshot(text_mode_snapshot_t *snap);
 // Pixel coordinate helpers (stubs)
 void text_mode_pixel_to_cell(int px, int py, int *cx, int *cy);
 void text_mode_cell_to_pixel(int cx, int cy, int *px, int *py);
+
+// Direct pixel-level text rendering for graphics mode
+void text_mode_render_char(int x, int y, uint32_t codepoint, uint8_t cr, uint8_t cg, uint8_t cb);
+void text_mode_render_string(int x, int y, const char *str, uint8_t cr, uint8_t cg, uint8_t cb);
+
+// Accessors for graphics mode integration
+SDL_Window *text_mode_get_window(void);
+SDL_Renderer *text_mode_get_renderer(void);
 
 #ifdef __cplusplus
 }

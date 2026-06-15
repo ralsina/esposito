@@ -224,6 +224,7 @@ bool text_mode_init(void) {
         return false;
     }
 
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0"); // nearest-neighbor for crisp pixel art
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) {
         fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
@@ -384,4 +385,31 @@ void text_mode_pixel_to_cell(int px, int py, int *cx, int *cy) {
 void text_mode_cell_to_pixel(int cx, int cy, int *px, int *py) {
     *px = cx * char_w;
     *py = cy * char_h;
+}
+
+// Direct pixel-level text rendering for graphics mode
+void text_mode_render_char(int x, int y, uint32_t codepoint, uint8_t cr, uint8_t cg, uint8_t cb) {
+    vlw_glyph_t *glyph = vlw_find((uint16_t)codepoint);
+    if (!glyph || glyph->width <= 0 || glyph->height <= 0) return;
+    SDL_Texture *tex = vlw_glyph_texture(glyph, renderer);
+    if (!tex) return;
+    SDL_SetTextureColorMod(tex, cr, cg, cb);
+    SDL_Rect dst = {x + glyph->left_offset, y + glyph_ascent - glyph->top_offset, glyph->width, glyph->height};
+    SDL_RenderCopy(renderer, tex, NULL, &dst);
+}
+
+void text_mode_render_string(int x, int y, const char *str, uint8_t cr, uint8_t cg, uint8_t cb) {
+    int cx = x;
+    for (const char *p = str; *p; p++) {
+        text_mode_render_char(cx, y, (uint8_t)*p, cr, cg, cb);
+        cx += glyph_advance;
+    }
+}
+
+SDL_Window *text_mode_get_window(void) {
+    return window;
+}
+
+SDL_Renderer *text_mode_get_renderer(void) {
+    return renderer;
 }

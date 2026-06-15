@@ -16,7 +16,7 @@ APP_SRCS := $(wildcard $(APP_DIR)*.c)
 APP_OBJS := $(addprefix build/,$(notdir $(APP_SRCS:.c=.o)))
 
 # Emulation source files
-EMU_SRCS := src/main.c src/text_mode.c src/os_core.c src/app_config.c src/hardware.c src/wifi.c
+EMU_SRCS := src/main.c src/text_mode.c src/graphics_mode.c src/os_core.c src/app_config.c src/hardware.c src/wifi.c
 EMU_OBJS := $(EMU_SRCS:.c=.o)
 
 # Shared library dependencies from deps file
