@@ -33,6 +33,8 @@ static editor_state_t *state = NULL;
 #define KEY_ENTER       '\n'
 #define KEY_BACKSPACE   '\b'
 
+#define TEMP_FILE_PATH "/sdcard/.hecto_tmp"
+
 // Forward declarations
 static void init_state(void);
 static void cleanup_state(void);
@@ -42,7 +44,8 @@ static void render_content(void);
 static void handle_keyboard_event(app_context_t *ctx, event_t *event);
 static void handle_touch_event(event_t *event);
 static void load_page_at_offset(long offset);
-static void save_current_page(void);
+static bool write_file(const char *src_path, const char *dst_path);
+static void reopen_after_save(void);
 static void open_file(const char *path);
 static void new_file(void);
 static void save_file(void);
@@ -113,11 +116,25 @@ static void init_state(void) {
     state->scroll_offset = 0;
     state->col_offset = 0;
 
-    // Start with one empty line
-    state->lines[0] = malloc(1);
-    if (state->lines[0]) {
-        state->lines[0][0] = '\0';
-        state->line_count = 1;
+    // Start with a temp file on disk for consistent paging
+    state->file = fopen(TEMP_FILE_PATH, "w+");
+    if (state->file) {
+        fwrite("\n", 1, 1, state->file);
+        fseek(state->file, 0, SEEK_SET);
+        state->file_size = 1;
+        strncpy(state->filename, TEMP_FILE_PATH, sizeof(state->filename) - 1);
+        state->filename[sizeof(state->filename) - 1] = '\0';
+        state->is_temp = true;
+        state->total_pages = 1;
+        page_cache_add(&state->page_cache, 0, state->screen_cols, state->content_rows);
+        load_page_at_offset(0);
+    } else {
+        os_log(TAG, "Failed to create temp file");
+        state->lines[0] = malloc(1);
+        if (state->lines[0]) {
+            state->lines[0][0] = '\0';
+            state->line_count = 1;
+        }
     }
 
     strcpy(state->statusmsg, "Hecto - Ctrl+S=Save Ctrl+N=New Fn+WASD=Move Ctrl+Q=Quit");
@@ -133,6 +150,11 @@ static void cleanup_state(void) {
     if (state->file) {
         fclose(state->file);
         state->file = NULL;
+    }
+
+    // Delete temp file if never saved
+    if (state->is_temp) {
+        remove(TEMP_FILE_PATH);
     }
 
     // Free lines
@@ -354,7 +376,8 @@ static void render_content(void) {
         } else {
             // Cursor is within the line content
             current_char = state->lines[state->cursor_row][state->cursor_col];
-            cursor_x = state->cursor_col;
+            cursor_x = state->cursor_col - state->col_offset;
+            if (cursor_x < 0) cursor_x = 0;
         }
     }
 
@@ -445,6 +468,8 @@ static void open_file(const char *path) {
         return;
     }
 
+    state->is_temp = false;
+
     // Get file size
     fseek(state->file, 0, SEEK_END);
     state->file_size = ftell(state->file);
@@ -487,13 +512,6 @@ static void new_file(void) {
         state->file = NULL;
     }
 
-    // Clear state
-    state->filename[0] = '\0';
-    state->file_size = 0;
-    state->current_page = 0;
-    state->total_pages = 1;
-    state->dirty = 0;
-
     // Clear lines
     for (int i = 0; i < state->line_count; i++) {
         if (state->lines[i]) {
@@ -503,11 +521,28 @@ static void new_file(void) {
     }
     state->line_count = 0;
 
-    // Add one empty line
-    state->lines[0] = malloc(1);
-    if (state->lines[0]) {
-        state->lines[0][0] = '\0';
-        state->line_count = 1;
+    // Create fresh temp file
+    state->file = fopen(TEMP_FILE_PATH, "w+");
+    if (state->file) {
+        fwrite("\n", 1, 1, state->file);
+        fseek(state->file, 0, SEEK_SET);
+        state->file_size = 1;
+        strncpy(state->filename, TEMP_FILE_PATH, sizeof(state->filename) - 1);
+        state->filename[sizeof(state->filename) - 1] = '\0';
+        state->is_temp = true;
+        state->current_page = 0;
+        state->total_pages = 1;
+        state->dirty = 0;
+        page_cache_init(&state->page_cache);
+        page_cache_add(&state->page_cache, 0, state->screen_cols, state->content_rows);
+        load_page_at_offset(0);
+    } else {
+        os_log(TAG, "Failed to create temp file for new file");
+        state->lines[0] = malloc(1);
+        if (state->lines[0]) {
+            state->lines[0][0] = '\0';
+            state->line_count = 1;
+        }
     }
 
     // Reset cursor and selection
@@ -519,33 +554,96 @@ static void new_file(void) {
     strcpy(state->statusmsg, "New file");
 }
 
-// Save file
+// Write current page's lines into a copy of src_path, producing dst_path
+static bool write_file(const char *src_path, const char *dst_path) {
+    long page_start = page_cache_current_pos(&state->page_cache);
+    if (page_start < 0) page_start = 0;
+
+    FILE *src = fopen(src_path, "r");
+    if (!src) return false;
+
+    FILE *dst = fopen(dst_path, "w");
+    if (!dst) { fclose(src); return false; }
+
+    char buf[512];
+    long remaining = page_start;
+    while (remaining > 0) {
+        int chunk = remaining < (long)sizeof(buf) ? (int)remaining : (int)sizeof(buf);
+        if (fread(buf, 1, chunk, src) != chunk || fwrite(buf, 1, chunk, dst) != chunk) {
+            fclose(src); fclose(dst); return false;
+        }
+        remaining -= chunk;
+    }
+
+    for (int i = 0; i < state->line_count; i++) {
+        if (state->lines[i])
+            fwrite(state->lines[i], 1, strlen(state->lines[i]), dst);
+        fwrite("\n", 1, 1, dst);
+    }
+
+    for (int i = 0; i < state->lines_per_page; i++)
+        if (!fgets(buf, sizeof(buf), src)) break;
+
+    int nread;
+    while ((nread = fread(buf, 1, sizeof(buf), src)) > 0)
+        if (fwrite(buf, 1, nread, dst) != nread) break;
+
+    fclose(src);
+    fclose(dst);
+    return true;
+}
+
+// Re-open file after save and rebuild paging
+static void reopen_after_save(void) {
+    if (state->file) {
+        fclose(state->file);
+        state->file = NULL;
+    }
+    state->file = fopen(state->filename, "r");
+    if (!state->file) return;
+
+    fseek(state->file, 0, SEEK_END);
+    state->file_size = ftell(state->file);
+    fseek(state->file, 0, SEEK_SET);
+
+    state->total_pages = calculate_total_pages(state->file, state->lines_per_page);
+    if (state->current_page >= state->total_pages)
+        state->current_page = state->total_pages - 1;
+
+    page_cache_init(&state->page_cache);
+    long target_offset = 0;
+    for (int p = 0; p < state->current_page; p++)
+        target_offset = estimate_next_page_offset(state->file, target_offset, state->lines_per_page);
+    page_cache_add(&state->page_cache, target_offset, state->screen_cols, state->content_rows);
+    load_page_at_offset(target_offset);
+
+    if (state->cursor_row >= state->line_count && state->line_count > 0)
+        state->cursor_row = state->line_count - 1;
+}
+
+// Save file - writes entire file preserving pages not in memory
 static void save_file(void) {
-    if (!state->filename[0]) {
+    if (!state->filename[0] || state->is_temp) {
         save_file_as();
         return;
     }
 
-    // Open file for writing
-    FILE *f = fopen(state->filename, "w");
-    if (!f) {
-        os_log(TAG, "Failed to open file for writing: %s", state->filename);
-        snprintf(state->statusmsg, sizeof(state->statusmsg), "Failed to save: %s", state->filename);
+    char tmpname[MAX_FILENAME];
+    snprintf(tmpname, sizeof(tmpname), "%s.tmp", state->filename);
+
+    if (!write_file(state->filename, tmpname)) {
+        snprintf(state->statusmsg, sizeof(state->statusmsg), "Failed to save");
         return;
     }
 
-    // Write lines
-    for (int i = 0; i < state->line_count; i++) {
-        if (state->lines[i]) {
-            fwrite(state->lines[i], 1, strlen(state->lines[i]), f);
-            fwrite("\n", 1, 1, f);
-        } else {
-            fwrite("\n", 1, 1, f);
-        }
+    remove(state->filename);
+    if (rename(tmpname, state->filename) != 0) {
+        snprintf(state->statusmsg, sizeof(state->statusmsg), "Failed to save: rename error");
+        return;
     }
 
-    fclose(f);
     state->dirty = 0;
+    reopen_after_save();
 
     snprintf(state->statusmsg, sizeof(state->statusmsg), "Saved: %s",
              strrchr(state->filename, '/') ? strrchr(state->filename, '/') + 1 : state->filename);
@@ -556,9 +654,48 @@ static void save_file_as_callback(const char *filename) {
         strcpy(state->statusmsg, "Invalid filename");
         return;
     }
+
+    if (state->is_temp) {
+        fclose(state->file);
+        state->file = NULL;
+        remove(filename);
+        if (rename(TEMP_FILE_PATH, filename) != 0) {
+            state->file = fopen(TEMP_FILE_PATH, "r");
+            strcpy(state->statusmsg, "Failed to save");
+            return;
+        }
+        strncpy(state->filename, filename, sizeof(state->filename) - 1);
+        state->filename[sizeof(state->filename) - 1] = '\0';
+        state->is_temp = false;
+        state->dirty = 0;
+        reopen_after_save();
+        if (!state->file)
+            strcpy(state->statusmsg, "Saved but failed to re-open");
+        else
+            snprintf(state->statusmsg, sizeof(state->statusmsg), "Saved: %s",
+                     strrchr(state->filename, '/') ? strrchr(state->filename, '/') + 1 : state->filename);
+        return;
+    }
+
+    // Non-temp: write to new path reading from old, then update state
+    char old_path[MAX_FILENAME];
+    strncpy(old_path, state->filename, MAX_FILENAME - 1);
+    old_path[MAX_FILENAME - 1] = '\0';
+
+    if (!write_file(old_path, filename)) {
+        strcpy(state->statusmsg, "Failed to save");
+        return;
+    }
+
     strncpy(state->filename, filename, sizeof(state->filename) - 1);
     state->filename[sizeof(state->filename) - 1] = '\0';
-    save_file();
+    state->dirty = 0;
+    reopen_after_save();
+    if (!state->file)
+        strcpy(state->statusmsg, "Saved but failed to re-open");
+    else
+        snprintf(state->statusmsg, sizeof(state->statusmsg), "Saved: %s",
+                 strrchr(state->filename, '/') ? strrchr(state->filename, '/') + 1 : state->filename);
 }
 
 // Save file as
@@ -632,10 +769,15 @@ static void navigate_prev_page(void) {
         load_page_at_offset(offset);
         state->current_page--;
     } else {
-        // Previous page not in cache - need to reload from file
-        // For now, just show message
-        strcpy(state->statusmsg, "Previous page not cached");
-        return;
+        // Previous page not in cache - recalculate offset from file
+        long target_offset = 0;
+        for (int p = 0; p < state->current_page - 1; p++)
+            target_offset = estimate_next_page_offset(state->file, target_offset, state->lines_per_page);
+
+        page_cache_init(&state->page_cache);
+        page_cache_add(&state->page_cache, target_offset, state->screen_cols, state->content_rows);
+        load_page_at_offset(target_offset);
+        state->current_page--;
     }
 
     // Reset cursor position
@@ -1334,12 +1476,29 @@ static void handle_keyboard_event(app_context_t *ctx, event_t *event) {
                     state->dirty = 1;
                     os_log(TAG, "Backspace at %d,%d", state->cursor_row, state->cursor_col);
                 } else if (state->cursor_col == 0 && state->cursor_row > 0) {
-                    // Join with previous line (basic implementation)
-                    // For now, just move to end of previous line
-                    state->cursor_row--;
-                    if (state->lines[state->cursor_row]) {
-                        state->cursor_col = strlen(state->lines[state->cursor_row]);
+                    // Join current line onto the end of previous line
+                    char *cur = state->lines[state->cursor_row];
+                    char *prev = state->lines[state->cursor_row - 1];
+                    int prev_len = prev ? strlen(prev) : 0;
+                    int cur_len = cur ? strlen(cur) : 0;
+
+                    char *joined = malloc(prev_len + cur_len + 1);
+                    if (joined) {
+                        if (prev) memcpy(joined, prev, prev_len);
+                        if (cur) memcpy(joined + prev_len, cur, cur_len + 1);
+                        free(prev);
+                        state->lines[state->cursor_row - 1] = joined;
                     }
+
+                    free(cur);
+                    for (int i = state->cursor_row; i < state->line_count - 1; i++)
+                        state->lines[i] = state->lines[i + 1];
+                    state->lines[state->line_count - 1] = NULL;
+                    state->line_count--;
+
+                    state->cursor_row--;
+                    state->cursor_col = prev_len;
+                    state->dirty = 1;
                 }
             }
             break;

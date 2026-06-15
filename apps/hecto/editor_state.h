@@ -8,7 +8,7 @@
 #define MAX_FILENAME 256
 #define MAX_STATUS_MSG 80
 #define MAX_LINES_PER_PAGE 1000
-#define MAX_CLIPBOARD_SIZE (64 * 1024)
+#define MAX_CLIPBOARD_SIZE 4096
 
 // Page cache entry (borrowed from reader)
 typedef struct {
@@ -79,8 +79,8 @@ typedef struct {
     int screen_cols;
     int content_rows; // Rows available for content (excluding menu/status)
 
-    // Menu bar
-    int menu_active; // 0=none, 1=file, 2=edit, 3=view, 4=search, 5=help
+    // Temp file tracking
+    bool is_temp;    // true if this is a temporary unsaved file
 } editor_state_t;
 
 // Page cache functions
