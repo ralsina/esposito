@@ -1,7 +1,7 @@
 CC      := gcc
-CFLAGS  := -I include -g -Wall -Wextra
+CFLAGS  := -I include -g -Wall -Wextra -include platform_compat.h
 LDFLAGS :=
-LIBS    := -lSDL2 -lm
+LIBS    := -lSDL2 -lm -lpthread
 
 # App to build (relative to linux/ or absolute)
 APP     ?= ../apps/hello_world/app.c
@@ -16,7 +16,7 @@ APP_SRCS := $(wildcard $(APP_DIR)*.c)
 APP_OBJS := $(addprefix build/,$(notdir $(APP_SRCS:.c=.o)))
 
 # Emulation source files
-EMU_SRCS := src/main.c src/text_mode.c src/graphics_mode.c src/os_core.c src/app_config.c src/hardware.c src/wifi.c
+EMU_SRCS := src/main.c src/text_mode.c src/graphics_mode.c src/os_core.c src/app_config.c src/hardware.c src/wifi.c src/sprite.c src/flash_rom.c
 EMU_OBJS := $(EMU_SRCS:.c=.o)
 
 # Shared library dependencies from deps file
@@ -46,10 +46,11 @@ $(APP_BIN): $(EMU_OBJS) $(APP_OBJS) $(LIB_OBJS)
 	mkdir -p build
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS) $(LDFLAGS)
 
-# Build any .c in the app directory
+# Build any .c in the app directory (strip ESP32 inline asm for compat)
 build/%.o: $(APP_DIR)%.c
 	mkdir -p build
-	$(CC) $(CFLAGS) -c -o $@ $<
+	sed -e 's/__asm__ volatile("rsr.*ccount".*/    (void)0;/' -e 's/uint32_t ccount;//' -e 's/return ccount;/return 0;/' $< > build/$*.pre.c
+	$(CC) $(CFLAGS) -I$(APP_DIR) -c -o $@ build/$*.pre.c
 
 # Build shared library .c files (namespaced as lib_<dep>_<file>.o)
 define lib-rule
@@ -63,7 +64,7 @@ src/%.o: src/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f $(APP_BIN) $(EMU_OBJS) build/*.o
+	rm -f $(APP_BIN) $(EMU_OBJS) build/*.o build/*.pre.c
 
 run: $(APP_BIN)
 	./$(APP_BIN) $(APP_NAME)

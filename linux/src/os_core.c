@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
+#include <SDL2/SDL.h>
 
 void os_post_event(event_t *event) {
     (void)event;
@@ -124,4 +126,77 @@ bool os_has_capability(const char *cap) {
     if (strcmp(cap, "touch") == 0) return false;
     if (strcmp(cap, "wifi") == 0) return false;
     return false;
+}
+
+// --- Task API ---
+os_task_handle_t *os_task_create(os_task_func_t task_func, const char *name, int stack_size, int priority, int core_id) {
+    (void)name; (void)stack_size; (void)priority; (void)core_id;
+    if (!task_func) return NULL;
+
+    os_task_handle_t *handle = malloc(sizeof(os_task_handle_t));
+    if (!handle) return NULL;
+
+    pthread_t *thread = malloc(sizeof(pthread_t));
+    if (!thread) { free(handle); return NULL; }
+
+    if (pthread_create(thread, NULL, (void *(*)(void *))(void *)task_func, NULL) != 0) {
+        free(thread);
+        free(handle);
+        return NULL;
+    }
+
+    handle->handle = thread;
+    return handle;
+}
+
+void os_task_delete(os_task_handle_t *task) {
+    if (!task || !task->handle) return;
+    pthread_t *thread = (pthread_t *)task->handle;
+    pthread_cancel(*thread);
+    pthread_join(*thread, NULL);
+    free(thread);
+    free(task);
+}
+
+// --- Semaphore API ---
+os_semaphore_handle_t *os_semaphore_create(void) {
+    os_semaphore_handle_t *handle = malloc(sizeof(os_semaphore_handle_t));
+    if (!handle) return NULL;
+
+    SDL_sem *sem = SDL_CreateSemaphore(0);
+    if (!sem) { free(handle); return NULL; }
+
+    handle->handle = sem;
+    return handle;
+}
+
+void os_semaphore_give(os_semaphore_handle_t *sem) {
+    if (!sem || !sem->handle) return;
+    SDL_SemPost((SDL_sem *)sem->handle);
+}
+
+bool os_semaphore_take(os_semaphore_handle_t *sem, int timeout_ms) {
+    if (!sem || !sem->handle) return false;
+    SDL_sem *s = (SDL_sem *)sem->handle;
+
+    if (timeout_ms < 0) return SDL_SemWait(s) == 0;
+    if (timeout_ms == 0) return SDL_SemTryWait(s) == 0;
+    return SDL_SemWaitTimeout(s, timeout_ms) == 0;
+}
+
+void os_semaphore_delete(os_semaphore_handle_t *sem) {
+    if (!sem || !sem->handle) return;
+    SDL_DestroySemaphore((SDL_sem *)sem->handle);
+    free(sem);
+}
+
+bool os_set_cpu_freq_mhz(int freq_mhz) {
+    (void)freq_mhz;
+    return true;
+}
+
+int64_t esp_timer_get_time(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000 + (int64_t)ts.tv_nsec / 1000;
 }

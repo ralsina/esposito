@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <time.h>
 
 typedef enum {
     EVENT_TIMER = 1 << 0,
@@ -93,6 +94,27 @@ bool os_settings_set_int(const char *key_path, int value);
 bool os_settings_get_bool(const char *key_path, bool default_value);
 bool os_settings_set_bool(const char *key_path, bool value);
 bool os_has_capability(const char *cap);
+
+// Task and synchronization API
+typedef void (*os_task_func_t)(void *parameter);
+
+typedef struct {
+    void *handle;
+} os_task_handle_t;
+
+typedef struct {
+    void *handle;
+} os_semaphore_handle_t;
+
+os_task_handle_t *os_task_create(os_task_func_t task_func, const char *name, int stack_size, int priority, int core_id);
+void os_task_delete(os_task_handle_t *task);
+os_semaphore_handle_t *os_semaphore_create(void);
+void os_semaphore_give(os_semaphore_handle_t *sem);
+bool os_semaphore_take(os_semaphore_handle_t *sem, int timeout_ms);
+void os_semaphore_delete(os_semaphore_handle_t *sem);
+
+bool os_set_cpu_freq_mhz(int freq_mhz);
+int64_t esp_timer_get_time(void);
 
 #ifdef __cplusplus
 }
