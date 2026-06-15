@@ -113,6 +113,10 @@ static char pending_app_name[256];
 static bool pending_app_push_current = true;
 static bool in_app_callback = false;
 
+#define MAX_TRACKED_TASKS 32
+static TaskHandle_t app_tasks[MAX_TRACKED_TASKS] = {NULL};
+static portMUX_TYPE app_tasks_mux = portMUX_INITIALIZER_UNLOCKED;
+
 #define APP_STACK_MAX 16
 static char app_stack[APP_STACK_MAX][64];
 static int app_stack_size = 0;
@@ -262,6 +266,25 @@ void os_set_current_app(app_context_t *app) {
 
 void os_unload_app(void) {
     if (current_app) {
+        // Clean up spawned tasks first!
+        ESP_LOGI(TAG, "Cleaning up app tasks...");
+        TaskHandle_t tasks_to_delete[MAX_TRACKED_TASKS];
+        int num_tasks_to_delete = 0;
+
+        portENTER_CRITICAL(&app_tasks_mux);
+        for (int i = 0; i < MAX_TRACKED_TASKS; i++) {
+            if (app_tasks[i] != NULL) {
+                tasks_to_delete[num_tasks_to_delete++] = app_tasks[i];
+                app_tasks[i] = NULL;
+            }
+        }
+        portEXIT_CRITICAL(&app_tasks_mux);
+
+        for (int i = 0; i < num_tasks_to_delete; i++) {
+            ESP_LOGI(TAG, "Deleting orphaned app task %p", tasks_to_delete[i]);
+            vTaskDelete(tasks_to_delete[i]);
+        }
+
         os_log_global_heap_stats("before unload");
         app_heap_log_stats("before unload");
         if (current_app->close) {
@@ -1315,6 +1338,17 @@ static void task_wrapper(void *pvParameters) {
         task_func(parameter);
     }
 
+    // Task is finishing, untrack it
+    TaskHandle_t self = xTaskGetCurrentTaskHandle();
+    portENTER_CRITICAL(&app_tasks_mux);
+    for (int i = 0; i < MAX_TRACKED_TASKS; i++) {
+        if (app_tasks[i] == self) {
+            app_tasks[i] = NULL;
+            break;
+        }
+    }
+    portEXIT_CRITICAL(&app_tasks_mux);
+
     vTaskDelete(NULL);
 }
 
@@ -1349,12 +1383,35 @@ os_task_handle_t *os_task_create(os_task_func_t task_func, const char *name, int
         return NULL;
     }
 
+    // Track the spawned task
+    portENTER_CRITICAL(&app_tasks_mux);
+    for (int i = 0; i < MAX_TRACKED_TASKS; i++) {
+        if (app_tasks[i] == NULL) {
+            app_tasks[i] = (TaskHandle_t)handle->handle;
+            break;
+        }
+    }
+    portEXIT_CRITICAL(&app_tasks_mux);
+
     return handle;
 }
 
 void os_task_delete(os_task_handle_t *task) {
     if (!task || !task->handle) return;
-    vTaskDelete((TaskHandle_t)task->handle);
+
+    TaskHandle_t target = (TaskHandle_t)task->handle;
+
+    // Untrack the task
+    portENTER_CRITICAL(&app_tasks_mux);
+    for (int i = 0; i < MAX_TRACKED_TASKS; i++) {
+        if (app_tasks[i] == target) {
+            app_tasks[i] = NULL;
+            break;
+        }
+    }
+    portEXIT_CRITICAL(&app_tasks_mux);
+
+    vTaskDelete(target);
     free(task);
 }
 
