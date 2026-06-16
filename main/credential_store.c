@@ -81,7 +81,21 @@ bool credential_store_set(const char *ssid, const char *password) {
         return false;
     }
     esp_err_t r_ssid = nvs_set_str(handle, CRED_KEY_SSID, ssid);
-    esp_err_t r_pass = nvs_set_str(handle, CRED_KEY_PASSWORD, password ? password : "");
+    // Match the credential_store_get_password() contract: an absent password
+    // key means "open network". Storing an empty password therefore erases
+    // the key rather than writing "" so get_password() correctly returns
+    // false for open networks.
+    esp_err_t r_pass;
+    if (password && password[0] != '\0') {
+        r_pass = nvs_set_str(handle, CRED_KEY_PASSWORD, password);
+    } else {
+        // nvs_erase_key returns ESP_ERR_NVS_NOT_FOUND if the key is absent,
+        // which is the desired end state -- treat that as success.
+        r_pass = nvs_erase_key(handle, CRED_KEY_PASSWORD);
+        if (r_pass == ESP_ERR_NVS_NOT_FOUND) {
+            r_pass = ESP_OK;
+        }
+    }
     esp_err_t r_commit = nvs_commit(handle);
     nvs_close(handle);
 

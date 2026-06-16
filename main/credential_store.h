@@ -33,6 +33,19 @@ bool credential_store_set(const char *ssid, const char *password);
 // Erase any stored WiFi credentials.
 void credential_store_erase(void);
 
+// Zero a buffer in a way the compiler cannot elide as a dead store. Use this
+// instead of memset(buf, 0, n) when scrubbing sensitive data (passwords,
+// derived keys, etc.) on the stack or heap. Plain memset can be removed by
+// the optimizer's dead-store elimination when the buffer is not read again
+// before going out of scope, which would leave secrets in memory.
+static inline void credential_store_secure_zero(void *buf, size_t len) {
+    if (!buf || len == 0) return;
+    volatile unsigned char *p = (volatile unsigned char *)buf;
+    while (len--) {
+        *p++ = 0;
+    }
+}
+
 #ifdef __cplusplus
 }
 #endif

@@ -39,7 +39,9 @@ void wifi_disconnect(void);
 bool wifi_time_is_synchronized(void);
 time_t wifi_time_last_sync(void);
 
-// Save WiFi credentials to NVS (not exposed to apps; apps see wifi_scan_* only).
+// Save WiFi credentials to NVS. The SSID/password are never readable back
+// through any OS API (the symbol table exports no credential getter), so
+// apps can connect/scan but cannot exfiltrate stored credentials.
 bool wifi_save_config(const char *ssid, const char *password);
 
 #ifdef __cplusplus
