@@ -14,7 +14,6 @@
 #include "graphics_mode.h"
 #include "fonts.h"
 #include "wifi.h"
-#include "os_printf.h"
 #include "ota_update.h"
 #include <stdlib.h>
 #include <string.h>
