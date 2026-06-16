@@ -130,10 +130,8 @@ struct elf_handle {
 
     void *data_base;
     size_t data_size;
-    bool data_base_from_app_heap;
     void *bss_base;
     size_t bss_size;
-    bool bss_base_from_app_heap;
 
     loaded_section_t sections[MAX_LOADED_SECTIONS];
     int section_count;
@@ -172,10 +170,8 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
                                 const elf32_shdr_t *shdrs) {
     handle->data_base = NULL;
     handle->data_size = 0;
-    handle->data_base_from_app_heap = false;
     handle->bss_base = NULL;
     handle->bss_size = 0;
-    handle->bss_base_from_app_heap = false;
 
     uint32_t data_load = 0, bss_size = 0;
     const elf32_shdr_t *first_data_shdr = NULL;
@@ -196,12 +192,6 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
 
     if (data_load > 0) {
         handle->data_base = app_malloc(data_load);
-        if (handle->data_base) {
-            handle->data_base_from_app_heap = true;
-        } else {
-            handle->data_base = app_malloc(data_load);
-            handle->data_base_from_app_heap = false;
-        }
         if (!handle->data_base) {
             ESP_LOGE(TAG, "Failed to allocate %d bytes for .data", data_load);
             return false;
@@ -222,7 +212,10 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
             }
             data_offset += sh->sh_size;
 
-            if (handle->section_count >= MAX_LOADED_SECTIONS) break;
+            if (handle->section_count >= MAX_LOADED_SECTIONS) {
+                ESP_LOGW(TAG, "MAX_LOADED_SECTIONS (%d) reached; remaining .data sections not tracked", MAX_LOADED_SECTIONS);
+                break;
+            }
             loaded_section_t *ls = &handle->sections[handle->section_count++];
             ls->vma = sh->sh_addr;
             ls->size = sh->sh_size;
@@ -240,11 +233,6 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
             ESP_LOGE(TAG, "Failed to allocate %d bytes for .bss", bss_size);
             return false;
         }
-        handle->bss_base_from_app_heap = true;
-        if (!handle->bss_base) {
-            ESP_LOGE(TAG, "Failed to allocate %d bytes for .bss", bss_size);
-            return false;
-        }
         handle->bss_size = bss_size;
 
         uint32_t bss_offset = 0;
@@ -254,7 +242,10 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
             if (!(sh->sh_flags & SHF_WRITE)) continue;
             if (sh->sh_type != SHT_NOBITS) continue;
 
-            if (handle->section_count >= MAX_LOADED_SECTIONS) break;
+            if (handle->section_count >= MAX_LOADED_SECTIONS) {
+                ESP_LOGW(TAG, "MAX_LOADED_SECTIONS (%d) reached; remaining .bss sections not tracked", MAX_LOADED_SECTIONS);
+                break;
+            }
             loaded_section_t *ls = &handle->sections[handle->section_count++];
             ls->vma = sh->sh_addr;
             ls->size = sh->sh_size;
@@ -273,11 +264,14 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
                                          const elf32_ehdr_t *ehdr,
                                          const elf32_shdr_t *shdrs,
                                          const elf32_sym_t *symtab,
+                                         int sym_count,
                                          const char *strtab,
                                          int target_section_idx,
                                          void *patch_base,
-                                         bool target_is_dram,
                                          int *patched_count) {
+    if (target_section_idx < 0 || target_section_idx >= ehdr->e_shnum) {
+        return true;  // nothing to do
+    }
     const elf32_shdr_t *target_sh = &shdrs[target_section_idx];
 
     for (int section_index = 0; section_index < ehdr->e_shnum; section_index++) {
@@ -285,7 +279,9 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
         if (rel_sh->sh_type != SHT_RELA && rel_sh->sh_type != SHT_REL) {
             continue;
         }
-        if ((int)rel_sh->sh_info != target_section_idx || rel_sh->sh_size == 0) {
+        if (rel_sh->sh_info >= ehdr->e_shnum ||
+            (int)rel_sh->sh_info != target_section_idx ||
+            rel_sh->sh_size == 0) {
             continue;
         }
 
@@ -295,22 +291,6 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
         }
 
         int num_rels = rel_sh->sh_size / rel_size;
-
-        int symtab_link = rel_sh->sh_link;
-        const elf32_sym_t *rel_symtab = symtab;
-        const char *rel_strtab = strtab;
-        if (symtab_link > 0 && symtab_link < ehdr->e_shnum) {
-            const elf32_shdr_t *link_sh = &shdrs[symtab_link];
-            if (link_sh->sh_type == 2) {
-                rel_symtab = symtab;
-            }
-            if (link_sh->sh_link > 0 && link_sh->sh_link < ehdr->e_shnum) {
-                const elf32_shdr_t *str_sh = &shdrs[link_sh->sh_link];
-                if (str_sh->sh_type == 3) {
-                    rel_strtab = strtab;
-                }
-            }
-        }
 
         for (int rel_index = 0; rel_index < num_rels; rel_index++) {
             uint32_t r_offset, r_info, r_sym, r_type;
@@ -342,7 +322,12 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
             r_sym = r_info >> 8;
             r_type = r_info & 0xFF;
 
-            if (r_type != EXPECTED_RELOC_TYPE || !rel_symtab || r_sym == 0) {
+            if (r_type != EXPECTED_RELOC_TYPE || !symtab || r_sym == 0) {
+                continue;
+            }
+            if (r_sym >= (uint32_t)sym_count) {
+                ESP_LOGW(TAG, "Relocation symbol index %u out of range (sym_count=%d), skipping",
+                         r_sym, sym_count);
                 continue;
             }
 
@@ -350,13 +335,13 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
                 continue;
             }
 
-            const elf32_sym_t *sym = &rel_symtab[r_sym];
+            const elf32_sym_t *sym = &symtab[r_sym];
             uint32_t *patch_addr = (uint32_t *)((uint8_t *)patch_base + (r_offset - target_sh->sh_addr));
             uint32_t old_val = *patch_addr;
             uint32_t new_val;
 
             if (sym->st_shndx == 0 || sym->st_shndx == 0xFFF1 /* SHN_ABS */) {
-                const char *sym_name = rel_strtab ? rel_strtab + sym->st_name : "?";
+                const char *sym_name = strtab ? strtab + sym->st_name : "?";
                 const os_symtab_entry_t *entry = os_symtab_lookup(sym_name);
                 if (!entry) {
                     ESP_LOGW(TAG, "Undefined symbol: %s", sym_name);
@@ -373,7 +358,6 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
         }
     }
 
-    (void)target_is_dram;
     return true;
 }
 
@@ -442,11 +426,18 @@ elf_handle_t *elf_loader_load(const char *path) {
         return NULL;
     }
 
+    // All resources tracked here are freed either on the success path (returning handle)
+    // or via the `fail:` label at the bottom. Initialize to NULL so cleanup is uniform.
+    elf32_shdr_t *shdrs = NULL;
+    elf32_sym_t *symtab = NULL;
+    char *strtab = NULL;
+    elf_handle_t *handle = NULL;
+    int sym_count = 0;
+
     elf32_ehdr_t ehdr_storage;
     if (!read_exact_at(fp, 0, &ehdr_storage, sizeof(ehdr_storage))) {
         ESP_LOGE(TAG, "Failed to read ELF header");
-        fclose(fp);
-        return NULL;
+        goto fail;
     }
     const elf32_ehdr_t *ehdr = &ehdr_storage;
 
@@ -459,21 +450,34 @@ elf_handle_t *elf_loader_load(const char *path) {
 
     if (ehdr->e_magic != ELF_MAGIC || ehdr->e_machine != expected_machine) {
         ESP_LOGE(TAG, "Invalid ELF (magic=0x%x machine=%d, expected=%d)", ehdr->e_magic, ehdr->e_machine, expected_machine);
-        fclose(fp);
-        return NULL;
+        goto fail;
     }
 
-    elf32_shdr_t *shdrs = app_malloc(sizeof(elf32_shdr_t) * ehdr->e_shnum);
+    // Sanity-check ELF header fields to reject corrupted or hostile files early.
+    // These bounds prevent OOM (huge e_shnum), out-of-range section indices, and
+    // crashes from later unchecked indexing into shdrs[].
+    if (ehdr->e_shnum == 0 || ehdr->e_shnum > 64) {
+        ESP_LOGE(TAG, "Out-of-range e_shnum: %u (must be 1..64)", ehdr->e_shnum);
+        goto fail;
+    }
+    if (ehdr->e_shentsize != sizeof(elf32_shdr_t)) {
+        ESP_LOGE(TAG, "Unexpected e_shentsize: %u (expected %zu)",
+                 ehdr->e_shentsize, sizeof(elf32_shdr_t));
+        goto fail;
+    }
+    if (ehdr->e_shstrndx != 0 && ehdr->e_shstrndx >= ehdr->e_shnum) {
+        ESP_LOGE(TAG, "Out-of-range e_shstrndx: %u (e_shnum=%u)", ehdr->e_shstrndx, ehdr->e_shnum);
+        goto fail;
+    }
+
+    shdrs = app_malloc(sizeof(elf32_shdr_t) * ehdr->e_shnum);
     if (!shdrs) {
         ESP_LOGE(TAG, "Failed to allocate section headers");
-        fclose(fp);
-        return NULL;
+        goto fail;
     }
     if (!read_exact_at(fp, ehdr->e_shoff, shdrs, sizeof(elf32_shdr_t) * ehdr->e_shnum)) {
         ESP_LOGE(TAG, "Failed to read section headers");
-        app_free(shdrs);
-        fclose(fp);
-        return NULL;
+        goto fail;
     }
 
     int symtab_section = -1;
@@ -485,44 +489,48 @@ elf_handle_t *elf_loader_load(const char *path) {
     }
     if (symtab_section < 0) {
         ESP_LOGE(TAG, "No symbol table in ELF");
-        app_free(shdrs);
-        fclose(fp);
-        return NULL;
+        goto fail;
     }
 
     const elf32_shdr_t *sym_sh = &shdrs[symtab_section];
+    // Cap symtab/strtab sizes to defend against a corrupted ELF claiming a huge table.
+    // 1 MB is far above what any real app needs (typical is <100 KB) but bounded enough
+    // that a malformed file cannot OOM the device.
+    if (sym_sh->sh_size == 0 || sym_sh->sh_size > 1024 * 1024) {
+        ESP_LOGE(TAG, "Out-of-range symtab size: %u bytes", sym_sh->sh_size);
+        goto fail;
+    }
+    if (sym_sh->sh_size % sizeof(elf32_sym_t) != 0) {
+        ESP_LOGE(TAG, "Symtab size %u not a multiple of sym entry size", sym_sh->sh_size);
+        goto fail;
+    }
+
     const elf32_shdr_t *str_sh = NULL;
     if (sym_sh->sh_link > 0 && sym_sh->sh_link < ehdr->e_shnum) {
         str_sh = &shdrs[sym_sh->sh_link];
     }
+    if (str_sh && (str_sh->sh_size == 0 || str_sh->sh_size > 1024 * 1024)) {
+        ESP_LOGE(TAG, "Out-of-range strtab size: %u bytes", str_sh->sh_size);
+        goto fail;
+    }
 
-    elf32_sym_t *symtab = app_malloc(sym_sh->sh_size);
-    char *strtab = str_sh ? app_malloc(str_sh->sh_size) : NULL;
+    symtab = app_malloc(sym_sh->sh_size);
+    strtab = str_sh ? app_malloc(str_sh->sh_size) : NULL;
     if (!symtab || (str_sh && !strtab)) {
         ESP_LOGE(TAG, "Failed to allocate symbol/string tables");
-        app_free(strtab);
-        app_free(symtab);
-        app_free(shdrs);
-        fclose(fp);
-        return NULL;
+        goto fail;
     }
     if (!read_exact_at(fp, sym_sh->sh_offset, symtab, sym_sh->sh_size) ||
         (str_sh && !read_exact_at(fp, str_sh->sh_offset, strtab, str_sh->sh_size))) {
         ESP_LOGE(TAG, "Failed to read symbol/string tables");
-        app_free(strtab);
-        app_free(symtab);
-        app_free(shdrs);
-        fclose(fp);
-        return NULL;
+        goto fail;
     }
+    sym_count = sym_sh->sh_size / sizeof(elf32_sym_t);
 
-    elf_handle_t *handle = app_calloc(1, sizeof(elf_handle_t));
+    handle = app_calloc(1, sizeof(elf_handle_t));
     if (!handle) {
-        app_free(strtab);
-        app_free(symtab);
-        app_free(shdrs);
-        fclose(fp);
-        return NULL;
+        ESP_LOGE(TAG, "Failed to allocate ELF handle");
+        goto fail;
     }
 
     const char *name = strrchr(path, '/');
@@ -534,23 +542,13 @@ elf_handle_t *elf_loader_load(const char *path) {
                                                    APP_PARTITION_LABEL);
     if (!handle->flash_part) {
         ESP_LOGE(TAG, "App partition not found");
-        app_free(strtab);
-        app_free(symtab);
-        app_free(shdrs);
-        fclose(fp);
-        app_free(handle);
-        return NULL;
+        goto fail;
     }
 
     esp_err_t ret = esp_partition_erase_range(handle->flash_part, 0, handle->flash_part->size);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to erase app partition: %s", esp_err_to_name(ret));
-        app_free(strtab);
-        app_free(symtab);
-        app_free(shdrs);
-        fclose(fp);
-        app_free(handle);
-        return NULL;
+        goto fail;
     }
 
     // Step 2: Calculate code/rodata sizes
@@ -576,12 +574,7 @@ elf_handle_t *elf_loader_load(const char *path) {
                               &handle->inst_mmap_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to mmap code: %s", esp_err_to_name(ret));
-        app_free(strtab);
-        app_free(symtab);
-        app_free(shdrs);
-        fclose(fp);
-        elf_loader_unload(handle);
-        return NULL;
+        goto fail;
     }
 
     if (rodata_size > 0) {
@@ -591,12 +584,7 @@ elf_handle_t *elf_loader_load(const char *path) {
                                   &handle->data_mmap_handle);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to mmap rodata: %s", esp_err_to_name(ret));
-            app_free(strtab);
-            app_free(symtab);
-            app_free(shdrs);
-            fclose(fp);
-            elf_loader_unload(handle);
-            return NULL;
+            goto fail;
         }
     } else {
         handle->data_base_flash = NULL;
@@ -613,7 +601,11 @@ elf_handle_t *elf_loader_load(const char *path) {
             const elf32_shdr_t *sh = &shdrs[i];
             if (!(sh->sh_flags & SHF_ALLOC)) continue;
             if (sh->sh_flags & SHF_WRITE) continue;
-            if (handle->section_count >= MAX_LOADED_SECTIONS) break;
+            if (handle->section_count >= MAX_LOADED_SECTIONS) {
+                ESP_LOGW(TAG, "MAX_LOADED_SECTIONS (%d) reached; remaining code/rodata sections not tracked (relocations may fail)",
+                         MAX_LOADED_SECTIONS);
+                break;
+            }
 
             loaded_section_t *ls = &handle->sections[handle->section_count++];
             ls->vma = sh->sh_addr;
@@ -636,12 +628,7 @@ elf_handle_t *elf_loader_load(const char *path) {
     // Step 5: Allocate DRAM for data/bss NOW, so relocations can resolve their addresses
     if (!elf_alloc_data_bss(handle, fp, ehdr, shdrs)) {
         ESP_LOGE(TAG, "Failed to allocate data/bss");
-        app_free(strtab);
-        app_free(symtab);
-        app_free(shdrs);
-        fclose(fp);
-        elf_loader_unload(handle);
-        return NULL;
+        goto fail;
     }
     ESP_LOGI(TAG, "DRAM: data=%p size=%d bss=%p size=%d",
              handle->data_base, handle->data_size, handle->bss_base, handle->bss_size);
@@ -663,45 +650,26 @@ elf_handle_t *elf_loader_load(const char *path) {
             uint8_t *section_buf = app_malloc(sh->sh_size);
             if (!section_buf) {
                 ESP_LOGE(TAG, "Failed to allocate section buffer (%lu bytes)", (unsigned long)sh->sh_size);
-                app_free(strtab);
-                app_free(symtab);
-                app_free(shdrs);
-                fclose(fp);
-                elf_loader_unload(handle);
-                return NULL;
+                goto fail;
             }
 
             if (!read_exact_at(fp, sh->sh_offset, section_buf, sh->sh_size)) {
                 ESP_LOGE(TAG, "Failed to read section data at offset 0x%lx", (unsigned long)sh->sh_offset);
                 app_free(section_buf);
-                app_free(strtab);
-                app_free(symtab);
-                app_free(shdrs);
-                fclose(fp);
-                elf_loader_unload(handle);
-                return NULL;
+                goto fail;
             }
 
-            if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, strtab, section_index, section_buf, false, &total_patched)) {
+            if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, sym_count, strtab,
+                                              section_index, section_buf, &total_patched)) {
                 app_free(section_buf);
-                app_free(strtab);
-                app_free(symtab);
-                app_free(shdrs);
-                fclose(fp);
-                elf_loader_unload(handle);
-                return NULL;
+                goto fail;
             }
 
             ret = esp_partition_write(handle->flash_part, write_offset, section_buf, sh->sh_size);
             app_free(section_buf);
             if (ret != ESP_OK) {
                 ESP_LOGE(TAG, "Failed to write to flash: %s", esp_err_to_name(ret));
-                app_free(strtab);
-                app_free(symtab);
-                app_free(shdrs);
-                fclose(fp);
-                elf_loader_unload(handle);
-                return NULL;
+                goto fail;
             }
 
             write_offset += (sh->sh_size + 3) & ~3;
@@ -719,13 +687,9 @@ elf_handle_t *elf_loader_load(const char *path) {
             continue;
         }
 
-        if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, strtab, section_index, (void *)ls->load_addr, true, &total_patched)) {
-            app_free(strtab);
-            app_free(symtab);
-            app_free(shdrs);
-            fclose(fp);
-            elf_loader_unload(handle);
-            return NULL;
+        if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, sym_count, strtab,
+                                          section_index, (void *)ls->load_addr, &total_patched)) {
+            goto fail;
         }
     }
 
@@ -740,12 +704,7 @@ elf_handle_t *elf_loader_load(const char *path) {
     // Step 9: Resolve entry points
     if (!elf_resolve_entry_points(handle, ehdr, shdrs, symtab, strtab)) {
         ESP_LOGE(TAG, "Failed to resolve entry points");
-        app_free(strtab);
-        app_free(symtab);
-        app_free(shdrs);
-        fclose(fp);
-        elf_loader_unload(handle);
-        return NULL;
+        goto fail;
     }
 
     app_free(strtab);
@@ -754,6 +713,14 @@ elf_handle_t *elf_loader_load(const char *path) {
     fclose(fp);
     ESP_LOGI(TAG, "ELF loaded: %s", handle->name);
     return handle;
+
+fail:
+    app_free(strtab);
+    app_free(symtab);
+    app_free(shdrs);
+    if (handle) elf_loader_unload(handle);
+    fclose(fp);
+    return NULL;
 }
 
 void elf_loader_unload(elf_handle_t *handle) {
@@ -767,18 +734,10 @@ void elf_loader_unload(elf_handle_t *handle) {
         handle->data_mmap_handle = 0;
     }
     if (handle->data_base) {
-        if (handle->data_base_from_app_heap) {
-            app_free(handle->data_base);
-        } else {
-            app_free(handle->data_base);
-        }
+        app_free(handle->data_base);
     }
     if (handle->bss_base) {
-        if (handle->bss_base_from_app_heap) {
-            app_free(handle->bss_base);
-        } else {
-            app_free(handle->bss_base);
-        }
+        app_free(handle->bss_base);
     }
     app_free(handle);
 }
