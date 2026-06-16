@@ -17,7 +17,6 @@ idf_component_register(
         "credential_store.c"
         "os_core.c"
         "os_symtab.c"
-        "os_printf.c"
         "elf_loader.c"
         "app_loader.c"
         "app_launcher.c"
