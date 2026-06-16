@@ -56,24 +56,18 @@ int app_loader_scan(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps) {
 }
 
 bool app_loader_load(const char *app_name) {
-    ESP_LOGI(TAG, "🔧 app_loader_load called with: '%s'", app_name);
+    ESP_LOGI(TAG, "Loading app: '%s'", app_name);
 
     app_context_t *ctx = os_get_current_app();
-    ESP_LOGI(TAG, "🔧 os_get_current_app returned: %p", (void*)ctx);
 
     if (!ctx) {
-        ESP_LOGE(TAG, "❌ No app context available - need to create one");
-        // Create a new app context
+        ESP_LOGI(TAG, "Allocating new app context");
         ctx = app_calloc(1, sizeof(app_context_t));
         if (!ctx) {
-            ESP_LOGE(TAG, "❌ Failed to allocate app context");
+            ESP_LOGE(TAG, "Failed to allocate app context");
             return false;
         }
-        ESP_LOGI(TAG, "✅ Created new app context at %p", (void*)ctx);
-
-        // Set it as the current app
         os_set_current_app(ctx);
-        ESP_LOGI(TAG, "✅ Set as current app");
     }
 
     // Try loading from SD card as ELF
@@ -83,11 +77,10 @@ bool app_loader_load(const char *app_name) {
 
     elf_handle_t *handle = elf_loader_load(elf_path);
     if (!handle) {
-        // Check if SD card is even mounted
         if (!sd_card_is_mounted()) {
             ESP_LOGW(TAG, "SD card not mounted, cannot load ELF apps");
         }
-        ESP_LOGE(TAG, "❌ Unknown app: %s", app_name);
+        ESP_LOGE(TAG, "Unknown app: %s", app_name);
         return false;
     }
 
@@ -154,7 +147,7 @@ bool app_loader_load(const char *app_name) {
         ESP_LOGW(TAG, "Failed to bind config namespace for app %s", ctx->name);
     }
     ctx->init(ctx);
-    ESP_LOGI(TAG, "✅ %s loaded from SD card and initialized", app_name);
+    ESP_LOGI(TAG, "%s loaded from SD card and initialized", app_name);
     return true;
 }
 
