@@ -1,7 +1,7 @@
 # Esposito OS - Makefile
 # Convenience targets for building, flashing, and monitoring
 
-.PHONY: all build stub flash flash-stub monitor clean help size test release
+.PHONY: all build stub flash flash-stub monitor clean help size menuconfig deploy-all check emulate
 
 # Default target
 all: build
@@ -65,19 +65,21 @@ menuconfig:
 	@echo "Opening configuration menu..."
 	. /opt/esp-idf/export.sh && idf.py menuconfig
 
-# Build firmware + stub + all apps, copy to SD card, flash
-test: build stub
+# Build firmware + stub + all apps, copy to SD card, flash.
+# (Despite the historical name, this is a deploy target, not a test.)
+deploy-all: build stub
 	@echo "Building firmware + stub + apps and flashing..."
 	. /opt/esp-idf/export.sh && scripts/build_test.sh
 
-# Build firmware and copy to site/assets for OTA
-release: build
-	@echo "Preparing release assets..."
-	cp build/esposito.bin site/firmware.bin
-	@echo "v0.1" > site/version.txt
-	@echo "Release assets ready in site/"
-	@echo "  firmware.bin: $$(wc -c < build/esposito.bin) bytes"
-	@echo "  version.txt: v0.1"
+# Run host-side tests (currently just the reader app's tokenizer suite).
+check:
+	@echo "Running host-side tests..."
+	bash apps/reader/tests/run_tests.sh
+
+# Build the Linux/SDL2 desktop emulator (see linux/README for usage).
+emulate:
+	@echo "Building Linux emulator..."
+	$(MAKE) -C linux
 
 # Help target
 help:
@@ -92,9 +94,13 @@ help:
 	@echo "make clean         - Clean build files"
 	@echo "make size          - Show binary size"
 	@echo "make menuconfig    - Open ESP-IDF configuration menu"
-	@echo "make test          - Build firmware + stub + all apps, copy to SD card, flash"
-	@echo "make release       - Build firmware, copy firmware.bin + version.txt to site/assets"
+	@echo "make deploy-all    - Build firmware + stub + all apps, copy to SD card, flash"
+	@echo "make check         - Run host-side tests (reader tokenizer suite)"
+	@echo "make emulate       - Build the Linux/SDL2 desktop emulator"
 	@echo "make help          - Show this help message"
+	@echo ""
+	@echo "Releases are produced by the .github/workflows/release.yml workflow"
+	@echo "on tag push (vX.Y.Z); see docs/trust-model.md for the signing details."
 	@echo ""
 	@echo "Flash layout:"
 	@echo "  0x0000  Bootloader"
