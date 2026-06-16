@@ -30,6 +30,10 @@ CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192
 CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=4096
 # TLS 1.3 for Cloudflare compatibility
 CONFIG_MBEDTLS_SSL_PROTO_TLS1_3=y
+# Cross-signed certificate support: allows the cert bundle to handle server
+# chains that include a root-ca certificate cross-signed by a different CA
+# (e.g. Google Trust Services' GTS Root R4 cross-signed by GlobalSign).
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
 
 # WiFi memory saving: fewer static RX buffers, no IRAM opt
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=4
