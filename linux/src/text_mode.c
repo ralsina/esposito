@@ -339,8 +339,14 @@ void text_mode_flush(void) {
         for (int col = 0; col < grid_cols; col++) {
             int idx = row * grid_cols + col;
             text_cell_t cell = grid[idx];
+            uint8_t attr = cell.attributes;
             SDL_Color bg = pal(cell.bg_color);
             SDL_Color fg = pal(cell.color);
+
+            // INVERSE swaps foreground and background
+            if (attr & TEXT_ATTR_INVERSE) {
+                SDL_Color tmp = fg; fg = bg; bg = tmp;
+            }
 
             int cx = col * char_w;
             int cy = row * char_h;
@@ -364,8 +370,31 @@ void text_mode_flush(void) {
                             g->height
                         };
                         SDL_RenderCopy(renderer, tex, NULL, &dst);
+                        // BOLD: render again 1px right for bold effect
+                        if (attr & TEXT_ATTR_BOLD) {
+                            dst.x += 1;
+                            SDL_RenderCopy(renderer, tex, NULL, &dst);
+                        }
                     }
                 }
+            }
+
+            // Decorative lines (borders and underline)
+            if (attr & TEXT_ATTR_UNDERLINE) {
+                SDL_SetRenderDrawColor(renderer, fg.r, fg.g, fg.b, 255);
+                SDL_RenderDrawLine(renderer, cx, cy + char_h - 1, cx + char_w - 1, cy + char_h - 1);
+            }
+            if (attr & TEXT_ATTR_BORDER_TOP) {
+                SDL_SetRenderDrawColor(renderer, fg.r, fg.g, fg.b, 255);
+                SDL_RenderDrawLine(renderer, cx, cy, cx + char_w - 1, cy);
+            }
+            if (attr & TEXT_ATTR_BORDER_LEFT) {
+                SDL_SetRenderDrawColor(renderer, fg.r, fg.g, fg.b, 255);
+                SDL_RenderDrawLine(renderer, cx, cy, cx, cy + char_h - 1);
+            }
+            if (attr & TEXT_ATTR_BORDER_RIGHT) {
+                SDL_SetRenderDrawColor(renderer, fg.r, fg.g, fg.b, 255);
+                SDL_RenderDrawLine(renderer, cx + char_w - 1, cy, cx + char_w - 1, cy + char_h - 1);
             }
         }
     }
