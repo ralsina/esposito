@@ -1191,17 +1191,6 @@ void os_event_loop(void) {
                     current_app->checkpoint(current_app);
                 }
                 ESP_LOGI(TAG, "ctrl-esc: checkpoint done");
-                {
-                    FILE *chk = fopen("/sdcard/apps/lali/config/history", "r");
-                    if (chk) {
-                        fseek(chk, 0, SEEK_END);
-                        long sz = ftell(chk);
-                        fclose(chk);
-                        ESP_LOGI(TAG, "ctrl-esc: history file exists, size=%ld", sz);
-                    } else {
-                        ESP_LOGI(TAG, "ctrl-esc: history file NOT FOUND");
-                    }
-                }
                 os_load_app("launcher");
                 continue;
             }
