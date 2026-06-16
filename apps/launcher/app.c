@@ -25,10 +25,11 @@ static void sort_app_names(void) {
     for (int i = 0; i < app_count - 1; i++) {
         for (int j = i + 1; j < app_count; j++) {
             if (strcmp(app_names[i], app_names[j]) > 0) {
-                char tmp[64];
-                strcpy(tmp, app_names[i]);
-                strcpy(app_names[i], app_names[j]);
-                strcpy(app_names[j], tmp);
+                // tmp must hold a full 256-char name + NUL.
+                char tmp[256];
+                snprintf(tmp, sizeof(tmp), "%s", app_names[i]);
+                snprintf(app_names[i], sizeof(app_names[i]), "%s", app_names[j]);
+                snprintf(app_names[j], sizeof(app_names[j]), "%s", tmp);
             }
         }
     }

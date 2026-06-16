@@ -87,7 +87,7 @@ bool app_loader_load(const char *app_name) {
     ESP_LOGI(TAG, "ELF loaded successfully from SD card");
 
     // Set up the app context from ELF symbols
-    strcpy(ctx->name, app_name);
+    snprintf(ctx->name, sizeof(ctx->name), "%s", app_name);
     ctx->init = (app_init_fn)elf_loader_symbol(handle, "app_init");
     ctx->checkpoint = (app_checkpoint_fn)elf_loader_symbol(handle, "app_checkpoint");
     ctx->close = (app_close_fn)elf_loader_symbol(handle, "app_close");

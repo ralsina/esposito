@@ -137,12 +137,31 @@ bool sd_card_is_mounted(void) {
 
 const char* sd_card_get_mount_point(void) { return "/sdcard"; }
 
+// Build a fully-qualified path under /sdcard into out (size out_size).
+// If path starts with '/', it is treated as already-qualified and copied as-is.
+// Otherwise it is joined under "/sdcard".
+// Always null-terminates. Returns false on truncation or NULL input.
+static bool build_full_path(const char *path, char *out, size_t out_size) {
+    if (!path || !out || out_size == 0) return false;
+    int n;
+    if (path[0] == '/') {
+        n = snprintf(out, out_size, "%s", path);
+    } else {
+        n = snprintf(out, out_size, "%s/%s", "/sdcard", path);
+    }
+    if (n < 0 || (size_t)n >= out_size) {
+        // Truncated. Still null-terminate for safety.
+        out[out_size - 1] = '\0';
+        return false;
+    }
+    return true;
+}
+
 bool sd_card_list_files(const char *path) {
     char full_path[128];
-    if (path[0] == '/') {
-        strncpy(full_path, path, sizeof(full_path) - 1);
-    } else {
-        snprintf(full_path, sizeof(full_path), "%s/%s", "/sdcard", path);
+    if (!build_full_path(path, full_path, sizeof(full_path))) {
+        ESP_LOGE(TAG, "Path too long");
+        return false;
     }
 
     DIR *dir = opendir(full_path);
@@ -163,10 +182,9 @@ bool sd_card_read_file(const char *path, char *buffer, size_t max_len) {
     if (!buffer || max_len == 0) return false;
 
     char full_path[128];
-    if (path[0] == '/') {
-        strncpy(full_path, path, sizeof(full_path) - 1);
-    } else {
-        snprintf(full_path, sizeof(full_path), "%s/%s", "/sdcard", path);
+    if (!build_full_path(path, full_path, sizeof(full_path))) {
+        ESP_LOGE(TAG, "Path too long");
+        return false;
     }
 
     FILE *f = fopen(full_path, "r");
@@ -183,10 +201,9 @@ bool sd_card_read_file(const char *path, char *buffer, size_t max_len) {
 
 bool sd_card_write_file(const char *path, const char *data) {
     char full_path[128];
-    if (path[0] == '/') {
-        strncpy(full_path, path, sizeof(full_path) - 1);
-    } else {
-        snprintf(full_path, sizeof(full_path), "%s/%s", "/sdcard", path);
+    if (!build_full_path(path, full_path, sizeof(full_path))) {
+        ESP_LOGE(TAG, "Path too long");
+        return false;
     }
 
     FILE *f = fopen(full_path, "w");
