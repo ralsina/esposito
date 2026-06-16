@@ -78,10 +78,12 @@ static uint8_t sdl_to_mods(SDL_Keymod mod) {
 }
 
 static void flush_display(void) {
-    // Sprite-based rendering (e.g. gameboy display task) manages
-    // the screen independently — don't interfere
-    if (sprite_get_active())
+    // Sprite-based rendering (e.g. gameboy): queue the pending sprite
+    // from the background display task and render it on the main thread
+    if (sprite_get_active()) {
+        sprite_render_pending();
         return;
+    }
     if (graphics_mode_is_active())
         graphics_flush();
     else
