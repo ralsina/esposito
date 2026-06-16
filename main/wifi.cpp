@@ -1,4 +1,6 @@
 #include "wifi.h"
+#include "credential_store.h"
+#include "app_config.h"
 #include "os_core.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
@@ -26,8 +28,47 @@ static char wifi_password[WIFI_MAX_PASSWORD] = {0};
 static wifi_ap_record_t scan_results[WIFI_MAX_SCAN_RESULTS];
 static int scan_count = 0;
 
+// Legacy SD-card storage keys. Used only for one-shot migration to NVS.
+// After migration, the trust model guarantees WiFi credentials live in NVS
+// (see docs/trust-model.md) and these keys should never be re-populated.
 #define WIFI_SETTINGS_SSID_KEY "wifi/ssid"
 #define WIFI_SETTINGS_PASSWORD_KEY "wifi/password"
+
+// One-shot migration: copy credentials from the old SD-card location to NVS,
+// then physically delete the plaintext files from SD. Idempotent: if NVS
+// already has credentials, this is a no-op.
+//
+// We use config_delete() (rather than os_settings_set_string("...","")) so the
+// files are actually unlink()'d from the FAT filesystem rather than left as
+// empty files revealing that this device once had WiFi configured.
+static void migrate_credentials_from_sd_if_present(void) {
+    char legacy_ssid[WIFI_MAX_SSID] = {0};
+    char legacy_password[WIFI_MAX_PASSWORD] = {0};
+    os_settings_get_string(WIFI_SETTINGS_SSID_KEY, "", legacy_ssid, sizeof(legacy_ssid));
+    os_settings_get_string(WIFI_SETTINGS_PASSWORD_KEY, "", legacy_password, sizeof(legacy_password));
+
+    if (legacy_ssid[0] == '\0') {
+        return;  // nothing to migrate
+    }
+
+    ESP_LOGI(TAG, "Migrating WiFi credentials from SD card to NVS (SSID: %s)", legacy_ssid);
+    if (credential_store_set(legacy_ssid, legacy_password)) {
+        // Bind to the "settings" app namespace (must match OS_SETTINGS_APP_NAME
+        // in os_core.c) to reach the legacy /sdcard/apps/settings/config/ files.
+        if (config_bind_app("settings")) {
+            config_delete(WIFI_SETTINGS_SSID_KEY);
+            config_delete(WIFI_SETTINGS_PASSWORD_KEY);
+            config_unbind_app();
+        }
+        ESP_LOGI(TAG, "Migration complete; plaintext credentials removed from SD card");
+    } else {
+        ESP_LOGE(TAG, "Migration to NVS failed; plaintext credentials remain on SD card");
+    }
+
+    // Scrub the local copies; the caller will re-read from NVS.
+    memset(legacy_ssid, 0, sizeof(legacy_ssid));
+    memset(legacy_password, 0, sizeof(legacy_password));
+}
 
 static void wifi_time_sync_notification(struct timeval *timeval_ptr) {
     (void)timeval_ptr;
@@ -90,15 +131,23 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 }
 
 static bool read_config(void) {
-    os_settings_get_string(WIFI_SETTINGS_SSID_KEY, "", wifi_ssid, sizeof(wifi_ssid));
-    os_settings_get_string(WIFI_SETTINGS_PASSWORD_KEY, "", wifi_password, sizeof(wifi_password));
-
-    if (wifi_ssid[0] != '\0') {
-        ESP_LOGI(TAG, "Read WiFi config from shared settings for SSID: %s", wifi_ssid);
+    // Preferred path: read from NVS.
+    if (credential_store_get_ssid(wifi_ssid, sizeof(wifi_ssid))) {
+        credential_store_get_password(wifi_password, sizeof(wifi_password));
+        ESP_LOGI(TAG, "Read WiFi config from NVS for SSID: %s", wifi_ssid);
         return true;
     }
 
-    ESP_LOGI(TAG, "No WiFi config found in shared settings");
+    // Migration path: if NVS is empty but the old SD-card files still hold
+    // plaintext credentials, copy them to NVS and remove the SD files.
+    migrate_credentials_from_sd_if_present();
+    if (credential_store_get_ssid(wifi_ssid, sizeof(wifi_ssid))) {
+        credential_store_get_password(wifi_password, sizeof(wifi_password));
+        ESP_LOGI(TAG, "Read WiFi config from NVS after migration for SSID: %s", wifi_ssid);
+        return true;
+    }
+
+    ESP_LOGI(TAG, "No WiFi config found");
     return false;
 }
 
@@ -264,13 +313,11 @@ bool wifi_save_config(const char *ssid, const char *password) {
         return false;
     }
 
-    bool saved_ssid = os_settings_set_string(WIFI_SETTINGS_SSID_KEY, ssid);
-    bool saved_password = os_settings_set_string(WIFI_SETTINGS_PASSWORD_KEY, password ? password : "");
-    if (!saved_ssid || !saved_password) {
-        ESP_LOGE(TAG, "Failed to persist WiFi config to shared settings");
+    if (!credential_store_set(ssid, password)) {
+        ESP_LOGE(TAG, "Failed to persist WiFi config to NVS");
         return false;
     }
 
-    ESP_LOGI(TAG, "WiFi config saved for SSID: %s", ssid);
+    ESP_LOGI(TAG, "WiFi config saved to NVS for SSID: %s", ssid);
     return true;
 }

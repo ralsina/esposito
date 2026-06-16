@@ -14,7 +14,8 @@
 extern "C" {
 #endif
 
-// Initialize WiFi: read config from SD card, connect if configured
+// Initialize WiFi: read credentials from NVS (migrating from SD card on first
+// boot if legacy plaintext files are present), connect if configured.
 bool wifi_init(void);
 
 // Connection status
@@ -38,7 +39,7 @@ void wifi_disconnect(void);
 bool wifi_time_is_synchronized(void);
 time_t wifi_time_last_sync(void);
 
-// Save WiFi config to SD card
+// Save WiFi credentials to NVS (not exposed to apps; apps see wifi_scan_* only).
 bool wifi_save_config(const char *ssid, const char *password);
 
 #ifdef __cplusplus
