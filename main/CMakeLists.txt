@@ -14,6 +14,7 @@ idf_component_register(
         "app_heap.c"
         "app_config.c"
         "app_manifest.c"
+        "credential_store.c"
         "os_core.c"
         "os_symtab.c"
         "os_printf.c"
