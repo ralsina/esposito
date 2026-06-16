@@ -831,9 +831,8 @@ void app_init(app_context_t *ctx) {
     date_label = ui2_label_create(2, 3, "", TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL);
     weather_label = ui2_label_create(2, 4, "", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
     
-    // Create exit button
-    int btn_y = text_mode_get_rows() - 3;
-    exit_button = ui2_button_create(2, btn_y, 8, 1, "EXIT " ICON_X);
+    // Create exit button (top-right corner)
+    exit_button = ui2_button_create(text_mode_get_cols() - 8, 0, 8, 1, "EXIT " ICON_X);
     ui2_button_set_colors(exit_button, TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_RED);
     ui2_button_set_callback(exit_button, exit_button_callback, NULL);
     
