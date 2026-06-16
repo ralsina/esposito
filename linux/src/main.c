@@ -42,6 +42,8 @@ static char sdl_key_to_ascii(SDL_Keycode sym, SDL_Keymod mod) {
         case SDLK_LEFT:      return 0x97;
         case SDLK_RIGHT:     return 0x96;
         case SDLK_DELETE:    return 0x93;
+        case SDLK_PAGEUP:    return 0x94;
+        case SDLK_PAGEDOWN:  return 0x95;
         default:             return 0;
     }
 }
@@ -56,6 +58,8 @@ static uint8_t sdl_to_raw_key(SDL_Keycode sym) {
         case SDLK_LEFT:     return 0x97;
         case SDLK_RIGHT:    return 0x96;
         case SDLK_DELETE:   return 0x93;
+        case SDLK_PAGEUP:   return 0x94;
+        case SDLK_PAGEDOWN: return 0x95;
         case SDLK_ESCAPE:   return 0x1B;
         case SDLK_RETURN:   return '\r';
         case SDLK_TAB:      return '\t';

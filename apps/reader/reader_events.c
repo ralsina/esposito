@@ -421,20 +421,20 @@ void reader_events_handle_event(reader_state_t *state, const event_t *event, int
             return;
         }
 
-        char key = event->keyboard.key;
+        uint8_t key = (uint8_t)event->keyboard.key;
         if ((event->keyboard.modifiers & MODIFIER_CTRL) && key >= 1 && key <= 26) {
-            key = (char)('a' + key - 1);
+            key = (uint8_t)('a' + key - 1);
         }
 
         reader_mode_t prev_mode = state->mode;
 
         if (state->mode == MODE_READING) {
-            if (key == 'w' || key == 'W') {
+            if (key == 'w' || key == 'W' || key == 0x99 || key == 0x94) {
                 reader_nav_prev_page(state, bold_pending, underline_pending);
                 reader_view_render_reading(state, bold_pending, underline_pending);
                 return;
             }
-            if (key == 's' || key == 'S') {
+            if (key == 's' || key == 'S' || key == 0x98 || key == 0x95) {
                 reader_nav_next_page(state, bold_pending, underline_pending);
                 reader_view_render_reading(state, bold_pending, underline_pending);
                 return;
