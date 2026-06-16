@@ -41,7 +41,7 @@ The build process is also neat: app source files pass through `sed` to strip ESP
 The emulator is genuinely useful for rapid iteration:
 
 - **Layout and UI testing** — tweak widget positions, check border rendering, verify icon alignment, all without touching the device
-- **Game Boy development** — the gameboy emulator app runs at **60 FPS** in the desktop emulator, with sprite rendering via SDL2 textures. The dual-buffer pipeline, the display task running on a background thread, the semaphore synchronization — it all works.
+- **Game Boy development** — the gameboy emulator app runs in the desktop emulator with sprite rendering via SDL2 textures. The dual-buffer pipeline, the display task running on a background thread, the semaphore synchronization — it all works.
 - **Debugging** — run under GDB, add `printf` calls, inspect memory. No serial monitor needed.
 - **The reader app** opens markdown files from `/sdcard/books/`, renders pages, handles navigation, TOC, search — exactly as it does on hardware.
 
