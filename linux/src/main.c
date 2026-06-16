@@ -122,6 +122,9 @@ int main(int argc, char *argv[]) {
     ctx.close = app_close;
 
     // Initialize app
+    // Disable vsync so SDL_RenderPresent doesn't add latency
+    SDL_SetHint(SDL_HINT_RENDER_VSYNC, "0");
+
     ctx.init(&ctx);
 
     // Event loop
@@ -132,6 +135,8 @@ int main(int argc, char *argv[]) {
     flush_display();
 
     while (running) {
+        Uint32 frame_start = SDL_GetTicks();
+
         SDL_Event sdl_event;
         while (SDL_PollEvent(&sdl_event)) {
             switch (sdl_event.type) {
@@ -193,8 +198,12 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Cap frame rate
-        SDL_Delay(16); // ~60 fps
+        // Adaptive sleep: keep loop cadence close to the timer interval
+        Uint32 elapsed = SDL_GetTicks() - frame_start;
+        int interval = ctx.timer_interval_ms > 0 ? ctx.timer_interval_ms : 16;
+        int sleep = interval - (int)elapsed;
+        if (sleep > 0)
+            SDL_Delay((Uint32)sleep);
     }
 
     // Cleanup
