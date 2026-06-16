@@ -1,44 +1,44 @@
 #include "ota_update.h"
+#include "ota_keys.h"
 #include "text_mode.h"
 #include "app_heap.h"
+#include "os_core.h"
 #include "esp_log.h"
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
 #include "esp_http_client.h"
 #include "esp_system.h"
 #include "esp_heap_caps.h"
+#include "esp_crt_bundle.h"
+#include "mbedtls/md.h"
+#include "mbedtls/pk.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "core_json.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdlib.h>  // atoi
 #include <sys/stat.h>
 
 extern bool wifi_is_connected(void);
 
 static const char *TAG = "ota";
 
-static const char OTA_WE1_CA_PEM[] =
-"-----BEGIN CERTIFICATE-----\n"
-"MIICjjCCAjOgAwIBAgIQf/NXaJvCTjAtkOGKQb0OHzAKBggqhkjOPQQDAjBQMSQw\n"
-"IgYDVQQLExtHbG9iYWxTaWduIEVDQyBSb290IENBIC0gUjQxEzARBgNVBAoTCkds\n"
-"b2JhbFNpZ24xEzARBgNVBAMTCkdsb2JhbFNpZ24wHhcNMjMxMjEzMDkwMDAwWhcN\n"
-"MjkwMjIwMTQwMDAwWjA7MQswCQYDVQQGEwJVUzEeMBwGA1UEChMVR29vZ2xlIFRy\n"
-"dXN0IFNlcnZpY2VzMQwwCgYDVQQDEwNXRTEwWTATBgcqhkjOPQIBBggqhkjOPQMB\n"
-"BwNCAARvzTr+Z1dHTCEDhUDCR127WEcPQMFcF4XGGTfn1XzthkubgdnXGhOlCgP4\n"
-"mMTG6J7/EFmPLCaY9eYmJbsPAvpWo4IBAjCB/zAOBgNVHQ8BAf8EBAMCAYYwHQYD\n"
-"VR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMBIGA1UdEwEB/wQIMAYBAf8CAQAw\n"
-"HQYDVR0OBBYEFJB3kjVnxP+ozKnme9mAeXvMk/k4MB8GA1UdIwQYMBaAFFSwe61F\n"
-"uOJAf/sKbvu+M8k8o4TVMDYGCCsGAQUFBwEBBCowKDAmBggrBgEFBQcwAoYaaHR0\n"
-"cDovL2kucGtpLmdvb2cvZ3NyNC5jcnQwLQYDVR0fBCYwJDAioCCgHoYcaHR0cDov\n"
-"L2MucGtpLmdvb2cvci9nc3I0LmNybDATBgNVHSAEDDAKMAgGBmeBDAECATAKBggq\n"
-"hkjOPQQDAgNJADBGAiEAokJL0LgR6SOLR02WWxccAq3ndXp4EMRveXMUVUxMWSMC\n"
-"IQDspFWa3fj7nLgouSdkcPy1SdOR2AGm9OQWs7veyXsBwA==\n"
-"-----END CERTIFICATE-----\n";
+// --- Cached release info from the most recent ota_check_for_update ---
+// Used by ota_apply_update to know what to download.
+static char cached_tag[32] = {0};
+static char cached_firmware_url[256] = {0};
+static char cached_sig_url[256] = {0};
 
 const char *ota_firmware_version(void) {
     return FIRMWARE_VERSION;
 }
+
+// --- HTTP helpers ---
+// All OTA HTTP traffic uses the ESP-IDF Mozilla certificate bundle rather
+// than a per-host pinned PEM. GitHub's CDN chain is well-rooted; the bundle
+// already shipped in firmware for the OS HTTP API.
 
 typedef struct {
     char *buf;
@@ -63,7 +63,11 @@ static esp_err_t ota_http_event_handler(esp_http_client_event_t *event) {
     return ESP_OK;
 }
 
-static int ota_http_get(const char *url, char *out, size_t out_size, int timeout_ms) {
+// Fetch a small JSON/text payload into a buffer. Optionally set an Accept
+// header (NULL to skip). Returns bytes written (excluding NUL), or negative
+// on failure (transport) or negative-of-status (HTTP error).
+static int ota_http_get(const char *url, const char *accept_header,
+                         char *out, size_t out_size, int timeout_ms) {
     if (!url || !out || out_size < 2) return -1;
     out[0] = '\0';
 
@@ -74,7 +78,7 @@ static int ota_http_get(const char *url, char *out, size_t out_size, int timeout
         .timeout_ms = timeout_ms > 0 ? timeout_ms : 10000,
         .event_handler = ota_http_event_handler,
         .user_data = &ctx,
-        .cert_pem = OTA_WE1_CA_PEM,
+        .crt_bundle_attach = esp_crt_bundle_attach,
         .tls_version = ESP_HTTP_CLIENT_TLS_VER_TLS_1_2,
         .buffer_size = 1024,
         .buffer_size_tx = 512,
@@ -86,6 +90,9 @@ static int ota_http_get(const char *url, char *out, size_t out_size, int timeout
     if (!client) {
         ESP_LOGE(TAG, "Failed to init HTTP client");
         return -1;
+    }
+    if (accept_header) {
+        esp_http_client_set_header(client, "Accept", accept_header);
     }
 
     esp_err_t err = esp_http_client_perform(client);
@@ -104,31 +111,126 @@ static int ota_http_get(const char *url, char *out, size_t out_size, int timeout
     return (int)ctx.len;
 }
 
-static void strip_newline(char *s) {
-    size_t len = strlen(s);
-    while (len > 0 && (s[len - 1] == '\n' || s[len - 1] == '\r')) {
-        s[--len] = '\0';
+// --- GitHub releases JSON parsing ---
+
+// Extract tag_name and the firmware.bin / firmware.bin.sig asset URLs from a
+// GitHub releases API response. Handles both /releases/latest (single object)
+// and /releases (array -- caller passes a pointer to the FIRST object).
+//
+// coreJSON does not support filter expressions, so assets[] is iterated by
+// index until both URLs are found (or up to a sane cap).
+static bool parse_release_json(char *json, size_t json_len,
+                                char *tag, size_t tag_size,
+                                char *fw_url, size_t fw_url_size,
+                                char *sig_url, size_t sig_url_size) {
+    if (!json || json_len == 0) return false;
+    tag[0] = fw_url[0] = sig_url[0] = '\0';
+
+    // tag_name
+    const char *val = NULL;
+    size_t vlen = 0;
+    static const char tag_q[] = "tag_name";
+    if (JSON_SearchConst(json, json_len, tag_q, sizeof(tag_q) - 1, &val, &vlen, NULL) != JSONSuccess) {
+        ESP_LOGE(TAG, "tag_name not found in release JSON");
+        return false;
     }
+    size_t copy = vlen < tag_size - 1 ? vlen : tag_size - 1;
+    memcpy(tag, val, copy);
+    tag[copy] = '\0';
+
+    // assets[].name + browser_download_url -- iterate up to 8 assets.
+    for (int i = 0; i < 8; i++) {
+        char query[64];
+        const char *name_val = NULL;
+        size_t name_len = 0;
+        snprintf(query, sizeof(query), "assets[%d].name", i);
+        if (JSON_SearchConst(json, json_len, query, strlen(query),
+                              &name_val, &name_len, NULL) != JSONSuccess) {
+            break;  // no more assets
+        }
+
+        const char *url_val = NULL;
+        size_t url_len = 0;
+        snprintf(query, sizeof(query), "assets[%d].browser_download_url", i);
+        if (JSON_SearchConst(json, json_len, query, strlen(query),
+                              &url_val, &url_len, NULL) != JSONSuccess) {
+            continue;
+        }
+
+        // Match asset name (length-checked to avoid strncasecmp weirdness on non-NUL data).
+        static const char fw_name[] = "firmware.bin";
+        static const char sig_name[] = "firmware.bin.sig";
+        // Match the longest candidate first so "firmware.bin.sig" isn't
+        // accidentally caught by a "firmware.bin" prefix check.
+        if (name_len == sizeof(sig_name) - 1 && strncmp(name_val, sig_name, name_len) == 0) {
+            size_t c = url_len < sig_url_size - 1 ? url_len : sig_url_size - 1;
+            memcpy(sig_url, url_val, c);
+            sig_url[c] = '\0';
+        } else if (name_len == sizeof(fw_name) - 1 && strncmp(name_val, fw_name, name_len) == 0) {
+            size_t c = url_len < fw_url_size - 1 ? url_len : fw_url_size - 1;
+            memcpy(fw_url, url_val, c);
+            fw_url[c] = '\0';
+        }
+    }
+
+    if (fw_url[0] == '\0' || sig_url[0] == '\0') {
+        ESP_LOGE(TAG, "Release %s is missing firmware.bin or firmware.bin.sig asset", tag);
+        return false;
+    }
+    return true;
 }
 
-bool ota_check_for_update(char *latest_version, size_t max_len) {
-    if (!latest_version || max_len < 1) return false;
-    latest_version[0] = '\0';
+// --- Semver comparison ---
 
-    char buf[128];
-    int total = ota_http_get(OTA_VERSION_URL, buf, sizeof(buf), 10000);
+// Parse leading "v1.2.3" (with optional 'v'/'V' prefix) from s.
+// major/minor/patch receive the parsed numbers (0 on parse failure).
+// Returns pointer to the first character after patch (typically '-' for a
+// pre-release suffix, '+' for build metadata, '\0' for end, etc.).
+static const char *parse_semver(const char *s, int *major, int *minor, int *patch) {
+    *major = *minor = *patch = 0;
+    if (!s) return NULL;
+    if (*s == 'v' || *s == 'V') s++;
 
-    if (total <= 0) return false;
+    *major = atoi(s);
+    while (*s && *s != '.') s++;
+    if (*s == '.') s++;
 
-    strip_newline(buf);
+    *minor = atoi(s);
+    while (*s && *s != '.') s++;
+    if (*s == '.') s++;
 
-    if (strlen(buf) >= max_len) return false;
-
-    strcpy(latest_version, buf);
-    printf("[OTA] Current: %s, Latest: %s\n", FIRMWARE_VERSION, latest_version);
-
-    return strcmp(latest_version, FIRMWARE_VERSION) != 0;
+    *patch = atoi(s);
+    while (*s && *s != '-' && *s != '+') s++;
+    return s;
 }
+
+// Compare two version strings per semver rules.
+// Returns: 1 if a > b, -1 if a < b, 0 if equal.
+// A version with a pre-release suffix (e.g. "v1.0.0-beta.1") is LOWER than
+// the same version without one (per semver spec).
+static int compare_versions(const char *a, const char *b) {
+    int amaj, amin, apat, bmaj, bmin, bpat;
+    const char *a_rest = parse_semver(a, &amaj, &amin, &apat);
+    const char *b_rest = parse_semver(b, &bmaj, &bmin, &bpat);
+
+    if (amaj != bmaj) return amaj < bmaj ? -1 : 1;
+    if (amin != bmin) return amin < bmin ? -1 : 1;
+    if (apat != bpat) return apat < bpat ? -1 : 1;
+
+    // Equal X.Y.Z. Pre-release has lower precedence than no pre-release.
+    bool a_pre = a_rest && *a_rest == '-';
+    bool b_pre = b_rest && *b_rest == '-';
+    if (a_pre && !b_pre) return -1;
+    if (!a_pre && b_pre) return 1;
+    if (a_pre && b_pre && a_rest && b_rest) {
+        // Simple string compare of the pre-release tag (incl. leading '-').
+        int r = strcmp(a_rest, b_rest);
+        return r < 0 ? -1 : (r > 0 ? 1 : 0);
+    }
+    return 0;
+}
+
+// --- UI helpers ---
 
 static void draw_progress(int pct) {
     int cols = text_mode_get_cols();
@@ -150,6 +252,8 @@ static void draw_progress(int pct) {
     text_mode_flush();
 }
 
+// --- Stub handoff (unchanged from previous implementation) ---
+
 static void handoff_to_stub(void) {
     const esp_partition_t *update_partition = esp_partition_find_first(
         ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
@@ -167,6 +271,8 @@ static void handoff_to_stub(void) {
     ESP_LOGI(TAG, "Handing off to update stub, rebooting...");
     esp_restart();
 }
+
+// --- SD-card recovery check (unchanged: unsigned by design) ---
 
 void ota_recovery_check(void) {
     const esp_partition_t *running = esp_ota_get_running_partition();
@@ -196,6 +302,157 @@ void ota_recovery_check(void) {
     handoff_to_stub();
 }
 
+// --- Signature verification ---
+
+// Compute SHA-256 of the file at the given path, returning the 32-byte digest
+// in out_hash. Returns true on success.
+static bool compute_file_sha256(const char *path, uint8_t out_hash[32]) {
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        ESP_LOGE(TAG, "Cannot open %s for SHA-256", path);
+        return false;
+    }
+
+    const mbedtls_md_info_t *info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (!info) {
+        ESP_LOGE(TAG, "mbedtls_md_info_from_type(SHA256) returned NULL");
+        fclose(fp);
+        return false;
+    }
+
+    mbedtls_md_context_t md;
+    mbedtls_md_init(&md);
+    int rc = mbedtls_md_setup(&md, info, 0);  // 0 = no HMAC
+    if (rc != 0) {
+        ESP_LOGE(TAG, "mbedtls_md_setup failed: -0x%x", -rc);
+        mbedtls_md_free(&md);
+        fclose(fp);
+        return false;
+    }
+    rc = mbedtls_md_starts(&md);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "mbedtls_md_starts failed: -0x%x", -rc);
+        mbedtls_md_free(&md);
+        fclose(fp);
+        return false;
+    }
+
+    uint8_t buf[4096];
+    size_t total = 0;
+    while (true) {
+        size_t got = fread(buf, 1, sizeof(buf), fp);
+        if (got == 0) break;
+        rc = mbedtls_md_update(&md, buf, got);
+        if (rc != 0) {
+            ESP_LOGE(TAG, "mbedtls_md_update failed: -0x%x", -rc);
+            mbedtls_md_free(&md);
+            fclose(fp);
+            return false;
+        }
+        total += got;
+    }
+    fclose(fp);
+
+    rc = mbedtls_md_finish(&md, out_hash);
+    mbedtls_md_free(&md);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "mbedtls_md_finish failed: -0x%x", -rc);
+        return false;
+    }
+    ESP_LOGI(TAG, "SHA-256 of %s (%u bytes) computed", path, (unsigned)total);
+    return true;
+}
+
+// Verify a DER-encoded ECDSA-P256 signature against the embedded public key.
+// hash must be a 32-byte SHA-256 digest. sig/signature_len is the DER signature.
+// Returns true iff the signature is valid.
+static bool verify_signature(const uint8_t hash[32], const uint8_t *signature, size_t signature_len) {
+    mbedtls_pk_context pk;
+    mbedtls_pk_init(&pk);
+
+    int rc = mbedtls_pk_parse_public_key(&pk,
+                                          (const unsigned char *)ota_release_public_key_pem,
+                                          sizeof(ota_release_public_key_pem));
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Failed to parse embedded public key: -0x%x", -rc);
+        mbedtls_pk_free(&pk);
+        return false;
+    }
+
+    rc = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, hash, 32, signature, signature_len);
+    mbedtls_pk_free(&pk);
+
+    if (rc != 0) {
+        ESP_LOGE(TAG, "Signature verification FAILED: -0x%x", -rc);
+        return false;
+    }
+    ESP_LOGI(TAG, "Signature verification OK");
+    return true;
+}
+
+// --- Public API: check for updates ---
+
+bool ota_check_for_update(char *latest_version, size_t max_len) {
+    if (!latest_version || max_len < 1) return false;
+    latest_version[0] = '\0';
+    cached_tag[0] = cached_firmware_url[0] = cached_sig_url[0] = '\0';
+
+    // Pick endpoint based on channel setting.
+    bool beta = (os_settings_get_int(OTA_BETA_CHANNEL_KEY, 0) == 1);
+    const char *api_url = beta ? OTA_RELEASES_API_BETA : OTA_RELEASES_API_STABLE;
+
+    // GitHub release JSON typically fits in 2-5 KB; allow up to 8 KB.
+    static char json_buf[8192];
+    int total = ota_http_get(api_url, "application/vnd.github+json",
+                              json_buf, sizeof(json_buf), 15000);
+    if (total <= 0) {
+        ESP_LOGE(TAG, "GitHub releases API request failed: %d", total);
+        return false;
+    }
+
+    // For the beta endpoint the response is a JSON array. parse_release_json
+    // expects a single object; seek to the first '{' to skip the array opener.
+    char *json_start = json_buf;
+    if (beta) {
+        json_start = strchr(json_buf, '{');
+        if (!json_start) {
+            ESP_LOGE(TAG, "Malformed beta-channel response (no object)");
+            return false;
+        }
+    }
+
+    char tag[32] = {0}, fw_url[256] = {0}, sig_url[256] = {0};
+    if (!parse_release_json(json_start, json_buf + total - json_start,
+                             tag, sizeof(tag),
+                             fw_url, sizeof(fw_url),
+                             sig_url, sizeof(sig_url))) {
+        ESP_LOGE(TAG, "Failed to parse release JSON");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Latest release: %s", tag);
+    printf("[OTA] Current: %s, Latest: %s\n", FIRMWARE_VERSION, tag);
+
+    // Rollback protection: refuse to downgrade over the network.
+    int cmp = compare_versions(tag, FIRMWARE_VERSION);
+    if (cmp <= 0) {
+        ESP_LOGI(TAG, "Release %s is not newer than running %s; refusing OTA (use SD-card path to downgrade)",
+                 tag, FIRMWARE_VERSION);
+        return false;
+    }
+
+    // Cache for the apply step.
+    snprintf(cached_tag, sizeof(cached_tag), "%s", tag);
+    snprintf(cached_firmware_url, sizeof(cached_firmware_url), "%s", fw_url);
+    snprintf(cached_sig_url, sizeof(cached_sig_url), "%s", sig_url);
+
+    if (strlen(tag) >= max_len) return false;
+    strcpy(latest_version, tag);
+    return true;
+}
+
+// --- Download helper with resume (firmware.bin to SD) ---
+
 typedef struct {
     FILE *fp;
     int total;
@@ -210,7 +467,7 @@ static esp_err_t ota_dl_event_handler(esp_http_client_event_t *event) {
     if (event->event_id == HTTP_EVENT_ON_HEADER) {
         if (event->header_key && strcasecmp(event->header_key, "Content-Length") == 0 && event->header_value) {
             s_dl_ctx.content_length = atoi(event->header_value);
-            printf("[OTA] Content-Length: %d\n", s_dl_ctx.content_length);
+            ESP_LOGI(TAG, "Content-Length: %d", s_dl_ctx.content_length);
         }
         return ESP_OK;
     }
@@ -232,34 +489,16 @@ static esp_err_t ota_dl_event_handler(esp_http_client_event_t *event) {
     return ESP_OK;
 }
 
-void ota_apply_update(void) {
-    printf("\n[OTA] Starting OTA update\n");
-    printf("[OTA] URL: %s\n", OTA_FIRMWARE_URL);
-
-    if (!wifi_is_connected()) {
-        printf("[OTA] ERROR: WiFi not connected!\n");
-        text_mode_clear(TEXT_COLOR_BLACK);
-        text_mode_print_at(0, 0, "Firmware Update");
-        text_mode_print_at(0, 2, "WiFi not connected!");
-        text_mode_flush();
-        return;
-    }
-
-    text_mode_clear(TEXT_COLOR_BLACK);
-    text_mode_print_at(0, 0, "Firmware Update");
-    text_mode_print_at(0, 2, "Releasing app heap...");
-    text_mode_flush();
-
-    // Release the app heap to free contiguous memory for TLS buffers.
-    // This function is firmware code (OS stack + firmware BSS), so it is safe
-    // to free the app heap here. We must not return to the calling app after this.
-    app_heap_release();
-
-    text_mode_print_at(0, 2, "Downloading...");
-    text_mode_flush();
+// Download url to /sdcard/system/<dest_filename> with HTTP Range resume.
+// Returns true on success. Same retry/stall logic as before.
+static bool download_with_resume(const char *url, const char *dest_filename) {
+    char dest_path[64];
+    snprintf(dest_path, sizeof(dest_path), "/sdcard/system/%s", dest_filename);
+    char tmp_path[64];
+    snprintf(tmp_path, sizeof(tmp_path), "/sdcard/system/%s.tmp", dest_filename);
 
     mkdir("/sdcard/system", 0755);
-    remove("/sdcard/system/firmware.tmp");
+    remove(tmp_path);
 
     const int max_stalled_retries = 4;
     int expected_total = 0;
@@ -274,12 +513,10 @@ void ota_apply_update(void) {
         int before_attempt_total = downloaded_total;
         char status_line[40];
 
-        FILE *fp = fopen("/sdcard/system/firmware.tmp", downloaded_total > 0 ? "ab" : "wb");
+        FILE *fp = fopen(tmp_path, downloaded_total > 0 ? "ab" : "wb");
         if (!fp) {
-            text_mode_print_at(0, 6, "Failed to create file!");
-            text_mode_flush();
-            vTaskDelay(pdMS_TO_TICKS(3000));
-            esp_restart();
+            ESP_LOGE(TAG, "Failed to open %s for write", tmp_path);
+            return false;
         }
 
         s_dl_ctx = (ota_dl_ctx_t){
@@ -291,11 +528,11 @@ void ota_apply_update(void) {
         };
 
         esp_http_client_config_t config = {
-            .url = OTA_FIRMWARE_URL,
+            .url = url,
             .timeout_ms = 120000,
             .event_handler = ota_dl_event_handler,
             .user_data = &s_dl_ctx,
-            .cert_pem = OTA_WE1_CA_PEM,
+            .crt_bundle_attach = esp_crt_bundle_attach,
             .tls_version = ESP_HTTP_CLIENT_TLS_VER_TLS_1_2,
             .buffer_size = 4096,
             .buffer_size_tx = 1024,
@@ -306,24 +543,21 @@ void ota_apply_update(void) {
         esp_http_client_handle_t client = esp_http_client_init(&config);
         if (!client) {
             fclose(fp);
-            remove("/sdcard/system/firmware.tmp");
-            text_mode_print_at(0, 6, "Failed to init HTTP!");
-            text_mode_flush();
-            vTaskDelay(pdMS_TO_TICKS(3000));
-            esp_restart();
+            remove(tmp_path);
+            ESP_LOGE(TAG, "Failed to init HTTP client");
+            return false;
         }
 
         if (downloaded_total > 0) {
             char range_header[48];
             snprintf(range_header, sizeof(range_header), "bytes=%d-", downloaded_total);
             esp_http_client_set_header(client, "Range", range_header);
-            printf("[OTA] Resume chunk %d (stalled retries: %d/%d) with %s\n",
-                   successful_chunks + 1, stalled_retries, max_stalled_retries, range_header);
+            ESP_LOGI(TAG, "Resume chunk %d (stalled retries: %d/%d) with %s",
+                     successful_chunks + 1, stalled_retries, max_stalled_retries, range_header);
             snprintf(status_line, sizeof(status_line), "Chunk %d retry %d/%d",
                      successful_chunks + 1, stalled_retries, max_stalled_retries);
         } else {
-            printf("[OTA] Download start (stalled retries: %d/%d)\n",
-                   stalled_retries, max_stalled_retries);
+            ESP_LOGI(TAG, "Download start (stalled retries: %d/%d)", stalled_retries, max_stalled_retries);
             snprintf(status_line, sizeof(status_line), "Download start");
         }
 
@@ -339,10 +573,8 @@ void ota_apply_update(void) {
             expected_total = s_dl_ctx.content_length;
         }
 
-        printf("[OTA] Perform result: %s (0x%x)\n", esp_err_to_name(err), err);
-        printf("[OTA] HTTP status: %d\n", status);
-        printf("[OTA] Downloaded: %d bytes, expected: %d, error flag: %d\n",
-               downloaded_total, expected_total, s_dl_ctx.error);
+        ESP_LOGI(TAG, "Perform: %s (0x%x), HTTP %d, downloaded=%d expected=%d err_flag=%d",
+                 esp_err_to_name(err), err, status, downloaded_total, expected_total, s_dl_ctx.error);
 
         esp_http_client_cleanup(client);
         fclose(fp);
@@ -360,16 +592,15 @@ void ota_apply_update(void) {
             if (downloaded_total > before_attempt_total) {
                 successful_chunks++;
                 stalled_retries = 0;
-                printf("[OTA] Incomplete data but progress made (+%d bytes), continuing without consuming retries...\n",
-                       downloaded_total - before_attempt_total);
+                ESP_LOGI(TAG, "Incomplete data but progress made (+%d bytes), continuing",
+                         downloaded_total - before_attempt_total);
                 snprintf(status_line, sizeof(status_line), "Chunk ok +%d bytes", downloaded_total - before_attempt_total);
                 text_mode_print_at(0, 5, "                                        ");
                 text_mode_print_at(0, 5, status_line);
                 text_mode_flush();
             } else {
                 stalled_retries++;
-                printf("[OTA] Incomplete data with no progress, consuming retry %d/%d...\n",
-                       stalled_retries, max_stalled_retries);
+                ESP_LOGW(TAG, "Stalled, consuming retry %d/%d", stalled_retries, max_stalled_retries);
                 snprintf(status_line, sizeof(status_line), "Stalled retry %d/%d", stalled_retries, max_stalled_retries);
                 text_mode_print_at(0, 5, "                                        ");
                 text_mode_print_at(0, 5, status_line);
@@ -381,59 +612,128 @@ void ota_apply_update(void) {
         break;
     }
 
-    printf("[OTA] Perform done: %s, status=%d, bytes=%d\n",
-           esp_err_to_name(final_err), final_status, downloaded_total);
+    ESP_LOGI(TAG, "Download done: %s, status=%d, bytes=%d",
+             esp_err_to_name(final_err), final_status, downloaded_total);
 
-    if (!download_ok || (expected_total > 0 && downloaded_total < expected_total)) {
-        remove("/sdcard/system/firmware.tmp");
+    if (!download_ok || (expected_total > 0 && downloaded_total < expected_total) || downloaded_total <= 0) {
+        remove(tmp_path);
+        return false;
+    }
+
+    if (rename(tmp_path, dest_path) != 0) {
+        ESP_LOGE(TAG, "Failed to rename %s -> %s", tmp_path, dest_path);
+        remove(tmp_path);
+        return false;
+    }
+    return true;
+}
+
+// --- Public API: apply update ---
+
+void ota_apply_update(void) {
+    ESP_LOGI(TAG, "Starting OTA update");
+    text_mode_clear(TEXT_COLOR_BLACK);
+    text_mode_print_at(0, 0, "Firmware Update");
+
+    if (!wifi_is_connected()) {
+        ESP_LOGE(TAG, "WiFi not connected");
+        text_mode_print_at(0, 2, "WiFi not connected!");
+        text_mode_flush();
+        return;
+    }
+
+    // If the cache is empty (e.g. device rebooted between check and apply),
+    // re-query so we still know what to download.
+    if (cached_firmware_url[0] == '\0') {
+        char tag[32];
+        if (!ota_check_for_update(tag, sizeof(tag))) {
+            text_mode_print_at(0, 2, "No update available");
+            text_mode_flush();
+            return;
+        }
+    }
+
+    char current_tag[64];
+    snprintf(current_tag, sizeof(current_tag), "Update: %s", cached_tag[0] ? cached_tag : "?");
+    text_mode_print_at(0, 1, current_tag);
+    text_mode_print_at(0, 2, "Releasing app heap...");
+    text_mode_flush();
+
+    // Release the app heap to free contiguous memory for TLS buffers.
+    // This is firmware code (OS stack + firmware BSS), so it is safe to free
+    // the app heap here. We must not return to the calling app after this.
+    app_heap_release();
+
+    // 1) Download firmware.bin (with resume).
+    text_mode_print_at(0, 2, "Downloading firmware...   ");
+    text_mode_flush();
+    if (!download_with_resume(cached_firmware_url, "firmware.bin")) {
+        ESP_LOGE(TAG, "firmware.bin download failed");
         text_mode_print_at(0, 5, "Download failed");
-        text_mode_print_at(0, 6, "Download error!");
+        text_mode_print_at(0, 6, "Firmware download error!");
         text_mode_flush();
         vTaskDelay(pdMS_TO_TICKS(3000));
         esp_restart();
     }
 
-    int total = downloaded_total;
-    printf("[OTA] Downloaded %d bytes\n", total);
-
-    if (total <= 0) {
-        remove("/sdcard/system/firmware.tmp");
-        text_mode_print_at(0, 6, "Empty download!");
+    // 2) Download firmware.bin.sig (small, single request).
+    text_mode_print_at(0, 2, "Downloading signature...  ");
+    text_mode_flush();
+    if (!download_with_resume(cached_sig_url, "firmware.bin.sig")) {
+        ESP_LOGE(TAG, "firmware.bin.sig download failed");
+        text_mode_print_at(0, 5, "Signature download failed");
+        text_mode_print_at(0, 6, "Missing signature!");
         text_mode_flush();
         vTaskDelay(pdMS_TO_TICKS(3000));
         esp_restart();
     }
 
-    FILE *fp = fopen("/sdcard/system/firmware.tmp", "rb");
-    if (!fp) {
-        remove("/sdcard/system/firmware.tmp");
-        text_mode_print_at(0, 6, "File read error!");
+    // 3) Verify signature.
+    text_mode_print_at(0, 2, "Verifying signature...    ");
+    text_mode_flush();
+
+    uint8_t hash[32];
+    if (!compute_file_sha256("/sdcard/system/firmware.bin", hash)) {
+        text_mode_print_at(0, 6, "Hash error!");
         text_mode_flush();
         vTaskDelay(pdMS_TO_TICKS(3000));
         esp_restart();
     }
 
-    uint8_t magic;
-    if (fread(&magic, 1, 1, fp) != 1) {
-        fclose(fp);
-        remove("/sdcard/system/firmware.tmp");
-        text_mode_print_at(0, 6, "File read error!");
+    // Load signature file. DER ECDSA-P256 sig is typically 70-72 bytes;
+    // allow up to 256 for headroom.
+    FILE *sig_fp = fopen("/sdcard/system/firmware.bin.sig", "rb");
+    if (!sig_fp) {
+        text_mode_print_at(0, 6, "Cannot read signature!");
         text_mode_flush();
         vTaskDelay(pdMS_TO_TICKS(3000));
         esp_restart();
     }
-    fclose(fp);
-
-    if (magic != 0xE9) {
-        remove("/sdcard/system/firmware.tmp");
-        text_mode_print_at(0, 6, "Invalid firmware image!");
+    uint8_t sig_buf[256];
+    size_t sig_len = fread(sig_buf, 1, sizeof(sig_buf), sig_fp);
+    fclose(sig_fp);
+    if (sig_len == 0 || sig_len >= sizeof(sig_buf)) {
+        ESP_LOGE(TAG, "Signature file size out of range: %u", (unsigned)sig_len);
+        text_mode_print_at(0, 6, "Bad signature file!");
         text_mode_flush();
         vTaskDelay(pdMS_TO_TICKS(3000));
         esp_restart();
     }
 
-    rename("/sdcard/system/firmware.tmp", "/sdcard/system/firmware.bin");
+    if (!verify_signature(hash, sig_buf, sig_len)) {
+        ESP_LOGE(TAG, "REJECTING firmware: signature verification failed");
+        // Scrub the unsigned/incompatible firmware so we don't accidentally
+        // install it on the next reboot via the SD-card recovery path.
+        remove("/sdcard/system/firmware.bin");
+        remove("/sdcard/system/firmware.bin.sig");
+        text_mode_print_at(0, 5, "Signature INVALID");
+        text_mode_print_at(0, 6, "Refusing unsigned firmware!");
+        text_mode_flush();
+        vTaskDelay(pdMS_TO_TICKS(3000));
+        esp_restart();
+    }
 
+    ESP_LOGI(TAG, "Firmware signature verified, applying update");
     draw_progress(100);
     text_mode_print_at(0, 6, "Rebooting to flash...");
     text_mode_flush();

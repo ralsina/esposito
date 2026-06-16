@@ -1,0 +1,133 @@
+# Build, sign, and publish a firmware release when a version tag is pushed.
+#
+# Tag conventions:
+#   vMAJOR.MINOR.PATCH            -> stable release
+#   vMAJOR.MINOR.PATCH-beta.N     -> prerelease (also visible to devices
+#                                     with the beta-channel toggle on)
+#   vMAJOR.MINOR.PATCH-rc.N       -> prerelease
+#   vMAJOR.MINOR.PATCH-pre.N      -> prerelease
+#
+# The signing key lives in the OTA_SIGNING_PRIVATE_KEY repository secret as a
+# PEM-encoded EC PRIVATE KEY string. The matching public key is embedded in
+# firmware at main/ota_keys.h; only firmware signed by this key will be
+# accepted by OTA on devices.
+#
+# Secrets required:
+#   OTA_SIGNING_PRIVATE_KEY  PEM ECDSA-P256 private key (one-line per PEM rule,
+#                            newline-separated; we write it verbatim to a file)
+#
+# To rotate the key: generate a new keypair, replace main/ota_keys.h with the
+# new public key, set OTA_SIGNING_PRIVATE_KEY to the new private key, commit,
+# and cut a release. Devices running older firmware will need a one-time
+# SD-card install (physical-access trusted path) to upgrade to the first
+# release signed by the new key.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (must already exist in the repo)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # required by softprops/action-gh-release to create releases
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.name }}
+          submodules: false
+
+      - name: Build firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.1
+          target: esp32
+          path: .
+          command: idf.py build
+
+      - name: Stage artifacts
+        run: |
+          mkdir -p artifacts
+          cp build/esposito.bin artifacts/firmware.bin
+          # Embed the tag in version.txt so the device has a redundant source
+          # of truth for what was published (not currently consumed, but
+          # useful for debugging).
+          echo "${{ steps.tag.outputs.name }}" > artifacts/version.txt
+
+      - name: Write signing key from secret
+        env:
+          OTA_KEY: ${{ secrets.OTA_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$OTA_KEY" ]; then
+            echo "ERROR: OTA_SIGNING_PRIVATE_KEY secret is not set." >&2
+            exit 1
+          fi
+          printf '%s\n' "$OTA_KEY" > /tmp/ota_release_private.pem
+          chmod 600 /tmp/ota_release_private.pem
+
+      - name: Sign firmware
+        run: |
+          bash scripts/sign_firmware.sh artifacts/firmware.bin /tmp/ota_release_private.pem
+
+          # Sanity check: verify the signature against the public key embedded
+          # in main/ota_keys.h. If this fails, the secret private key and the
+          # committed public key are mismatched -- fail the release closed.
+          #
+          # Extract the PEM: each quoted literal in ota_keys.h is one PEM line,
+          # trailing \n escapes translate to PEM's line breaks.
+          grep -oE '"[^"]*"' main/ota_keys.h \
+            | sed 's/^"//; s/"$//; s/\\n$//' > /tmp/embedded_pub.pem
+          openssl dgst -sha256 \
+            -verify /tmp/embedded_pub.pem \
+            -signature artifacts/firmware.bin.sig \
+            artifacts/firmware.bin
+
+      - name: Shred signing key
+        if: always()
+        run: |
+          if [ -f /tmp/ota_release_private.pem ]; then
+            shred -u /tmp/ota_release_private.pem
+          fi
+
+      - name: Detect prerelease
+        id: rel
+        run: |
+          TAG="${{ steps.tag.outputs.name }}"
+          if [[ "$TAG" =~ -(beta|rc|pre)\. ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.tag.outputs.name }}
+          generate_release_notes: true
+          prerelease: ${{ steps.rel.outputs.prerelease == 'true' }}
+          files: |
+            artifacts/firmware.bin
+            artifacts/firmware.bin.sig
+            artifacts/firmware.bin.sha256
+            artifacts/version.txt
