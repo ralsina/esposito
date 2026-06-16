@@ -45,6 +45,73 @@ void app_event(AppContext* ctx, Event* e); // Handle subscribed events
 idf.py build
 ```
 
+## Linux Emulator
+
+Esposito includes a desktop emulation environment for testing apps without real hardware. It uses SDL2 to simulate the display and keyboard, and reimplements the OS API surface in C for Linux.
+
+### Prerequisites
+
+```bash
+sudo apt install libsdl2-dev gcc make
+```
+
+### Usage
+
+```bash
+cd linux
+./run.sh                    # Default: hello_world
+./run.sh reader             # Run the reader app
+./run.sh file_picker        # Run file picker
+```
+
+### Controls
+
+| Key | Action |
+|-----|--------|
+| `W` / `S` | Previous / next page (reader) |
+| `↑` / `↓` / `PgUp` / `PgDn` | Page navigation |
+| `Esc` | Back / Exit current mode |
+| `Ctrl+Q` / `Ctrl+Esc` | Quit emulator |
+| Mouse click | Touch simulation |
+| `A`-`Z`, `0`-`9` | Keyboard input |
+
+### Emulated SD Card
+
+The emulator creates `/sdcard/` as a staging directory. You can point `ESP_SD_CARD` at an existing mount:
+
+```bash
+ESP_SD_CARD=/mnt/sdcard ./run.sh reader
+```
+
+### Architecture
+
+The emulator lives in `linux/` and reimplements the OS API surface in plain C + SDL2:
+
+| File | What it provides |
+|------|-----------------|
+| `src/text_mode.c` | VLW bitmap font rendering, text grid, UTF-8 support, attribute rendering (borders, underline, bold, inverse) |
+| `src/graphics_mode.c` | 4bpp indexed framebuffer with 16-color RGB565 palette |
+| `src/sprite.c` | Sprite creation and scaled rendering (used by the gameboy app) |
+| `src/os_core.c` | `os_task_create` (pthread), `os_semaphore_*` (SDL semaphores), `esp_timer_get_time` |
+| `src/app_config.c` | `config_get/set_*` (JSON file on disk) |
+| `src/hardware.c` | Display stubs, keyboard, serial UART stubs |
+| `src/flash_rom.c` | ROM file loading for the gameboy emulator |
+| `src/wifi.c` | WiFi / HTTP stubs |
+| `src/main.c` | Event loop, SDL key → app event translation |
+
+### Limitations
+
+- No real WiFi or HTTP — `os_http_get()` returns errors
+- Touch simulated via mouse clicks
+- No serial port — `serial_init` / `serial_write` are no-ops
+- No sound
+- App switching (`os_load_app`) not fully implemented — exits current app
+- 320×240 display at native pixel resolution
+
+### Debugging
+
+The emulator runs as a normal Linux process. All code is compiled with `-g`, so you can run under GDB or use `printf` for debug output.
+
 ## Flashing
 
 ```bash
