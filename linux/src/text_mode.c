@@ -136,6 +136,27 @@ static SDL_Texture *vlw_glyph_texture(vlw_glyph_t *g, SDL_Renderer *renderer) {
     return g->texture;
 }
 
+// --- UTF-8 decoder ---
+// Decodes one UTF-8 codepoint at *str, returns the codepoint, writes bytes consumed to *len.
+// On invalid bytes, returns '?' and sets *len = 1.
+static uint16_t utf8_decode(const char *str, int *len) {
+    uint8_t b0 = (uint8_t)str[0];
+    if (b0 < 0x80) {
+        *len = 1;
+        return b0;
+    } else if ((b0 & 0xE0) == 0xC0) {
+        *len = 2;
+        if (!str[1]) return '?';
+        return (uint16_t)((b0 & 0x1F) << 6) | (uint8_t)(str[1] & 0x3F);
+    } else if ((b0 & 0xF0) == 0xE0) {
+        *len = 3;
+        if (!str[1] || !str[2]) return '?';
+        return (uint16_t)((b0 & 0x0F) << 12) | ((uint8_t)(str[1] & 0x3F) << 6) | (uint8_t)(str[2] & 0x3F);
+    }
+    *len = 1;
+    return '?';
+}
+
 // --- SDL2 state ---
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -257,22 +278,25 @@ int text_mode_get_char_height(void) { return char_h; }
 void text_mode_set_cursor(int x, int y) { cursor_x = x; cursor_y = y; }
 void text_mode_get_cursor(int *x, int *y) { *x = cursor_x; *y = cursor_y; }
 
-static void put_char(int x, int y, const char *str, uint8_t color, uint8_t bg, uint8_t attr) {
-    unsigned char ch = (unsigned char)str[0];
+static void put_char(int x, int y, uint16_t codepoint, uint8_t color, uint8_t bg, uint8_t attr) {
     if (x < 0 || x >= grid_cols || y < 0 || y >= grid_rows) return;
     int idx = y * grid_cols + x;
-    grid[idx].character = ch;
+    grid[idx].character = codepoint;
     grid[idx].color = color;
     grid[idx].bg_color = bg;
     grid[idx].attributes = attr;
 }
 
 static void put_str(int x, int y, const char *str, uint8_t color, uint8_t bg, uint8_t attr) {
-    for (int i = 0; str[i]; i++) {
-        if (str[i] == '\n') { y++; x = 0; continue; }
+    const char *p = str;
+    while (*p) {
+        if (*p == '\n') { y++; x = 0; p++; continue; }
         if (x >= grid_cols) { x = 0; y++; }
         if (y >= grid_rows) break;
-        put_char(x, y, str + i, color, bg, attr);
+        int len;
+        uint16_t cp = utf8_decode(p, &len);
+        put_char(x, y, cp, color, bg, attr);
+        p += len;
         x++;
     }
 }
@@ -400,8 +424,12 @@ void text_mode_render_char(int x, int y, uint32_t codepoint, uint8_t cr, uint8_t
 
 void text_mode_render_string(int x, int y, const char *str, uint8_t cr, uint8_t cg, uint8_t cb) {
     int cx = x;
-    for (const char *p = str; *p; p++) {
-        text_mode_render_char(cx, y, (uint8_t)*p, cr, cg, cb);
+    const char *p = str;
+    while (*p) {
+        int len;
+        uint16_t cp = utf8_decode(p, &len);
+        text_mode_render_char(cx, y, cp, cr, cg, cb);
+        p += len;
         cx += glyph_advance;
     }
 }
