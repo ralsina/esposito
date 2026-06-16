@@ -56,7 +56,7 @@ mkdir -p "${SDK_DIR}/ld"
 # Top-level API headers from main/
 echo "  Copying headers..."
 for header in os_core.h app_config.h app_manifest.h text_mode.h hardware.h \
-              hardware_config.h graphics_mode.h terminal_mode.h wifi.h os_printf.h; do
+               hardware_config.h graphics_mode.h terminal_mode.h wifi.h; do
     cp "${PROJECT_ROOT}/main/${header}" "${SDK_DIR}/include/"
 done
 
