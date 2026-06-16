@@ -22,21 +22,25 @@ A simple operating system for ESP32 Cheap Yellow Display (CYD) with dynamic app 
 ## Architecture
 
 - **Framework**: ESP-IDF
-- **Display**: LovyanGFX on ILI9341 (320x240), text mode and graphics mode
+- **Display**: LovyanGFX on ST7789 (320x240), text mode and graphics mode
 - **App Storage**: SD card filesystem
 - **Event System**: Central event queue with app subscriptions
 - **App Loading**: ELF binaries loaded dynamically from SD card
 - **Input**: BBQ20 keyboard (I2C) + resistive touchscreen
 
+## Trust Model
+
+Esposito is a personal device. Applications are fully trusted (no sandboxing), physical access is root, and the network is untrusted. The full model — including what is and is not protected, what is implemented today versus planned, and how to recover from a misbehaving app — is in [docs/trust-model.md](docs/trust-model.md).
+
 ## App Interface
 
-Each app library (.so) must export these functions:
+Each app is compiled to a relocatable ELF binary (`program.elf`) and must export these functions:
 
 ```c
-void app_init(AppContext* ctx);           // Restore state or fresh start
-void app_checkpoint(AppContext* ctx);     // Save state to SD
-void app_close(AppContext* ctx);          // Cleanup
-void app_event(AppContext* ctx, Event* e); // Handle subscribed events
+void app_init(app_context_t *ctx);            // Restore state or fresh start
+void app_checkpoint(app_context_t *ctx);      // Save state to SD
+void app_close(app_context_t *ctx);           // Cleanup
+void app_event(app_context_t *ctx, event_t *e); // Handle subscribed events
 ```
 
 ## Building
@@ -165,8 +169,19 @@ Tips:
 
 ```text
 esposito/
-├── main/           # Core OS implementation
-├── apps/           # Application libraries
+├── main/           # Core OS implementation (event loop, ELF loader, HAL, drivers)
+├── apps/           # Application libraries (compiled to ELF binaries)
+├── libs/           # Shared libraries for apps (ui2, json, arduboy, lua, serial_rx)
+├── fonts/          # Font definitions for display
+├── boards/         # Per-board hardware configuration (board.h, display_config.h)
+├── scripts/        # Build helpers (build_app.sh, build_test.sh, font generators)
+├── linux/          # Desktop emulator (SDL2) for host-side development
+├── docs/           # Architecture and design documents
+├── stub/           # OTA update stub partition
+├── site/           # Static site sources (website)
+├── CMakeLists.txt  # ESP-IDF project root
+├── partitions.csv  # Flash partition layout
+├── sdkconfig       # ESP-IDF configuration
 └── README.md
 ```
 
