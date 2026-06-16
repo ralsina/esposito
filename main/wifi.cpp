@@ -55,19 +55,30 @@ static void migrate_credentials_from_sd_if_present(void) {
     if (credential_store_set(legacy_ssid, legacy_password)) {
         // Bind to the "settings" app namespace (must match OS_SETTINGS_APP_NAME
         // in os_core.c) to reach the legacy /sdcard/apps/settings/config/ files.
+        bool deleted = false;
         if (config_bind_app("settings")) {
-            config_delete(WIFI_SETTINGS_SSID_KEY);
-            config_delete(WIFI_SETTINGS_PASSWORD_KEY);
+            bool del_ssid = config_delete(WIFI_SETTINGS_SSID_KEY);
+            bool del_pass = config_delete(WIFI_SETTINGS_PASSWORD_KEY);
             config_unbind_app();
+            deleted = del_ssid && del_pass;
         }
-        ESP_LOGI(TAG, "Migration complete; plaintext credentials removed from SD card");
+        if (deleted) {
+            ESP_LOGI(TAG, "Migration complete; plaintext credentials removed from SD card");
+        } else {
+            // NVS now has the creds, but the SD plaintext files are still there.
+            // The trust-model guarantee (creds live in NVS) holds for new code,
+            // but the user should know the SD files weren't cleaned up.
+            ESP_LOGW(TAG, "Migration copied to NVS, but failed to delete plaintext SD files");
+        }
     } else {
         ESP_LOGE(TAG, "Migration to NVS failed; plaintext credentials remain on SD card");
     }
 
-    // Scrub the local copies; the caller will re-read from NVS.
-    memset(legacy_ssid, 0, sizeof(legacy_ssid));
-    memset(legacy_password, 0, sizeof(legacy_password));
+    // Scrub the local copies; the caller will re-read from NVS. Use secure_zero
+    // rather than memset because the compiler's dead-store elimination can
+    // otherwise elide the wipe (these buffers are not read again).
+    credential_store_secure_zero(legacy_ssid, sizeof(legacy_ssid));
+    credential_store_secure_zero(legacy_password, sizeof(legacy_password));
 }
 
 static void wifi_time_sync_notification(struct timeval *timeval_ptr) {
