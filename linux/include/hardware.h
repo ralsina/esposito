@@ -51,6 +51,11 @@ typedef struct {
 bool keyboard_read_event(keyboard_event_t *event);
 bool keyboard_is_available(void);
 
+// Serial / UART
+bool serial_init(int baud, int data_bits, char parity, int stop_bits);
+size_t serial_write(const char *data, size_t len);
+void serial_log_output_set_enabled(bool enabled);
+
 // Capabilities
 #define HAS_KEYBOARD 1
 #define HAS_TOUCH 0

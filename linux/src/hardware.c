@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stddef.h>
 
 // Display stubs — apps use text_mode for rendering
 void display_clear(uint16_t color) { (void)color; }
@@ -20,3 +21,8 @@ void display_set_backlight(uint8_t brightness) { (void)brightness; }
 // Keyboard — real implementation in main.c's event loop, this catches non-SDL usage
 bool keyboard_read_event(keyboard_event_t *event) { (void)event; return false; }
 bool keyboard_is_available(void) { return true; }
+
+// Serial / UART stubs — no real hardware on the emulator
+bool serial_init(int baud, int data_bits, char parity, int stop_bits) { (void)baud;(void)data_bits;(void)parity;(void)stop_bits; return true; }
+size_t serial_write(const char *data, size_t len) { (void)data; return len; }
+void serial_log_output_set_enabled(bool enabled) { (void)enabled; }
