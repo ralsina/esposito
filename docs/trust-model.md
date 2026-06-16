@@ -25,22 +25,22 @@ The OS does not attempt to protect itself from malicious apps, but it does harde
 
 ### ELF loader robustness
 
-*Status: planned.* Tracked as a follow-up to this document.
+*Status: implemented.*
 
-The ELF loader in `main/elf_loader.c` will bounds-check every field it reads from a `program.elf` file before using it. A corrupted ELF (bad SD card sector, interrupted `cp`, half-written upload) will produce a clean load failure rather than an out-of-bounds read, OOM, or crash. The device stays usable; only the bad app fails to launch.
+The ELF loader in `main/elf_loader.c` bounds-checks every field it reads from a `program.elf` file before using it. A corrupted ELF (bad SD card sector, interrupted `cp`, half-written upload) produces a clean load failure rather than an out-of-bounds read, OOM, or crash. The device stays usable; only the bad app fails to launch.
 
 ### Network firmware updates (OTA)
 
-*Status: planned.* Tracked as a follow-up to this document.
+*Status: implemented.*
 
-Firmware delivered over the network will be **cryptographically signed**. The device will:
+Firmware delivered over the network is **cryptographically signed**. The device:
 
-1. Ask the GitHub releases API for the latest (or latest pre-release) version.
-2. Compare the offered version against the running version and refuse to downgrade over the network.
-3. Download `firmware.bin` plus its detached ECDSA-P256 signature.
-4. Verify the signature against a public key compiled into the firmware before applying the update.
+1. Asks the GitHub releases API for the latest (or latest pre-release) version.
+2. Compares the offered version against the running version and refuses to downgrade over the network.
+3. Downloads `firmware.bin` plus its detached ECDSA-P256 signature.
+4. Verifies the signature against a public key compiled into the firmware before applying the update.
 
-A network attacker who MITMs the connection, compromises the CDN, or steals a TLS certificate will not be able to install persistent firmware without the offline ECDSA private key.
+A network attacker who MITMs the connection, compromises the CDN, or steals a TLS certificate cannot install persistent firmware without the offline ECDSA private key.
 
 ### Manual firmware install via SD card
 
@@ -50,9 +50,9 @@ As an escape hatch and downgrade path, the user can copy any valid ESP32 image t
 
 ### Network credentials
 
-*Status: planned.* Tracked as a follow-up to this document.
+*Status: implemented.*
 
-WiFi SSID and password will be stored in the device's NVS flash partition, not on the SD card, and will not be exposed through any OS API. Apps will continue to ask whether WiFi is connected (`wifi_is_connected`), scan for networks (`wifi_scan`), and request connection/disconnection, but will not be able to read the stored credentials. Anyone with physical access to the chip's flash will still be able to extract them — physical access is root — but a casual app will not be able to exfiltrate them via `fopen("/sdcard/...")`.
+WiFi SSID and password are stored in the device's NVS flash partition, not on the SD card, and are not exposed through any OS API. Apps can ask whether WiFi is connected (`wifi_is_connected`), scan for networks (`wifi_scan`), and request connection/disconnection, but they cannot read the stored credentials. Anyone with physical access to the chip's flash can still extract them — physical access is root — but a casual app cannot exfiltrate them via `fopen("/sdcard/...")`.
 
 ## What is not protected
 
@@ -78,10 +78,10 @@ If an app misbehaves:
 | Asset / surface | Threat | Protection | Status |
 |---|---|---|---|
 | App-to-app data on SD | Malicious app | None (apps are trusted) | by design |
-| OS from app misbehavior | Buggy app | ELF loader bounds-checks; crash-loop safe mode | robustness: planned |
-| Firmware over network | MITM / compromised CDN | ECDSA-P256 signature required | planned |
+| OS from app misbehavior | Buggy app | ELF loader bounds-checks; crash-loop safe mode | implemented |
+| Firmware over network | MITM / compromised CDN | ECDSA-P256 signature required | implemented |
 | Firmware via SD | N/A | Unsigned by design (physical access = root) | implemented |
-| WiFi credentials | App exfiltration | NVS storage; not exposed via API | planned |
+| WiFi credentials | App exfiltration | NVS storage; not exposed via API | implemented |
 | WiFi credentials | Physical theft | None (no flash encryption) | by design |
 | App data on SD | Physical theft | None (removable plain FAT) | by design |
 
