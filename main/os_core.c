@@ -31,26 +31,6 @@
 
 static const char *TAG = "os_core";
 
-// Pinned intermediate CA for esposito.ralsina.me (WE1, issued by GlobalSign ECC Root CA - R4).
-// Same cert used by OTA updates — do not change without updating ota_update.c too.
-static const char ESPOSITO_CA_PEM[] =
-"-----BEGIN CERTIFICATE-----\n"
-"MIICjjCCAjOgAwIBAgIQf/NXaJvCTjAtkOGKQb0OHzAKBggqhkjOPQQDAjBQMSQw\n"
-"IgYDVQQLExtHbG9iYWxTaWduIEVDQyBSb290IENBIC0gUjQxEzARBgNVBAoTCkds\n"
-"b2JhbFNpZ24xEzARBgNVBAMTCkdsb2JhbFNpZ24wHhcNMjMxMjEzMDkwMDAwWhcN\n"
-"MjkwMjIwMTQwMDAwWjA7MQswCQYDVQQGEwJVUzEeMBwGA1UEChMVR29vZ2xlIFRy\n"
-"dXN0IFNlcnZpY2VzMQwwCgYDVQQDEwNXRTEwWTATBgcqhkjOPQIBBggqhkjOPQMB\n"
-"BwNCAARvzTr+Z1dHTCEDhUDCR127WEcPQMFcF4XGGTfn1XzthkubgdnXGhOlCgP4\n"
-"mMTG6J7/EFmPLCaY9eYmJbsPAvpWo4IBAjCB/zAOBgNVHQ8BAf8EBAMCAYYwHQYD\n"
-"VR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMBIGA1UdEwEB/wQIMAYBAf8CAQAw\n"
-"HQYDVR0OBBYEFJB3kjVnxP+ozKnme9mAeXvMk/k4MB8GA1UdIwQYMBaAFFSwe61F\n"
-"uOJAf/sKbvu+M8k8o4TVMDYGCCsGAQUFBwEBBCowKDAmBggrBgEFBQcwAoYaaHR0\n"
-"cDovL2kucGtpLmdvb2cvZ3NyNC5jcnQwLQYDVR0fBCYwJDAioCCgHoYcaHR0cDov\n"
-"L2MucGtpLmdvb2cvci9nc3I0LmNybDATBgNVHSAEDDAKMAgGBmeBDAECATAKBggq\n"
-"hkjOPQQDAgNJADBGAiEAokJL0LgR6SOLR02WWxccAq3ndXp4EMRveXMUVUxMWSMC\n"
-"IQDspFWa3fj7nLgouSdkcPy1SdOR2AGm9OQWs7veyXsBwA==\n"
-"-----END CERTIFICATE-----\n";
-
 
 // Screensaver state
 static int64_t screensaver_last_activity = 0;
@@ -625,8 +605,6 @@ static int os_http_download_internal(const char *url,
 
     if (progress) progress(0, "connecting");
 
-    const char *cert_pem = os_is_https_url(url) ? ESPOSITO_CA_PEM : NULL;
-
     for (int attempt = 1; attempt <= max_attempts; attempt++) {
         FILE *fp = fopen(path, sofar > 0 ? "ab" : "wb");
         if (!fp) {
@@ -639,7 +617,7 @@ static int os_http_download_internal(const char *url,
         esp_http_client_config_t config = {
             .url = url,
             .timeout_ms = 120000,
-            .cert_pem = cert_pem,
+            .crt_bundle_attach = esp_crt_bundle_attach,
             .buffer_size = 4096,
             .buffer_size_tx = 512,
         };
@@ -906,7 +884,7 @@ int os_http_get(const char *url, char *out, size_t out_size, int timeout_ms) {
         .timeout_ms = timeout_ms > 0 ? timeout_ms : 5000,
         .event_handler = os_http_get_event_handler,
         .user_data = &ctx,
-        .cert_pem = ESPOSITO_CA_PEM,
+        .crt_bundle_attach = esp_crt_bundle_attach,
         .buffer_size = 1024,
         .buffer_size_tx = 512,
     };
