@@ -18,8 +18,8 @@
 // signed by the new key.
 static const char ota_release_public_key_pem[] =
 "-----BEGIN PUBLIC KEY-----\n"
-"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq5pbo40tZO/TBndgRbNi1H88zkld\n"
-"uIt8nFAng7tABNcWfwUPCvABPVYvhuSJnFquazNYBYrdCLllq2ordfaJOg==\n"
+"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEw+Y7abTHZkMCAHHV0PHQhkbyBIt7\n"
+"meuzuyXhoXbJIGgs65prxh+8rvPRuGwOfwjUrpVxARkGPSvFLy1motE1Lw==\n"
 "-----END PUBLIC KEY-----\n";
 
 #endif // OTA_KEYS_H
