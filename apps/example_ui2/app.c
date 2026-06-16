@@ -105,4 +105,13 @@ void app_checkpoint(app_context_t *ctx) {
 
 void app_close(app_context_t *ctx) {
     (void)ctx;
+    // Destroy the UI tree so ui2_screen + all child widgets are freed.
+    // ui2_screen_destroy recursively destroys children before the screen.
+    if (screen) {
+        ui2_screen_destroy(screen);
+        screen = NULL;
+        list = NULL;
+        info = NULL;
+        status = NULL;
+    }
 }
