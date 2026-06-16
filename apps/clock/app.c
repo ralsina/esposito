@@ -573,10 +573,8 @@ static void print_padded_line(int x, int y, uint8_t color, uint8_t attr, const c
     if (text_len < 0) {
         return;
     }
-    text_mode_print_at_attr(x, y, line, color, attr);
+     text_mode_print_at_attr(x, y, line, color, attr);
 }
-
-extern int large_time_y;  // Defined dynamically in draw_clock()
 
 static void clear_large_digit(int x, int y) {
     for (int row = 0; row < CLOCK_DIGIT_H * CLOCK_DIGIT_SCALE; row++) {
@@ -636,9 +634,7 @@ static void draw_static_clock(void) {
     }
 }
 
-extern int large_time_y;  // Defined dynamically in draw_clock()
-
-static void draw_large_time(const os_time_status_t *time_status) {
+static void draw_large_time(const os_time_status_t *time_status, int large_time_y) {
     static char prev_time_line[32] = "";
 
     char time_line[32];
@@ -676,9 +672,6 @@ static void draw_large_time(const os_time_status_t *time_status) {
     strncpy(prev_time_line, time_line, sizeof(prev_time_line) - 1);
     prev_time_line[sizeof(prev_time_line) - 1] = '\0';
 }
-
-// Global variable for dynamic time position
-int large_time_y = 4;
 
 static void draw_clock(void) {
     refresh_weather_if_needed(0);
@@ -813,7 +806,7 @@ static void draw_clock(void) {
     ui2_screen_render(screen);
     
     // Then draw large time on top
-    draw_large_time(&display_status);
+    draw_large_time(&display_status, large_time_y);
     text_mode_flush();
 }
 

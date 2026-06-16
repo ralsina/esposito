@@ -150,6 +150,11 @@ static bool backlight_i2c_init(void) {
 
 // Display implementation using LovyanGFX
 bool display_init(void) {
+    // Idempotent: boot.cpp and hardware_init() both call this; only the first
+    // call must run LovyanGFX begin() (a second begin() reconfigures the panel
+    // and can leave the display in a partial state).
+    if (display_initialized) return true;
+
     ESP_LOGI(TAG, "Initializing display with LovyanGFX");
 
 #if BOARD_BACKLIGHT_I2C_EXPANDER
@@ -715,7 +720,7 @@ void led_set_rgb(uint8_t r, uint8_t g, uint8_t b) {
         ch_green.gpio_num = BOARD_LED_GREEN_PIN;
         ch_green.speed_mode = BOARD_LED_LEDC_MODE;
         ch_green.channel = BOARD_LED_CH_GREEN;
-        ch_red.timer_sel = BOARD_LED_LEDC_TIMER;
+        ch_green.timer_sel = BOARD_LED_LEDC_TIMER;
         ledc_channel_config(&ch_green);
 
         ledc_channel_config_t ch_blue = {};
@@ -878,6 +883,10 @@ bool display_save_screenshot_ppm(const char *path) {
 // Keyboard implementation for BBQ20 (based on terminado)
 bool keyboard_init(void) {
 #if BOARD_HAS_BBQ20_KEYBOARD
+    // Idempotent: boot.cpp and hardware_init() both call this; avoid
+    // re-initializing the I2C bus and BBQ20 controller twice in one boot.
+    if (keyboard_initialized) return true;
+
     ESP_LOGI(TAG, "Initializing BBQ20 keyboard driver");
 
     if (bbq20_keyboard_init()) {
