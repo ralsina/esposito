@@ -16,12 +16,12 @@ typedef struct {
 } sprite_t;
 
 static sprite_t *active_sprite = NULL;
-static SDL_mutex *render_mutex = NULL;
 
-static void ensure_mutex(void) {
-    if (!render_mutex)
-        render_mutex = SDL_CreateMutex();
-}
+// Pending render state — populated by sprite_push_rotated_zoom from any thread,
+// consumed by sprite_render_pending on the main thread.
+static SDL_Surface *pending_surface = NULL;
+static int pending_x, pending_y, pending_w, pending_h;
+static SDL_sem *pending_sem = NULL;
 
 static sprite_t *get_sprite(void *handle) {
     return (sprite_t *)handle;
@@ -129,7 +129,7 @@ void sprite_push(void *handle, int x, int y) {
 void sprite_push_rotated_zoom(void *handle, int x, int y, float angle, float scale_x, float scale_y) {
     sprite_t *s = get_sprite(handle);
     if (!s) return;
-    (void)angle; // ignore rotation
+    (void)angle;
 
     int w = (int)(s->width * scale_x);
     int h = (int)(s->height * scale_y);
@@ -154,22 +154,43 @@ void sprite_push_rotated_zoom(void *handle, int x, int y, float angle, float sca
     }
     SDL_UnlockSurface(surf);
 
-    ensure_mutex();
-    SDL_LockMutex(render_mutex);
+    // Don't render here — just queue for the main thread
+    // (SDL2 rendering from background threads is not safe on Linux)
+    if (pending_surface)
+        SDL_FreeSurface(pending_surface);
+    pending_surface = surf;
+    pending_x = x;
+    pending_y = y;
+    pending_w = w;
+    pending_h = h;
+    if (!pending_sem)
+        pending_sem = SDL_CreateSemaphore(0);
+    SDL_SemPost(pending_sem);
+}
+
+// Called from main thread's flush_dispatch to perform the actual SDL rendering.
+void sprite_render_pending(void) {
+    // Wait briefly for a pending sprite (the display task may still be pushing)
+    if (pending_sem) {
+        if (SDL_SemWaitTimeout(pending_sem, 50) != 0)
+            return; // no sprite ready yet
+    }
+    if (!pending_surface) return;
+
     SDL_Renderer *renderer = text_mode_get_renderer();
-    if (!renderer) { SDL_UnlockMutex(render_mutex); SDL_FreeSurface(surf); return; }
+    if (!renderer) return;
 
-    SDL_Texture *tex = SDL_CreateTextureFromSurface(renderer, surf);
-    SDL_FreeSurface(surf);
-    if (!tex) { SDL_UnlockMutex(render_mutex); return; }
+    SDL_Texture *tex = SDL_CreateTextureFromSurface(renderer, pending_surface);
+    SDL_FreeSurface(pending_surface);
+    pending_surface = NULL;
+    if (!tex) return;
 
-    SDL_Rect dst_rect = {x, y, w, h};
+    SDL_Rect dst_rect = {pending_x, pending_y, pending_w, pending_h};
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, tex, NULL, &dst_rect);
     SDL_RenderPresent(renderer);
     SDL_DestroyTexture(tex);
-    SDL_UnlockMutex(render_mutex);
 }
 
 void sprite_set_pivot(void *handle, float pivot_x, float pivot_y) {
@@ -182,10 +203,7 @@ void sprite_set_pivot(void *handle, float pivot_x, float pivot_y) {
 void sprite_destroy(void *handle) {
     sprite_t *s = get_sprite(handle);
     if (!s) return;
-    ensure_mutex();
-    SDL_LockMutex(render_mutex);
     if (active_sprite == s) active_sprite = NULL;
-    SDL_UnlockMutex(render_mutex);
     free(s->pixels);
     free(s);
 }

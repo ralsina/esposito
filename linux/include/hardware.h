@@ -34,6 +34,7 @@ void sprite_set_pivot(void *sprite, float pivot_x, float pivot_y);
 void sprite_destroy(void *sprite);
 void sprite_set_active(void *sprite);
 void *sprite_get_active(void);
+void sprite_render_pending(void);
 
 // Flash ROM loading
 const uint8_t *flash_rom_load(const char *path, size_t *out_size);
