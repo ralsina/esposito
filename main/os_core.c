@@ -14,6 +14,8 @@
 #include "wifi.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
+#include "esp_mem.h"
+#include "mbedtls/platform.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "esp_spiffs.h"
@@ -273,7 +275,7 @@ void os_unload_app(void) {
         if (current_app->handle) {
             elf_loader_unload((elf_handle_t *)current_app->handle);
         }
-        free(current_app);
+        app_free(current_app);
         current_app = NULL;
         config_unbind_app();
         app_heap_reset();
@@ -1242,8 +1244,15 @@ void os_event_loop(void) {
                 os_unload_app();
             }
 
-            app_heap_release();
-            os_log_global_heap_stats("after app heap release for download");
+            // Reset (not release) the app heap so the 96 KB storage stays
+            // reserved.  Then redirect mbedTLS allocations to the app heap:
+            // TLS buffers come from the reserved 96 KB instead of fragmenting
+            // the system heap.  Since no app is running during the download,
+            // the full app heap is available for TLS use.
+            app_heap_reset();
+            mbedtls_platform_set_calloc_free(app_calloc, app_free);
+            os_log_global_heap_stats("before download (app heap reserved)");
+            app_heap_log_stats("before download");
 
             memcpy(&pending_download, &request, sizeof(request));
             os_download_progress(0, "connecting");
@@ -1254,6 +1263,13 @@ void os_event_loop(void) {
             os_store_download_result(request.requester_app, download_result,
                                      download_result > 0 ? request.path : NULL);
             memset(&pending_download, 0, sizeof(pending_download));
+
+            // Restore the default mbedTLS allocator and reset the app heap
+            // to give the next app a clean 96 KB.
+            mbedtls_platform_set_calloc_free(esp_mbedtls_mem_calloc, esp_mbedtls_mem_free);
+            app_heap_log_stats("after download (before reset)");
+            app_heap_reset();
+            os_log_global_heap_stats("after download (before app reload)");
 
             if (!os_load_app(request.requester_app)) {
                 ESP_LOGE(TAG, "OS download relaunch failed: %s", request.requester_app);
