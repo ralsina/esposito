@@ -373,10 +373,6 @@ static bool init_grid(font_id_t font) {
     const int display_width = display_get_width();
     const int display_height = display_get_height();
 
-    const int max_cols = display_width / 4;
-    const int max_rows = display_height / 6;
-    const int max_cells = max_cols * max_rows;
-
     if (grid) {
         free(grid);
         grid = NULL;
@@ -390,10 +386,12 @@ static bool init_grid(font_id_t font) {
 
     grid_cols = display_width / font_width;
     grid_rows = display_height / font_height;
+    grid_stride = grid_cols;
+    grid_capacity = grid_cols * grid_rows;
 
-    grid = (text_cell_t *)calloc(max_cells, sizeof(text_cell_t));
+    grid = (text_cell_t *)calloc(grid_capacity, sizeof(text_cell_t));
     if (!grid) {
-        ESP_LOGE(TAG, "Failed to allocate grid: %dx%d", max_cols, max_rows);
+        ESP_LOGE(TAG, "Failed to allocate grid: %dx%d", grid_cols, grid_rows);
         grid_cols = TEXT_MODE_COLS;
         grid_rows = TEXT_MODE_ROWS;
         grid_stride = 0;
@@ -405,13 +403,10 @@ static bool init_grid(font_id_t font) {
         return false;
     }
 
-    grid_stride = max_cols;
-    grid_capacity = max_cells;
-
     display_load_font(font, FONT_VARIANT_REGULAR);
 
-    ESP_LOGI(TAG, "Grid allocated: %dx%d (max %dx%d), font: %s (%dx%d)",
-             grid_cols, grid_rows, max_cols, max_rows,
+    ESP_LOGI(TAG, "Grid allocated: %dx%d, font: %s (%dx%d)",
+             grid_cols, grid_rows,
              font_table[font].name, font_width, font_height);
     return true;
 }

@@ -16,7 +16,9 @@ typedef struct terminal_mode terminal_mode_t;
 typedef void (*terminal_mode_write_cb)(const char *data, size_t len);
 typedef void (*terminal_mode_title_cb)(const char *title);
 
-terminal_mode_t *terminal_mode_default(void);
+size_t terminal_mode_struct_size(void);
+void terminal_mode_clear_active(void);
+terminal_mode_t *terminal_mode_get_active(void);
 
 bool terminal_mode_init(terminal_mode_t *term, int cols, int rows, terminal_mode_write_cb write_cb);
 bool terminal_mode_init_ex(terminal_mode_t *term, int cols, int rows, terminal_mode_write_cb write_cb, int font_id);

@@ -17,7 +17,6 @@
 
 #define MAX_BOOKS    100
 #define DISPLAY_LEN  64
-#define CATALOG_SIZE 32768
 
 #define DOWNLOAD_RESULT_KEY "os/download_result"
 #define DOWNLOAD_PATH_KEY   "os/download_path"
@@ -40,7 +39,6 @@ static ui2_screen_t *screen;
 static ui2_list_t *book_list;
 static book_entry_t books[MAX_BOOKS];
 static int book_count;
-static char catalog_buf[CATALOG_SIZE];
 static char *list_items[MAX_BOOKS];
 static char list_texts[MAX_BOOKS][DISPLAY_LEN];
 static uint8_t row_attrs[MAX_BOOKS];
@@ -117,24 +115,35 @@ static int compare_books(const void *a, const void *b) {
 }
 
 static int load_catalog_from_disk(void) {
+    struct stat st;
+    if (stat(CATALOG_PATH, &st) != 0 || st.st_size <= 0) {
+        printf("[bookshop] cannot stat catalog file\n");
+        return -1;
+    }
+
+    size_t file_size = (size_t)st.st_size;
+    char *catalog_buf = malloc(file_size + 1);
+    if (!catalog_buf) {
+        printf("[bookshop] cannot allocate %u bytes for catalog\n", (unsigned)file_size);
+        return -1;
+    }
+
     FILE *fp = fopen(CATALOG_PATH, "r");
     if (!fp) {
         printf("[bookshop] fopen(%s) failed\n", CATALOG_PATH);
+        free(catalog_buf);
         return -1;
     }
-    size_t len = fread(catalog_buf, 1, CATALOG_SIZE - 1, fp);
-    printf("[bookshop] fread %u bytes from catalog file\n", (unsigned)len);
+    size_t len = fread(catalog_buf, 1, file_size, fp);
     fclose(fp);
 
     if (len == 0) {
         printf("[bookshop] empty catalog file\n");
+        free(catalog_buf);
         return -1;
     }
-    if (len >= CATALOG_SIZE - 1) {
-        printf("[bookshop] WARNING: catalog may be truncated (read %u)\n", (unsigned)len);
-    }
     catalog_buf[len] = '\0';
-    printf("[bookshop] catalog content (first 200 bytes): %.200s\n", catalog_buf);
+    printf("[bookshop] fread %u bytes from catalog file\n", (unsigned)len);
 
     book_count = 0;
     for (int i = 0; i < MAX_BOOKS; i++) {
@@ -178,6 +187,7 @@ static int load_catalog_from_disk(void) {
     }
 
     printf("[bookshop] parsed %d books\n", book_count);
+    free(catalog_buf);
     if (book_count > 0) {
         qsort(books, book_count, sizeof(book_entry_t), compare_books);
         printf("[bookshop] sorted %d books alphabetically\n", book_count);
@@ -235,6 +245,19 @@ static int load_catalog(void) {
     text_mode_print_at_attr(0, 0, "Checking catalog cache...", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
     text_mode_flush();
 
+    if (config_get_int("catalog_dl_pending", 0)) {
+        config_delete("catalog_dl_pending");
+        if (!file_exists(CATALOG_PATH)) {
+            printf("[bookshop] Catalog download failed\n");
+            return -1;
+        }
+        printf("[bookshop] Catalog downloaded, loading from disk\n");
+        int result = load_catalog_from_disk();
+        if (result > 0) {
+            return result;
+        }
+    }
+
     if (is_catalog_fresh()) {
         text_mode_print_at_attr(0, 1, "Loading cached catalog...", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
         text_mode_flush();
@@ -249,7 +272,9 @@ static int load_catalog(void) {
     printf("[bookshop] Catalog missing or stale, requesting OS download\n");
     text_mode_print_at_attr(0, 1, "Requesting OS download...", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
     text_mode_flush();
+    config_set_int("catalog_dl_pending", 1);
     if (!os_download_via_os(CATALOG_URL, CATALOG_PATH, 0)) {
+        config_delete("catalog_dl_pending");
         printf("[bookshop] Failed to queue OS download\n");
         return -1;
     }

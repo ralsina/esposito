@@ -18,7 +18,6 @@
 
 #define MAX_APPS      64
 #define DISPLAY_LEN   64
-#define CATALOG_SIZE  32768
 #define CATALOG_CACHE_HOURS 24
 
 #define INSTALLING_KEY "os/installing_id"
@@ -205,11 +204,15 @@ static app_status_t check_app_status_at(int index) {
 }
 
 static int catalog_read_one(int index, catalog_app_t *app) {
+    struct stat st;
+    if (stat(CATALOG_PATH, &st) != 0 || st.st_size <= 0) return -1;
+    size_t file_size = (size_t)st.st_size;
+
     FILE *fp = fopen(CATALOG_PATH, "r");
     if (!fp) return -1;
-    char *buf = malloc(CATALOG_SIZE);
+    char *buf = malloc(file_size + 1);
     if (!buf) { fclose(fp); return -1; }
-    size_t len = fread(buf, 1, CATALOG_SIZE - 1, fp);
+    size_t len = fread(buf, 1, file_size, fp);
     fclose(fp);
     if (len == 0) { free(buf); return -1; }
     buf[len] = '\0';
@@ -291,6 +294,17 @@ static int load_catalog(void) {
     text_mode_print_at_attr(0, 0, "Checking catalog cache...", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
     text_mode_flush();
 
+    if (config_get_int("catalog_dl_pending", 0)) {
+        config_delete("catalog_dl_pending");
+        if (!file_exists(CATALOG_PATH)) {
+            printf("[appstore] Catalog download failed\n");
+            return -1;
+        }
+        printf("[appstore] Catalog downloaded, loading from disk\n");
+        int result = load_catalog_from_disk();
+        if (result > 0) return result;
+    }
+
     if (is_catalog_fresh()) {
         text_mode_print_at_attr(0, 1, "Loading cached catalog...", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
         text_mode_flush();
@@ -301,7 +315,9 @@ static int load_catalog(void) {
     printf("[appstore] Catalog missing or stale, requesting OS download\n");
     text_mode_print_at_attr(0, 1, "Requesting OS download...", TEXT_COLOR_CYAN, TEXT_ATTR_NORMAL);
     text_mode_flush();
+    config_set_int("catalog_dl_pending", 1);
     if (!os_download_via_os(CATALOG_URL, CATALOG_PATH, 0)) {
+        config_delete("catalog_dl_pending");
         printf("[appstore] Failed to queue OS download\n");
         return -1;
     }

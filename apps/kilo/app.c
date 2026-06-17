@@ -886,9 +886,9 @@ void app_init(app_context_t *ctx) {
     kilo->editor.dirty = 0;
     kilo->editor.filename[0] = '\0';
     
-    kilo->term = terminal_mode_default();
+    kilo->term = calloc(1, terminal_mode_struct_size());
     if (!kilo->term) {
-        os_log(TAG, "Failed to get terminal mode");
+        os_log(TAG, "Failed to allocate terminal mode");
         free(kilo);
         kilo = NULL;
         return;

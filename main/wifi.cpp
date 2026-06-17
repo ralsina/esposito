@@ -98,6 +98,10 @@ static void wifi_time_sync_notification(struct timeval *timeval_ptr) {
     } else {
         ESP_LOGI(TAG, "Time synchronized via NTP");
     }
+
+    esp_sntp_stop();
+    ntp_initialized = false;
+    ESP_LOGI(TAG, "SNTP stopped after first sync to free memory");
 }
 
 static void wifi_start_time_sync(void) {

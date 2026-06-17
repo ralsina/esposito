@@ -5,6 +5,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static const char *TAG = "terminado";
 
@@ -245,7 +246,11 @@ void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TIMER | EVENT_SERIAL;
     ctx->timer_interval_ms = 50;
 
-    term = terminal_mode_default();
+    term = calloc(1, terminal_mode_struct_size());
+    if (!term) {
+        os_log(TAG, "Failed to allocate terminal mode");
+        return;
+    }
 
     load_terminal_config();
     apply_serial_config(&term_cfg);

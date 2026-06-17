@@ -14,8 +14,6 @@
 #include "wifi.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
-#include "esp_mem.h"
-#include "mbedtls/platform.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "esp_spiffs.h"
@@ -278,6 +276,7 @@ void os_unload_app(void) {
         app_free(current_app);
         current_app = NULL;
         config_unbind_app();
+        terminal_mode_clear_active();
         app_heap_reset();
         os_log_global_heap_stats("after unload");
         app_heap_log_stats("after unload");
@@ -603,11 +602,16 @@ static int os_http_download_internal(const char *url,
     size_t last_reported_bytes = 0;
     int last_percent = -1;
     int status = 0;
-    const int max_attempts = 4;
+    int attempt = 0;
+    int no_progress_count = 0;
+    const int max_no_progress = 5;
 
     if (progress) progress(0, "connecting");
 
-    for (int attempt = 1; attempt <= max_attempts; attempt++) {
+    for (;;) {
+        size_t sofar_before = sofar;
+        attempt++;
+
         FILE *fp = fopen(path, sofar > 0 ? "ab" : "wb");
         if (!fp) {
             ESP_LOGE(TAG, "Download: can't open %s", path);
@@ -620,8 +624,8 @@ static int os_http_download_internal(const char *url,
             .url = url,
             .timeout_ms = 120000,
             .crt_bundle_attach = esp_crt_bundle_attach,
-            .buffer_size = 4096,
-            .buffer_size_tx = 512,
+            .buffer_size = 1024,
+            .buffer_size_tx = 256,
         };
 
         esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -639,25 +643,20 @@ static int os_http_download_internal(const char *url,
             char range_header[64];
             snprintf(range_header, sizeof(range_header), "bytes=%u-", (unsigned)sofar);
             esp_http_client_set_header(client, "Range", range_header);
-            ESP_LOGI(TAG, "Download: resuming from byte %u (attempt %d/%d)",
-                     (unsigned)sofar, attempt, max_attempts);
+            ESP_LOGI(TAG, "Download: resuming from byte %u (attempt %d)",
+                     (unsigned)sofar, attempt);
         } else {
             ESP_LOGI(TAG, "Download: starting perform for %s", url);
         }
 
         esp_err_t err = esp_http_client_open(client, 0);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Download: open failed err=%d attempt=%d/%d", err, attempt, max_attempts);
+            ESP_LOGW(TAG, "Download: open failed err=%d (attempt %d)", err, attempt);
             esp_http_client_cleanup(client);
             fclose(fp);
-            if (attempt < max_attempts) {
-                if (progress) progress(last_percent < 0 ? 0 : last_percent, "retrying...");
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                continue;
-            }
-            remove(path);
-            if (progress) progress(-1, "download failed");
-            return -1;
+            if (progress) progress(last_percent < 0 ? 0 : last_percent, "retrying...");
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            goto check_progress;
         }
 
         int64_t content_length = esp_http_client_fetch_headers(client);
@@ -684,65 +683,75 @@ static int os_http_download_internal(const char *url,
             continue;
         }
 
-        bool complete = false;
-        err = ESP_OK;
-        char io_buffer[1024];
-        while (1) {
-            int bytes_read = esp_http_client_read(client, io_buffer, sizeof(io_buffer));
-            if (bytes_read < 0) {
-                ESP_LOGW(TAG, "Download: read error %d (attempt %d/%d)", bytes_read, attempt, max_attempts);
-                err = ESP_FAIL;
-                break;
-            }
-            if (bytes_read == 0) {
-                if (esp_http_client_is_complete_data_received(client)) {
-                    complete = true;
+        {
+            bool complete = false;
+            err = ESP_OK;
+            char io_buffer[1024];
+            while (1) {
+                int bytes_read = esp_http_client_read(client, io_buffer, sizeof(io_buffer));
+                if (bytes_read < 0) {
+                    ESP_LOGW(TAG, "Download: read error %d (attempt %d)", bytes_read, attempt);
+                    err = ESP_FAIL;
                     break;
                 }
-                continue;
-            }
-
-            size_t written = fwrite(io_buffer, 1, (size_t)bytes_read, fp);
-            if (written != (size_t)bytes_read) {
-                ESP_LOGE(TAG, "Download: write error");
-                err = ESP_FAIL;
-                break;
-            }
-
-            sofar += written;
-            if (progress) {
-                if (total > 0) {
-                    int pct = (int)(sofar * 100 / total);
-                    if (pct > 100) pct = 100;
-                    if (pct != last_percent) {
-                        last_percent = pct;
-                        progress(pct, NULL);
+                if (bytes_read == 0) {
+                    if (esp_http_client_is_complete_data_received(client)) {
+                        complete = true;
+                        break;
                     }
-                } else if (sofar - last_reported_bytes >= 32768) {
-                    char status_text[40];
-                    snprintf(status_text, sizeof(status_text), "%u KB", (unsigned)(sofar / 1024));
-                    progress(last_percent < 0 ? 0 : last_percent, status_text);
-                    last_reported_bytes = sofar;
+                    continue;
+                }
+
+                size_t written = fwrite(io_buffer, 1, (size_t)bytes_read, fp);
+                if (written != (size_t)bytes_read) {
+                    ESP_LOGE(TAG, "Download: write error");
+                    err = ESP_FAIL;
+                    break;
+                }
+
+                sofar += written;
+                if (progress) {
+                    if (total > 0) {
+                        int pct = (int)(sofar * 100 / total);
+                        if (pct > 100) pct = 100;
+                        if (pct != last_percent) {
+                            last_percent = pct;
+                            progress(pct, NULL);
+                        }
+                    } else if (sofar - last_reported_bytes >= 32768) {
+                        char status_text[40];
+                        snprintf(status_text, sizeof(status_text), "%u KB", (unsigned)(sofar / 1024));
+                        progress(last_percent < 0 ? 0 : last_percent, status_text);
+                        last_reported_bytes = sofar;
+                    }
                 }
             }
+
+            ESP_LOGI(TAG, "Download: attempt %d done err=%d status=%d sofar=%u complete=%d",
+                     attempt, err, status, (unsigned)sofar, complete ? 1 : 0);
+
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            fclose(fp);
+
+            if (err == ESP_OK && complete && (status == 200 || status == 206)) {
+                if (progress) progress(100, "done");
+                return (int)sofar;
+            }
         }
 
-        ESP_LOGI(TAG, "Download: attempt %d/%d done err=%d status=%d sofar=%u complete=%d",
-                 attempt, max_attempts, err, status, (unsigned)sofar, complete ? 1 : 0);
+        if (progress) progress(last_percent < 0 ? 0 : last_percent, "retrying...");
+        vTaskDelay(pdMS_TO_TICKS(1000));
 
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        fclose(fp);
-
-        if (err == ESP_OK && complete && (status == 200 || status == 206)) {
-            if (progress) progress(100, "done");
-            return (int)sofar;
-        }
-
-        if (attempt < max_attempts) {
-            if (progress) progress(last_percent < 0 ? 0 : last_percent, "retrying...");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
+    check_progress:
+        if (sofar > sofar_before) {
+            no_progress_count = 0;
+        } else {
+            no_progress_count++;
+            if (no_progress_count >= max_no_progress) {
+                ESP_LOGE(TAG, "Download: no progress for %d attempts, giving up", max_no_progress);
+                break;
+            }
         }
     }
 
@@ -925,6 +934,10 @@ bool os_download_via_os(const char *url, const char *path, size_t expected_size)
     }
     if (pending_download.active) {
         ESP_LOGW(TAG, "Download request ignored; another OS download is active");
+        return false;
+    }
+    if (!wifi_is_connected()) {
+        ESP_LOGW(TAG, "Download request refused: WiFi not connected");
         return false;
     }
 
@@ -1194,7 +1207,7 @@ void os_event_loop(void) {
                     } while (existing && num < 1000);
                     display_save_screenshot_ppm(path);
                     ESP_LOGI(TAG, "Sprite screenshot saved: %s", path);
-                } else if (!terminal_mode_save_screenshot(terminal_mode_default())) {
+                } else if (terminal_mode_get_active() && !terminal_mode_save_screenshot(terminal_mode_get_active())) {
                     text_mode_save_screenshot();
                 }
                 continue;
@@ -1245,12 +1258,9 @@ void os_event_loop(void) {
             }
 
             // Reset (not release) the app heap so the 96 KB storage stays
-            // reserved.  Then redirect mbedTLS allocations to the app heap:
-            // TLS buffers come from the reserved 96 KB instead of fragmenting
-            // the system heap.  Since no app is running during the download,
-            // the full app heap is available for TLS use.
+            // reserved.  Releasing it would fragment the system heap and
+            // prevent re-allocation after TLS buffers are freed.
             app_heap_reset();
-            mbedtls_platform_set_calloc_free(app_calloc, app_free);
             os_log_global_heap_stats("before download (app heap reserved)");
             app_heap_log_stats("before download");
 
@@ -1264,10 +1274,6 @@ void os_event_loop(void) {
                                      download_result > 0 ? request.path : NULL);
             memset(&pending_download, 0, sizeof(pending_download));
 
-            // Restore the default mbedTLS allocator and reset the app heap
-            // to give the next app a clean 96 KB.
-            mbedtls_platform_set_calloc_free(esp_mbedtls_mem_calloc, esp_mbedtls_mem_free);
-            app_heap_log_stats("after download (before reset)");
             app_heap_reset();
             os_log_global_heap_stats("after download (before app reload)");
 

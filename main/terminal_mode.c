@@ -58,8 +58,19 @@ struct terminal_mode {
     terminal_mode_impl_t impl;
 };
 
-static terminal_mode_t g_terminal;
 static terminal_mode_t *g_active = NULL;
+
+size_t terminal_mode_struct_size(void) {
+    return sizeof(terminal_mode_t);
+}
+
+void terminal_mode_clear_active(void) {
+    g_active = NULL;
+}
+
+terminal_mode_t *terminal_mode_get_active(void) {
+    return g_active;
+}
 
 static void terminal_write_to_backend(const char *data, size_t len) {
     if (g_active && g_active->impl.write_cb) {
@@ -186,10 +197,6 @@ static void send_bytes(terminal_mode_impl_t *impl, const char *data, size_t len)
     if (impl->write_cb) {
         impl->write_cb(data, len);
     }
-}
-
-terminal_mode_t *terminal_mode_default(void) {
-    return &g_terminal;
 }
 
 bool terminal_mode_init(terminal_mode_t *term, int cols, int rows, terminal_mode_write_cb write_cb) {
