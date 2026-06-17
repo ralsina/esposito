@@ -9,7 +9,7 @@ static const char *TAG = "esposito";
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Esposito OS v0.1.0-alpha");
+    ESP_LOGI(TAG, "Esposito OS v0.3");
     ESP_LOGI(TAG, "Starting boot sequence...");
 
     // Force floating-point library functions to be linked for C++ apps
