@@ -27,11 +27,19 @@ You need a USB cable and Chrome or Edge.
 
 ## After Install
 
-1. Put apps on an SD card (FAT32) under `/apps/<name>/program.elf`
-2. Insert the SD card into the CYD
-3. Power on — Esposito boots in under a second and shows the launcher
+1. Download [`sdcard-bundle.zip`](https://github.com/ralsina/esposito/releases/latest/download/sdcard-bundle.zip) from the latest release
+2. Format a microSD card as **FAT32**
+3. Extract the zip to the root of the SD card — you'll get `apps/`, `fonts/`, and `books/` directories
+4. Insert the SD card into the CYD and power on — Esposito boots in under a second and shows the launcher
 
-For app files and the catalog, see the [app store](/) or [GitHub](https://github.com/ralsina/esposito/tree/main/apps).
+The bundle includes 8 apps (launcher, settings, reader, clock, calculator, snake, breakout, file manager), all system fonts, and 4 classic books to get you started.
+
+<details>
+<summary><strong>What if I don't have an SD card?</strong></summary>
+
+The firmware runs without an SD card, but you'll have no apps, no fonts beyond the boot font, and no books. The SD card is essential for the full experience.
+
+</details>
 
 ## OTA Updates
 
