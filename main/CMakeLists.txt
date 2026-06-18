@@ -18,6 +18,7 @@ idf_component_register(
         "os_core.c"
         "os_symtab.c"
         "elf_loader.c"
+        "elf_validate.c"
         "app_loader.c"
         "app_launcher.c"
         "ota_update.c"
