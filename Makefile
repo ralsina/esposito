@@ -71,10 +71,11 @@ deploy-all: build stub
 	@echo "Building firmware + stub + apps and flashing..."
 	. /opt/esp-idf/export.sh && scripts/build_test.sh
 
-# Run host-side tests (currently just the reader app's tokenizer suite).
+# Run host-side tests (reader tokenizer suite + host unit tests).
 check:
 	@echo "Running host-side tests..."
 	bash apps/reader/tests/run_tests.sh
+	bash tests/run_tests.sh
 
 # Build the Linux/SDL2 desktop emulator (see linux/README for usage).
 emulate:
@@ -95,7 +96,7 @@ help:
 	@echo "make size          - Show binary size"
 	@echo "make menuconfig    - Open ESP-IDF configuration menu"
 	@echo "make deploy-all    - Build firmware + stub + all apps, copy to SD card, flash"
-	@echo "make check         - Run host-side tests (reader tokenizer suite)"
+	@echo "make check         - Run host-side tests (reader tokenizer + host unit tests)"
 	@echo "make emulate       - Build the Linux/SDL2 desktop emulator"
 	@echo "make help          - Show this help message"
 	@echo ""

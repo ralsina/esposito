@@ -21,6 +21,7 @@ idf_component_register(
         "app_loader.c"
         "app_launcher.c"
         "ota_update.c"
+        "semver.c"
         "hardware.cpp"
         "boot.cpp"
         "bbq20_keyboard.c"
