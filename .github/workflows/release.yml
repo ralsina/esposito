@@ -68,8 +68,49 @@ jobs:
       - name: Stage artifacts
         run: |
           mkdir -p artifacts
+          # OTA update artifact (renamed for clarity)
           cp build/esposito.bin artifacts/firmware.bin
           echo "${{ steps.tag.outputs.name }}" > artifacts/version.txt
+
+          # Full-flash binaries for ESP Web Tools (browser-based install).
+          # Offsets come from build/flash_args, which ESP-IDF generates from
+          # partitions.csv. These let a user flash the complete firmware image
+          # from a web browser without any toolchain installed.
+          cp build/bootloader/bootloader.bin       artifacts/bootloader.bin
+          cp build/partition_table/partition-table.bin artifacts/partition-table.bin
+          cp build/ota_data_initial.bin            artifacts/ota_data_initial.bin
+
+      - name: Generate ESP Web Tools manifest
+        run: |
+          # Manifest for ESP Web Tools (https://esphome.github.io/esp-web-tools/).
+          # Paths are relative to the manifest's own URL (the GitHub release
+          # assets directory), so they resolve to sibling release assets.
+          #
+          # Offsets are decimal; sourced from build/flash_args:
+          #   0x1000  bootloader
+          #   0x8000  partition table
+          #   0x10000 application
+          #   0x210000 OTA data (initial)
+          TAG="${{ steps.tag.outputs.name }}"
+          VERSION="${TAG#v}"   # strip leading 'v'
+          cat > artifacts/manifest.json <<EOF
+          {
+            "name": "Esposito OS",
+            "version": "${VERSION}",
+            "new_install_prompt_erase": true,
+            "builds": [
+              {
+                "chipFamily": "ESP32",
+                "parts": [
+                  { "path": "bootloader.bin",       "offset": 4096 },
+                  { "path": "partition-table.bin",  "offset": 32768 },
+                  { "path": "firmware.bin",         "offset": 65536 },
+                  { "path": "ota_data_initial.bin", "offset": 2162688 }
+                ]
+              }
+            ]
+          }
+          EOF
 
       - name: Write signing key from secret
         env:
@@ -127,4 +168,8 @@ jobs:
             artifacts/firmware.bin
             artifacts/firmware.bin.sig
             artifacts/firmware.bin.sha256
+            artifacts/bootloader.bin
+            artifacts/partition-table.bin
+            artifacts/ota_data_initial.bin
+            artifacts/manifest.json
             artifacts/version.txt
