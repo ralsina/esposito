@@ -572,6 +572,35 @@ static void os_download_progress(int percent, const char *status) {
     text_mode_flush();
 }
 
+typedef struct {
+    FILE *fp;
+    size_t sofar;
+    size_t total;
+    int last_percent;
+    void (*progress)(int percent, const char *status);
+} download_ctx_t;
+
+static esp_err_t download_event_handler(esp_http_client_event_t *event) {
+    download_ctx_t *ctx = (download_ctx_t *)event->user_data;
+    if (!ctx) return ESP_OK;
+
+    if (event->event_id == HTTP_EVENT_ON_DATA && event->data && event->data_len > 0) {
+        if (fwrite(event->data, 1, event->data_len, ctx->fp) != event->data_len) {
+            return ESP_FAIL;
+        }
+        ctx->sofar += event->data_len;
+        if (ctx->progress && ctx->total > 0) {
+            int pct = (int)(ctx->sofar * 100 / ctx->total);
+            if (pct > 100) pct = 100;
+            if (pct != ctx->last_percent) {
+                ctx->last_percent = pct;
+                ctx->progress(pct, NULL);
+            }
+        }
+    }
+    return ESP_OK;
+}
+
 static int os_http_download_internal(const char *url,
                                      const char *path,
                                      size_t expected_size,
@@ -604,7 +633,10 @@ static int os_http_download_internal(const char *url,
     int status = 0;
     int attempt = 0;
     int no_progress_count = 0;
-    const int max_no_progress = 5;
+    const int max_no_progress = 10;
+    const int min_backoff_ms = 1000;
+    const int max_backoff_ms = 30000;
+    int backoff_ms = min_backoff_ms;
 
     if (progress) progress(0, "connecting");
 
@@ -620,12 +652,23 @@ static int os_http_download_internal(const char *url,
             return -1;
         }
 
+        download_ctx_t dl_ctx = {
+            .fp = fp,
+            .sofar = sofar,
+            .total = total,
+            .last_percent = last_percent,
+            .progress = progress,
+        };
+
         esp_http_client_config_t config = {
             .url = url,
             .timeout_ms = 120000,
+            .event_handler = download_event_handler,
+            .user_data = &dl_ctx,
             .crt_bundle_attach = esp_crt_bundle_attach,
-            .buffer_size = 1024,
-            .buffer_size_tx = 256,
+            .max_redirection_count = 5,
+            .buffer_size = 8192,
+            .buffer_size_tx = 2048,
         };
 
         esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -637,8 +680,6 @@ static int os_http_download_internal(const char *url,
             return -1;
         }
 
-        esp_http_client_set_timeout_ms(client, 120000);
-
         if (sofar > 0) {
             char range_header[64];
             snprintf(range_header, sizeof(range_header), "bytes=%u-", (unsigned)sofar);
@@ -646,113 +687,63 @@ static int os_http_download_internal(const char *url,
             ESP_LOGI(TAG, "Download: resuming from byte %u (attempt %d)",
                      (unsigned)sofar, attempt);
         } else {
-            ESP_LOGI(TAG, "Download: starting perform for %s", url);
+            ESP_LOGI(TAG, "Download: starting perform for %s (attempt %d)", url, attempt);
         }
 
-        esp_err_t err = esp_http_client_open(client, 0);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Download: open failed err=%d (attempt %d)", err, attempt);
-            esp_http_client_cleanup(client);
-            fclose(fp);
-            if (progress) progress(last_percent < 0 ? 0 : last_percent, "retrying...");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            goto check_progress;
-        }
-
-        int64_t content_length = esp_http_client_fetch_headers(client);
+        esp_err_t err = esp_http_client_perform(client);
         status = esp_http_client_get_status_code(client);
+        sofar = dl_ctx.sofar;
+        last_percent = dl_ctx.last_percent;
+
+        int64_t content_length = esp_http_client_get_content_length(client);
         if (content_length > 0) {
-            if (sofar > 0 && status == 206) {
-                total = sofar + (size_t)content_length;
-            } else if (sofar == 0) {
+            if (status == 206) {
+                total = sofar_before + (size_t)content_length;
+            } else if (sofar_before == 0) {
                 total = (size_t)content_length;
             }
         }
 
-        if (sofar > 0 && status == 200) {
+        ESP_LOGI(TAG, "Download: attempt %d done err=%d status=%d sofar=%u",
+                 attempt, err, status, (unsigned)sofar);
+
+        esp_http_client_cleanup(client);
+        fclose(fp);
+
+        if (err == ESP_OK && (status == 200 || status == 206)) {
+            if (progress) progress(100, "done");
+            return (int)sofar;
+        }
+
+        if (sofar > sofar_before && sofar_before > 0 && status == 200) {
             ESP_LOGW(TAG, "Download: server ignored Range; restarting from zero");
-            esp_http_client_close(client);
-            esp_http_client_cleanup(client);
-            fclose(fp);
             sofar = 0;
             total = expected_size;
             last_percent = -1;
-            last_reported_bytes = 0;
             remove(path);
             if (progress) progress(0, "restarting...");
+            no_progress_count = 0;
             continue;
         }
 
-        {
-            bool complete = false;
-            err = ESP_OK;
-            char io_buffer[1024];
-            while (1) {
-                int bytes_read = esp_http_client_read(client, io_buffer, sizeof(io_buffer));
-                if (bytes_read < 0) {
-                    ESP_LOGW(TAG, "Download: read error %d (attempt %d)", bytes_read, attempt);
-                    err = ESP_FAIL;
-                    break;
-                }
-                if (bytes_read == 0) {
-                    if (esp_http_client_is_complete_data_received(client)) {
-                        complete = true;
-                        break;
-                    }
-                    continue;
-                }
-
-                size_t written = fwrite(io_buffer, 1, (size_t)bytes_read, fp);
-                if (written != (size_t)bytes_read) {
-                    ESP_LOGE(TAG, "Download: write error");
-                    err = ESP_FAIL;
-                    break;
-                }
-
-                sofar += written;
-                if (progress) {
-                    if (total > 0) {
-                        int pct = (int)(sofar * 100 / total);
-                        if (pct > 100) pct = 100;
-                        if (pct != last_percent) {
-                            last_percent = pct;
-                            progress(pct, NULL);
-                        }
-                    } else if (sofar - last_reported_bytes >= 32768) {
-                        char status_text[40];
-                        snprintf(status_text, sizeof(status_text), "%u KB", (unsigned)(sofar / 1024));
-                        progress(last_percent < 0 ? 0 : last_percent, status_text);
-                        last_reported_bytes = sofar;
-                    }
-                }
-            }
-
-            ESP_LOGI(TAG, "Download: attempt %d done err=%d status=%d sofar=%u complete=%d",
-                     attempt, err, status, (unsigned)sofar, complete ? 1 : 0);
-
-            esp_http_client_close(client);
-            esp_http_client_cleanup(client);
-            fclose(fp);
-
-            if (err == ESP_OK && complete && (status == 200 || status == 206)) {
-                if (progress) progress(100, "done");
-                return (int)sofar;
-            }
-        }
-
         if (progress) progress(last_percent < 0 ? 0 : last_percent, "retrying...");
-        vTaskDelay(pdMS_TO_TICKS(1000));
 
-    check_progress:
         if (sofar > sofar_before) {
             no_progress_count = 0;
+            backoff_ms = min_backoff_ms;
         } else {
             no_progress_count++;
             if (no_progress_count >= max_no_progress) {
                 ESP_LOGE(TAG, "Download: no progress for %d attempts, giving up", max_no_progress);
                 break;
             }
+            backoff_ms *= 2;
+            if (backoff_ms > max_backoff_ms) backoff_ms = max_backoff_ms;
         }
+
+        ESP_LOGI(TAG, "Download: retrying in %d ms (no_progress=%d/%d)",
+                 backoff_ms, no_progress_count, max_no_progress);
+        vTaskDelay(pdMS_TO_TICKS(backoff_ms));
     }
 
     ESP_LOGE(TAG, "Download: failed url=%s status=%d sofar=%u",
@@ -831,7 +822,7 @@ int os_http_post(const char *url, const char *post_data, const char *extra_heade
         .cert_pem = ca_pem,
         .crt_bundle_attach = ca_pem ? NULL : esp_crt_bundle_attach,
         .buffer_size = 1024,
-        .buffer_size_tx = 512,
+        .buffer_size_tx = 2048,
         .method = HTTP_METHOD_POST,
     };
 
@@ -897,7 +888,7 @@ int os_http_get(const char *url, char *out, size_t out_size, int timeout_ms) {
         .user_data = &ctx,
         .crt_bundle_attach = esp_crt_bundle_attach,
         .buffer_size = 1024,
-        .buffer_size_tx = 512,
+        .buffer_size_tx = 2048,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);

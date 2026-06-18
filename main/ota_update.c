@@ -222,6 +222,15 @@ static void draw_progress(int pct) {
     text_mode_flush();
 }
 
+static void ota_download_progress(int percent, const char *status) {
+    if (percent >= 0) draw_progress(percent);
+    if (status && status[0]) {
+        text_mode_print_at(0, 3, "                                        ");
+        text_mode_print_at(0, 3, status);
+        text_mode_flush();
+    }
+}
+
 // --- Stub handoff (unchanged from previous implementation) ---
 
 static void handoff_to_stub(void) {
@@ -307,7 +316,7 @@ static bool compute_file_sha256(const char *path, uint8_t out_hash[32]) {
         return false;
     }
 
-    uint8_t buf[4096];
+    uint8_t buf[1024];
     size_t total = 0;
     while (true) {
         size_t got = fread(buf, 1, sizeof(buf), fp);
@@ -435,183 +444,6 @@ bool ota_check_for_update(char *latest_version, size_t max_len) {
     return true;
 }
 
-// --- Download helper with resume (firmware.bin to SD) ---
-
-typedef struct {
-    FILE *fp;
-    int total;
-    int content_length;
-    int last_pct;
-    bool error;
-} ota_dl_ctx_t;
-
-static ota_dl_ctx_t s_dl_ctx;
-
-static esp_err_t ota_dl_event_handler(esp_http_client_event_t *event) {
-    if (event->event_id == HTTP_EVENT_ON_HEADER) {
-        if (event->header_key && strcasecmp(event->header_key, "Content-Length") == 0 && event->header_value) {
-            s_dl_ctx.content_length = atoi(event->header_value);
-            ESP_LOGI(TAG, "Content-Length: %d", s_dl_ctx.content_length);
-        }
-        return ESP_OK;
-    }
-    if (event->event_id == HTTP_EVENT_ON_DATA && event->data && event->data_len > 0) {
-        if (fwrite(event->data, 1, event->data_len, s_dl_ctx.fp) != event->data_len) {
-            s_dl_ctx.error = true;
-            return ESP_FAIL;
-        }
-        s_dl_ctx.total += (int)event->data_len;
-        if (s_dl_ctx.content_length > 0) {
-            int pct = (s_dl_ctx.total * 100) / s_dl_ctx.content_length;
-            if (pct > 100) pct = 100;
-            if (pct != s_dl_ctx.last_pct) {
-                s_dl_ctx.last_pct = pct;
-                draw_progress(pct);
-            }
-        }
-    }
-    return ESP_OK;
-}
-
-// Download url to /sdcard/system/<dest_filename> with HTTP Range resume.
-// Returns true on success. Same retry/stall logic as before.
-static bool download_with_resume(const char *url, const char *dest_filename) {
-    char dest_path[64];
-    snprintf(dest_path, sizeof(dest_path), "/sdcard/system/%s", dest_filename);
-    char tmp_path[64];
-    snprintf(tmp_path, sizeof(tmp_path), "/sdcard/system/%s.tmp", dest_filename);
-
-    mkdir("/sdcard/system", 0755);
-    remove(tmp_path);
-
-    const int max_stalled_retries = 4;
-    int expected_total = 0;
-    int downloaded_total = 0;
-    int stalled_retries = 0;
-    int successful_chunks = 0;
-    esp_err_t final_err = ESP_FAIL;
-    int final_status = 0;
-    bool download_ok = false;
-
-    while (stalled_retries < max_stalled_retries) {
-        int before_attempt_total = downloaded_total;
-        char status_line[40];
-
-        FILE *fp = fopen(tmp_path, downloaded_total > 0 ? "ab" : "wb");
-        if (!fp) {
-            ESP_LOGE(TAG, "Failed to open %s for write", tmp_path);
-            return false;
-        }
-
-        s_dl_ctx = (ota_dl_ctx_t){
-            .fp = fp,
-            .total = downloaded_total,
-            .content_length = expected_total,
-            .last_pct = -1,
-            .error = false,
-        };
-
-        esp_http_client_config_t config = {
-            .url = url,
-            .timeout_ms = 120000,
-            .event_handler = ota_dl_event_handler,
-            .user_data = &s_dl_ctx,
-            .crt_bundle_attach = esp_crt_bundle_attach,
-            .tls_version = ESP_HTTP_CLIENT_TLS_VER_TLS_1_2,
-            .buffer_size = 4096,
-            .buffer_size_tx = 1024,
-            .user_agent = "esposito-ota/1.0",
-            .addr_type = HTTP_ADDR_TYPE_INET,
-        };
-
-        esp_http_client_handle_t client = esp_http_client_init(&config);
-        if (!client) {
-            fclose(fp);
-            remove(tmp_path);
-            ESP_LOGE(TAG, "Failed to init HTTP client");
-            return false;
-        }
-
-        if (downloaded_total > 0) {
-            char range_header[48];
-            snprintf(range_header, sizeof(range_header), "bytes=%d-", downloaded_total);
-            esp_http_client_set_header(client, "Range", range_header);
-            ESP_LOGI(TAG, "Resume chunk %d (stalled retries: %d/%d) with %s",
-                     successful_chunks + 1, stalled_retries, max_stalled_retries, range_header);
-            snprintf(status_line, sizeof(status_line), "Chunk %d retry %d/%d",
-                     successful_chunks + 1, stalled_retries, max_stalled_retries);
-        } else {
-            ESP_LOGI(TAG, "Download start (stalled retries: %d/%d)", stalled_retries, max_stalled_retries);
-            snprintf(status_line, sizeof(status_line), "Download start");
-        }
-
-        text_mode_print_at(0, 3, "                                        ");
-        text_mode_print_at(0, 3, status_line);
-        text_mode_flush();
-
-        esp_err_t err = esp_http_client_perform(client);
-        int status = esp_http_client_get_status_code(client);
-
-        downloaded_total = s_dl_ctx.total;
-        if (expected_total <= 0 && status == 200 && s_dl_ctx.content_length > 0) {
-            expected_total = s_dl_ctx.content_length;
-        }
-
-        ESP_LOGI(TAG, "Perform: %s (0x%x), HTTP %d, downloaded=%d expected=%d err_flag=%d",
-                 esp_err_to_name(err), err, status, downloaded_total, expected_total, s_dl_ctx.error);
-
-        esp_http_client_cleanup(client);
-        fclose(fp);
-
-        final_err = err;
-        final_status = status;
-
-        if (err == ESP_OK && !s_dl_ctx.error && (status == 200 || status == 206)) {
-            download_ok = true;
-            break;
-        }
-
-        if (err == ESP_ERR_HTTP_INCOMPLETE_DATA && !s_dl_ctx.error &&
-            (status == 200 || status == 206) && downloaded_total > 0) {
-            if (downloaded_total > before_attempt_total) {
-                successful_chunks++;
-                stalled_retries = 0;
-                ESP_LOGI(TAG, "Incomplete data but progress made (+%d bytes), continuing",
-                         downloaded_total - before_attempt_total);
-                snprintf(status_line, sizeof(status_line), "Chunk ok +%d bytes", downloaded_total - before_attempt_total);
-                text_mode_print_at(0, 5, "                                        ");
-                text_mode_print_at(0, 5, status_line);
-                text_mode_flush();
-            } else {
-                stalled_retries++;
-                ESP_LOGW(TAG, "Stalled, consuming retry %d/%d", stalled_retries, max_stalled_retries);
-                snprintf(status_line, sizeof(status_line), "Stalled retry %d/%d", stalled_retries, max_stalled_retries);
-                text_mode_print_at(0, 5, "                                        ");
-                text_mode_print_at(0, 5, status_line);
-                text_mode_flush();
-            }
-            continue;
-        }
-
-        break;
-    }
-
-    ESP_LOGI(TAG, "Download done: %s, status=%d, bytes=%d",
-             esp_err_to_name(final_err), final_status, downloaded_total);
-
-    if (!download_ok || (expected_total > 0 && downloaded_total < expected_total) || downloaded_total <= 0) {
-        remove(tmp_path);
-        return false;
-    }
-
-    if (rename(tmp_path, dest_path) != 0) {
-        ESP_LOGE(TAG, "Failed to rename %s -> %s", tmp_path, dest_path);
-        remove(tmp_path);
-        return false;
-    }
-    return true;
-}
-
 // --- Public API: apply update ---
 
 const char *ota_apply_update(void) {
@@ -648,11 +480,12 @@ const char *ota_apply_update(void) {
     // the app heap here. We must not return to the calling app after this.
     app_heap_release();
 
-    // 1) Download firmware.bin (with resume).
+    // 1) Download firmware.bin (uses OS download with infinite retry on progress).
     text_mode_print_at(0, 2, "Downloading firmware...   ");
     text_mode_flush();
-    if (!download_with_resume(cached_firmware_url, "firmware.bin")) {
-        ESP_LOGE(TAG, "firmware.bin download failed");
+    int fw_result = os_http_download(cached_firmware_url, "/sdcard/system/firmware.bin", ota_download_progress);
+    if (fw_result <= 0) {
+        ESP_LOGE(TAG, "firmware.bin download failed: %d", fw_result);
         text_mode_print_at(0, 5, "Download failed");
         text_mode_print_at(0, 6, "Firmware download error!");
         text_mode_flush();
@@ -660,11 +493,12 @@ const char *ota_apply_update(void) {
         esp_restart();
     }
 
-    // 2) Download firmware.bin.sig (small, single request).
+    // 2) Download firmware.bin.sig (small file).
     text_mode_print_at(0, 2, "Downloading signature...  ");
     text_mode_flush();
-    if (!download_with_resume(cached_sig_url, "firmware.bin.sig")) {
-        ESP_LOGE(TAG, "firmware.bin.sig download failed");
+    int sig_result = os_http_download(cached_sig_url, "/sdcard/system/firmware.bin.sig", ota_download_progress);
+    if (sig_result <= 0) {
+        ESP_LOGE(TAG, "firmware.bin.sig download failed: %d", sig_result);
         text_mode_print_at(0, 5, "Signature download failed");
         text_mode_print_at(0, 6, "Missing signature!");
         text_mode_flush();
