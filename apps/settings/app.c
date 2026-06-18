@@ -1,6 +1,8 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "ui2.h"
+#include "ui2_toolbar.h"
+#include "lucide_icons.h"
 #include "wifi.h"
 #include "app_config.h"
 #include "hardware.h"
@@ -47,6 +49,7 @@ static ui2_text_input_t *location_input;
 
 static ui2_list_t *font_family_list;
 static ui2_list_t *font_size_list;
+static ui2_layout_t *toolbar;
 static int font_family_selected = 0;
 static int font_size_selected = 0;
 static char selected_family[24];
@@ -392,7 +395,51 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
 
 static void build_font_size_items(const char *family);
 static void render(void);
+static void draw_main(void);
+static void build_tab_content(void);
 static void on_scan_activated(int item_index, void *user_data);
+
+static void on_exit_btn_click(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    os_exit();
+}
+
+static void on_toolbar_up(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 'w');
+    build_tab_content();
+    draw_main();
+    text_mode_flush();
+}
+
+static void on_toolbar_down(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 's');
+    build_tab_content();
+    draw_main();
+    text_mode_flush();
+}
+
+static void on_toolbar_activate(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), '\n');
+    build_tab_content();
+    draw_main();
+    text_mode_flush();
+}
+
+static void on_toolbar_back(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 'a');
+    build_tab_content();
+    draw_main();
+    text_mode_flush();
+}
 
 static void execute_main_action(settings_action_t action) {
     switch (action) {
@@ -693,6 +740,10 @@ static void draw_main(void) {
 
     UI2_WIDGET(tv)->vtable->draw(UI2_WIDGET(tv));
 
+    if (toolbar) {
+        UI2_WIDGET(toolbar)->vtable->draw(UI2_WIDGET(toolbar));
+    }
+
     int rows = text_mode_get_rows();
     int right_x = 10 + 1;
     int content_width = cols - right_x;
@@ -979,7 +1030,7 @@ void app_init(app_context_t *ctx) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
 
-    tv = (ui2_tabview_t *)ui2_tabview_create(0, 1, cols, rows - 2, 10);
+    tv = (ui2_tabview_t *)ui2_tabview_create(0, 1, cols, rows - 4, 10);
     UI2_WIDGET(tv)->focusable = true;
 
     for (int s = 0; s < SECTION_COUNT; s++) {
@@ -1029,6 +1080,17 @@ void app_init(app_context_t *ctx) {
 
     build_tab_content();
 
+    {
+        ui2_toolbar_item_t tb_items[] = {
+            {ICON_ARROW_UP,   on_toolbar_up,       NULL},
+            {ICON_ARROW_DOWN, on_toolbar_down,     NULL},
+            {ICON_CHECK,      on_toolbar_activate, NULL},
+            {ICON_ARROW_LEFT, on_toolbar_back,     NULL},
+            {ICON_X,          on_exit_btn_click,   NULL},
+        };
+        toolbar = ui2_toolbar_create(0, rows - 3, cols, 2, tb_items, 5);
+    }
+
     render();
     os_log(TAG, "Settings app initialized");
 }
@@ -1058,6 +1120,7 @@ void app_close(app_context_t *ctx) {
     if (password_input) { UI2_WIDGET(password_input)->vtable->destroy(UI2_WIDGET(password_input)); password_input = NULL; }
     if (timezone_input) { UI2_WIDGET(timezone_input)->vtable->destroy(UI2_WIDGET(timezone_input)); timezone_input = NULL; }
     if (location_input) { UI2_WIDGET(location_input)->vtable->destroy(UI2_WIDGET(location_input)); location_input = NULL; }
+    if (toolbar) { UI2_WIDGET(toolbar)->vtable->destroy(UI2_WIDGET(toolbar)); toolbar = NULL; }
     if (tv) { UI2_WIDGET(tv)->vtable->destroy(UI2_WIDGET(tv)); tv = NULL; }
 
     text_mode_clear(TEXT_COLOR_BLACK);
@@ -1161,6 +1224,9 @@ void app_event(app_context_t *ctx, event_t *event) {
 
         switch (state) {
             case STATE_MAIN: {
+                if (toolbar && UI2_WIDGET(toolbar)->vtable->handle_touch(UI2_WIDGET(toolbar), x_col, y_col, true)) {
+                    break;
+                }
                 UI2_WIDGET(tv)->vtable->handle_touch(UI2_WIDGET(tv), x_col, y_col, true);
                 if (state == STATE_MAIN) {
                     build_tab_content();

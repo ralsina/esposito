@@ -3,6 +3,7 @@
 #include "text_mode.h"
 #include "core_json.h"
 #include "ui2.h"
+#include "ui2_toolbar.h"
 #include "lucide_icons.h"
 #include <string.h>
 #include <stdlib.h>
@@ -421,26 +422,13 @@ static void rebuild_catalog_ui(void) {
     ui2_list_set_callbacks(app_list, NULL, on_app_activated, NULL);
     ui2_layout_add(root, UI2_WIDGET(app_list));
 
-    ui2_layout_t *btn_row = ui2_layout_create(0, 0, cols, btn_h, UI2_LAYOUT_HORIZONTAL);
-    ui2_layout_set_gap(btn_row, 1);
-
-    int btn_w = 3;
-    ui2_button_t *btn_up = ui2_button_create(0, 0, btn_w, btn_h, ICON_ARROW_BIG_UP);
-    ui2_button_set_callback(btn_up, on_up_click, NULL);
-
-    ui2_button_t *btn_down = ui2_button_create(0, 0, btn_w, btn_h, ICON_ARROW_BIG_DOWN);
-    ui2_button_set_callback(btn_down, on_down_click, NULL);
-
-    ui2_button_t *btn_action = ui2_button_create(0, 0, btn_w, btn_h, ICON_ARROW_DOWN_TO_LINE);
-    ui2_button_set_callback(btn_action, on_action_click, NULL);
-
-    ui2_button_t *btn_exit = ui2_button_create(0, 0, btn_w, btn_h, ICON_X);
-    ui2_button_set_callback(btn_exit, on_exit_click, NULL);
-
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_up));
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_down));
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_action));
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_exit));
+    ui2_toolbar_item_t cat_items[] = {
+        {ICON_ARROW_BIG_UP,       on_up_click,     NULL},
+        {ICON_ARROW_BIG_DOWN,     on_down_click,   NULL},
+        {ICON_ARROW_DOWN_TO_LINE, on_action_click, NULL},
+        {ICON_X,                  on_exit_click,   NULL},
+    };
+    ui2_layout_t *btn_row = ui2_toolbar_create(0, 0, cols, btn_h, cat_items, 4);
 
     ui2_layout_add(root, UI2_WIDGET(btn_row));
 
@@ -534,16 +522,11 @@ static void show_confirm_uninstall(int index) {
                                         TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
     ui2_layout_add(root, UI2_WIDGET(msg));
 
-    ui2_layout_t *btn_row = ui2_layout_create(0, rows - btn_h, cols, btn_h, UI2_LAYOUT_HORIZONTAL);
-    ui2_layout_set_gap(btn_row, 1);
-
-    ui2_button_t *btn_yes = ui2_button_create(0, 0, 10, btn_h, ICON_TRASH_2 " Yes");
-    ui2_button_set_callback(btn_yes, on_confirm_yes_click, NULL);
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_yes));
-
-    ui2_button_t *btn_no = ui2_button_create(0, 0, 8, btn_h, " No");
-    ui2_button_set_callback(btn_no, on_confirm_no_click, NULL);
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_no));
+    ui2_toolbar_item_t confirm_items[] = {
+        {ICON_TRASH_2 " Yes", on_confirm_yes_click, NULL},
+        {" No",               on_confirm_no_click,  NULL},
+    };
+    ui2_layout_t *btn_row = ui2_toolbar_create(0, rows - btn_h, cols, btn_h, confirm_items, 2);
 
     ui2_layout_add(root, UI2_WIDGET(btn_row));
     ui2_screen_set_root(screen, root);
@@ -647,25 +630,27 @@ static void show_detail(int index) {
     }
 
     app_status_t status = check_app_status_at(index);
-    ui2_layout_t *btn_row = ui2_layout_create(0, rows - btn_h, cols, btn_h, UI2_LAYOUT_HORIZONTAL);
-    ui2_layout_set_gap(btn_row, 1);
 
+    ui2_toolbar_item_t detail_items[2];
+    int detail_count = 0;
     if (status == STATUS_NEW || status == STATUS_UPDATE) {
-        const char *label = (status == STATUS_UPDATE)
+        detail_items[detail_count].label = (status == STATUS_UPDATE)
             ? ICON_DOWNLOAD " Update" : ICON_DOWNLOAD " Install";
-        ui2_button_t *btn = ui2_button_create(0, 0, 14, btn_h, label);
-        ui2_button_set_callback(btn, on_install_click, NULL);
-        ui2_layout_add(btn_row, UI2_WIDGET(btn));
+        detail_items[detail_count].on_click = on_install_click;
+        detail_items[detail_count].user_data = NULL;
+        detail_count++;
     } else if (status == STATUS_INSTALLED) {
-        ui2_button_t *btn = ui2_button_create(0, 0, 14, btn_h, ICON_TRASH_2 " Uninstall");
-        ui2_button_set_callback(btn, on_uninstall_click, NULL);
-        ui2_layout_add(btn_row, UI2_WIDGET(btn));
+        detail_items[detail_count].label = ICON_TRASH_2 " Uninstall";
+        detail_items[detail_count].on_click = on_uninstall_click;
+        detail_items[detail_count].user_data = NULL;
+        detail_count++;
     }
+    detail_items[detail_count].label = ICON_ARROW_BIG_LEFT " Back";
+    detail_items[detail_count].on_click = on_back_click;
+    detail_items[detail_count].user_data = NULL;
+    detail_count++;
 
-    ui2_button_t *btn_back = ui2_button_create(0, 0, 10, btn_h, ICON_ARROW_BIG_LEFT " Back");
-    ui2_button_set_callback(btn_back, on_back_click, NULL);
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_back));
-
+    ui2_layout_t *btn_row = ui2_toolbar_create(0, rows - btn_h, cols, btn_h, detail_items, detail_count);
     ui2_layout_add(root, UI2_WIDGET(btn_row));
 
     ui2_screen_set_root(screen, root);

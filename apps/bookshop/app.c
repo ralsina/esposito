@@ -3,6 +3,7 @@
 #include "text_mode.h"
 #include "core_json.h"
 #include "ui2.h"
+#include "ui2_toolbar.h"
 #include "lucide_icons.h"
 #include <string.h>
 #include <stdlib.h>
@@ -339,26 +340,13 @@ static void rebuild_catalog_ui(void) {
     ui2_list_set_callbacks(book_list, NULL, on_book_activated, NULL);
     ui2_layout_add(root, UI2_WIDGET(book_list));
 
-    ui2_layout_t *btn_row = ui2_layout_create(0, 0, cols, btn_h, UI2_LAYOUT_HORIZONTAL);
-    ui2_layout_set_gap(btn_row, 1);
-
-    int btn_w = 3;
-    ui2_button_t *btn_up = ui2_button_create(0, 0, btn_w, btn_h, ICON_ARROW_BIG_UP);
-    ui2_button_set_callback(btn_up, on_up_click, NULL);
-
-    ui2_button_t *btn_down = ui2_button_create(0, 0, btn_w, btn_h, ICON_ARROW_BIG_DOWN);
-    ui2_button_set_callback(btn_down, on_down_click, NULL);
-
-    ui2_button_t *btn_get = ui2_button_create(0, 0, btn_w, btn_h, ICON_ARROW_DOWN_TO_LINE);
-    ui2_button_set_callback(btn_get, on_download_click, NULL);
-
-    ui2_button_t *btn_exit = ui2_button_create(0, 0, btn_w, btn_h, ICON_X);
-    ui2_button_set_callback(btn_exit, on_exit_click, NULL);
-
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_up));
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_down));
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_get));
-    ui2_layout_add(btn_row, UI2_WIDGET(btn_exit));
+    ui2_toolbar_item_t btn_defs[] = {
+        {ICON_ARROW_BIG_UP,     on_up_click,       NULL},
+        {ICON_ARROW_BIG_DOWN,   on_down_click,     NULL},
+        {ICON_ARROW_DOWN_TO_LINE, on_download_click, NULL},
+        {ICON_X,                on_exit_click,     NULL},
+    };
+    ui2_layout_t *btn_row = ui2_toolbar_create(0, 0, cols, btn_h, btn_defs, 4);
 
     ui2_layout_add(root, UI2_WIDGET(btn_row));
 

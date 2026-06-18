@@ -1,6 +1,7 @@
 #include "os_core.h"
 #include "text_mode.h"
 #include "ui2.h"
+#include "ui2_toolbar.h"
 #include "ui2_osk.h"
 #include "app_config.h"
 #include "app_manifest.h"
@@ -881,25 +882,17 @@ void app_init(app_context_t *ctx) {
     ui2_screen_focus_set(state.screen, UI2_WIDGET(state.lists[0]));
 
     int btn_row = rows - 4;
-    ui2_layout_t *bar = ui2_layout_create(0, btn_row, cols, 3, UI2_LAYOUT_HORIZONTAL);
-    ui2_layout_set_gap(bar, 0);
-    ui2_layout_add(root, UI2_WIDGET(bar));
-
-    int btn_w = 3;
-    struct { const char *label; void (*cb)(ui2_button_t *, void *); } btn_defs[] = {
-        {ICON_FILE_PLUS, on_new_file_click},
-        {ICON_FOLDER_PLUS, on_mkdir_click},
-        {ICON_EDIT_2, on_rename_click},
-        {ICON_COPY, on_copy_click},
-        {ICON_TRASH_2, on_delete_click},
-        {ICON_CHECK, on_open_click},
-        {ICON_X, on_exit_click},
+    ui2_toolbar_item_t btn_defs[] = {
+        {ICON_FILE_PLUS,  on_new_file_click, NULL},
+        {ICON_FOLDER_PLUS, on_mkdir_click,   NULL},
+        {ICON_EDIT_2,     on_rename_click,   NULL},
+        {ICON_COPY,       on_copy_click,     NULL},
+        {ICON_TRASH_2,    on_delete_click,   NULL},
+        {ICON_CHECK,      on_open_click,     NULL},
+        {ICON_X,          on_exit_click,     NULL},
     };
-    for (int i = 0; i < 7; i++) {
-        ui2_button_t *btn = ui2_button_create(0, 0, btn_w, 3, btn_defs[i].label);
-        ui2_button_set_callback(btn, btn_defs[i].cb, NULL);
-        ui2_layout_add(bar, UI2_WIDGET(btn));
-    }
+    ui2_layout_t *bar = ui2_toolbar_create(0, btn_row, cols, 3, btn_defs, 7);
+    ui2_layout_add(root, UI2_WIDGET(bar));
 
     state.name_input = ui2_text_input_create(0, rows - 5, cols, 4);
     ui2_text_input_set_title(state.name_input, "File Manager");

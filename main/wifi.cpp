@@ -7,6 +7,7 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "esp_sntp.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include <string.h>
 #include <stdio.h>
@@ -20,6 +21,8 @@ static bool wifi_connected = false;
 static bool ntp_initialized = false;
 static bool time_synchronized = false;
 static time_t last_time_sync = 0;
+static int wifi_retry_count = 0;
+static esp_timer_handle_t wifi_reconnect_timer;
 static char wifi_ip[WIFI_IP_STR_LEN] = {0};
 static char wifi_ssid[WIFI_MAX_SSID] = {0};
 static char wifi_password[WIFI_MAX_PASSWORD] = {0};
@@ -120,6 +123,12 @@ static void wifi_start_time_sync(void) {
     ESP_LOGI(TAG, "NTP sync restarted after reconnect");
 }
 
+static void wifi_reconnect_timer_cb(void *arg) {
+    (void)arg;
+    ESP_LOGI(TAG, "Reconnect timer fired, retrying WiFi connection");
+    esp_wifi_connect();
+}
+
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                 int32_t event_id, void *event_data) {
     if (event_base == WIFI_EVENT) {
@@ -129,15 +138,19 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
             }
         } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
             wifi_connected = false;
-            ESP_LOGI(TAG, "WiFi disconnected");
+            wifi_retry_count++;
+            ESP_LOGW(TAG, "WiFi disconnected (retry %d)", wifi_retry_count);
             if (!wifi_scanning) {
-                esp_wifi_connect();
+                int delay_ms = (wifi_retry_count <= 5) ? 1000 :
+                               (wifi_retry_count <= 15) ? 5000 : 30000;
+                esp_timer_start_once(wifi_reconnect_timer, (uint64_t)delay_ms * 1000);
             }
         }
     } else if (event_base == IP_EVENT) {
         if (event_id == IP_EVENT_STA_GOT_IP) {
             ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
             wifi_connected = true;
+            wifi_retry_count = 0;
             snprintf(wifi_ip, sizeof(wifi_ip), IPSTR, IP2STR(&event->ip_info.ip));
             ESP_LOGI(TAG, "WiFi connected, IP: %s", wifi_ip);
             wifi_start_time_sync();
@@ -168,6 +181,15 @@ static bool read_config(void) {
 
 bool wifi_init(void) {
     if (wifi_initialized) return true;
+
+    esp_timer_create_args_t timer_args = {
+        .callback = wifi_reconnect_timer_cb,
+        .arg = NULL,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "wifi_reconnect",
+        .skip_unhandled_events = false
+    };
+    esp_timer_create(&timer_args, &wifi_reconnect_timer);
 
     // Initialize NVS (needed by WiFi)
     esp_err_t ret = nvs_flash_init();

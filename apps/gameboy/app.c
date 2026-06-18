@@ -10,6 +10,7 @@
 #include "hardware.h"
 #include "text_mode.h"
 #include "ui2.h"
+#include "ui2_toolbar.h"
 #include "lucide_icons.h"
 #include <dirent.h>
 #include <stdio.h>
@@ -543,25 +544,14 @@ static void build_rom_list_screen(void) {
         ui2_layout_add(root, UI2_WIDGET(dir_path));
     }
 
-    ui2_layout_t *bar = ui2_layout_create(1, rows - 3, cols - 2, 3, UI2_LAYOUT_HORIZONTAL);
-    ui2_layout_set_gap(bar, 2);
+    ui2_toolbar_item_t gb_items[] = {
+        {"Up",   on_up_click,   NULL},
+        {"Dn",   on_down_click, NULL},
+        {"Open", on_open_click, NULL},
+        {ICON_X, on_exit_click, NULL},
+    };
+    ui2_layout_t *bar = ui2_toolbar_create(1, rows - 3, cols - 2, 3, gb_items, 4);
     ui2_layout_add(root, UI2_WIDGET(bar));
-
-    ui2_button_t *up = ui2_button_create(0, 0, 6, 3, "Up");
-    ui2_button_set_callback(up, on_up_click, NULL);
-    ui2_layout_add(bar, UI2_WIDGET(up));
-
-    ui2_button_t *dn = ui2_button_create(0, 0, 6, 3, "Dn");
-    ui2_button_set_callback(dn, on_down_click, NULL);
-    ui2_layout_add(bar, UI2_WIDGET(dn));
-
-    ui2_button_t *open = ui2_button_create(0, 0, 8, 3, "Open");
-    ui2_button_set_callback(open, on_open_click, NULL);
-    ui2_layout_add(bar, UI2_WIDGET(open));
-
-    ui2_button_t *exit = ui2_button_create(0, 0, 3, 3, ICON_X);
-    ui2_button_set_callback(exit, on_exit_click, NULL);
-    ui2_layout_add(bar, UI2_WIDGET(exit));
 
     ui2_screen_render(screen);
 }
