@@ -95,3 +95,7 @@ site/assets/version.txt
 .antigravitycli/
 F2.md
 lua-5.4.7/
+
+# ELF loader test generated stubs
+tests/host/fake_includes/
+tests/host/host/

@@ -71,11 +71,12 @@ deploy-all: build stub
 	@echo "Building firmware + stub + apps and flashing..."
 	. /opt/esp-idf/export.sh && scripts/build_test.sh
 
-# Run host-side tests (reader tokenizer suite + host unit tests).
+# Run host-side tests (reader tokenizer suite + host unit tests + ELF loader e2e).
 check:
 	@echo "Running host-side tests..."
 	bash apps/reader/tests/run_tests.sh
 	bash tests/run_tests.sh
+	bash tests/host/run_loader_tests.sh
 
 # Build the Linux/SDL2 desktop emulator (see linux/README for usage).
 emulate:
