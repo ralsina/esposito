@@ -57,19 +57,18 @@ jobs:
           ref: ${{ steps.tag.outputs.name }}
           submodules: false
 
-      - name: Build firmware
+      - name: Build firmware + app bundle
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v6.0.1
           target: esp32
           path: .
-          command: idf.py build
-
-      - name: Build app bundle (SD card apps + fonts + books)
-        env:
-          VERSION: ${{ steps.tag.outputs.name }}
-        run: |
-          bash scripts/build_release_bundle.sh artifacts/sdcard-bundle.zip "${VERSION}"
+          # Both steps run inside the IDF Docker container so the
+          # xtensa-esp32-elf toolchain and IDF includes are in PATH.
+          command: |
+            apt-get update -qq && apt-get install -y -qq zip xxd > /dev/null 2>&1 || true
+            idf.py build
+            bash scripts/build_release_bundle.sh artifacts/sdcard-bundle.zip "${{ steps.tag.outputs.name }}"
 
       - name: Stage artifacts
         run: |
