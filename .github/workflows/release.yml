@@ -70,6 +70,9 @@ jobs:
             idf.py build
             bash scripts/build_release_bundle.sh artifacts/sdcard-bundle.zip "${{ steps.tag.outputs.name }}"
 
+      - name: Fix file ownership from Docker
+        run: sudo chown -R $(id -u):$(id -g) build/ artifacts/
+
       - name: Stage artifacts
         run: |
           mkdir -p artifacts
