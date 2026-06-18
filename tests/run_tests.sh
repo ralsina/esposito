@@ -19,7 +19,7 @@ PASSED=0
 
 # Host-compilable unit sources linked into every test binary. Add new
 # host-clean translation units here as they are extracted from the firmware.
-HOST_SOURCES="main/semver.c"
+HOST_SOURCES="main/semver.c main/elf_validate.c"
 
 for test_src in "$SCRIPT_DIR"/test_*.c; do
     [ -e "$test_src" ] || continue

@@ -1,4 +1,5 @@
 #include "elf_loader.h"
+#include "elf_validate.h"
 #include "os_symtab.h"
 #include "os_core.h"
 #include "app_heap.h"
@@ -14,9 +15,6 @@
 
 static const char *TAG = "elf_loader";
 
-#define ELF_MAGIC 0x464C457F
-#define EM_XTENSA 94
-#define EM_RISCV  243
 #define ET_EXEC   2
 
 #define PT_LOAD   1
@@ -49,50 +47,9 @@ static const char *TAG = "elf_loader";
 
 #define APP_PARTITION_LABEL "app_code"
 
-typedef struct __attribute__((packed)) {
-    uint32_t e_magic;
-    uint8_t  e_class;
-    uint8_t  e_data;
-    uint8_t  e_ident_ver;
-    uint8_t  e_ident_osabi;
-    uint8_t  e_ident_abiver;
-    uint8_t  e_pad[7];
-    uint16_t e_type;
-    uint16_t e_machine;
-    uint32_t e_version;
-    uint32_t e_entry;
-    uint32_t e_phoff;
-    uint32_t e_shoff;
-    uint32_t e_flags;
-    uint16_t e_ehsize;
-    uint16_t e_phentsize;
-    uint16_t e_phnum;
-    uint16_t e_shentsize;
-    uint16_t e_shnum;
-    uint16_t e_shstrndx;
-} elf32_ehdr_t;
-
-typedef struct __attribute__((packed)) {
-    uint32_t sh_name;
-    uint32_t sh_type;
-    uint32_t sh_flags;
-    uint32_t sh_addr;
-    uint32_t sh_offset;
-    uint32_t sh_size;
-    uint32_t sh_link;
-    uint32_t sh_info;
-    uint32_t sh_addralign;
-    uint32_t sh_entsize;
-} elf32_shdr_t;
-
-typedef struct __attribute__((packed)) {
-    uint32_t st_name;
-    uint32_t st_value;
-    uint32_t st_size;
-    uint8_t  st_info;
-    uint8_t  st_other;
-    uint16_t st_shndx;
-} elf32_sym_t;
+/* ELF32 on-disk struct definitions (elf32_ehdr_t, elf32_shdr_t, elf32_sym_t)
+ * and the ELF_MAGIC/EM_* constants live in elf_validate.h, shared with the
+ * host-side validation tests. */
 
 typedef struct __attribute__((packed)) {
     uint32_t r_offset;
@@ -325,13 +282,13 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
             if (r_type != EXPECTED_RELOC_TYPE || !symtab || r_sym == 0) {
                 continue;
             }
-            if (r_sym >= (uint32_t)sym_count) {
+            if (!elf_reloc_sym_in_bounds(r_sym, sym_count)) {
                 ESP_LOGW(TAG, "Relocation symbol index %u out of range (sym_count=%d), skipping",
                          r_sym, sym_count);
                 continue;
             }
 
-            if (r_offset < target_sh->sh_addr || (r_offset - target_sh->sh_addr + sizeof(uint32_t)) > target_sh->sh_size) {
+            if (!elf_reloc_offset_in_bounds(r_offset, target_sh)) {
                 continue;
             }
 
@@ -448,25 +405,12 @@ elf_handle_t *elf_loader_load(const char *path) {
     expected_machine = EM_XTENSA;
 #endif
 
-    if (ehdr->e_magic != ELF_MAGIC || ehdr->e_machine != expected_machine) {
-        ESP_LOGE(TAG, "Invalid ELF (magic=0x%x machine=%d, expected=%d)", ehdr->e_magic, ehdr->e_machine, expected_machine);
-        goto fail;
-    }
-
-    // Sanity-check ELF header fields to reject corrupted or hostile files early.
-    // These bounds prevent OOM (huge e_shnum), out-of-range section indices, and
-    // crashes from later unchecked indexing into shdrs[].
-    if (ehdr->e_shnum == 0 || ehdr->e_shnum > 64) {
-        ESP_LOGE(TAG, "Out-of-range e_shnum: %u (must be 1..64)", ehdr->e_shnum);
-        goto fail;
-    }
-    if (ehdr->e_shentsize != sizeof(elf32_shdr_t)) {
-        ESP_LOGE(TAG, "Unexpected e_shentsize: %u (expected %zu)",
-                 ehdr->e_shentsize, sizeof(elf32_shdr_t));
-        goto fail;
-    }
-    if (ehdr->e_shstrndx != 0 && ehdr->e_shstrndx >= ehdr->e_shnum) {
-        ESP_LOGE(TAG, "Out-of-range e_shstrndx: %u (e_shnum=%u)", ehdr->e_shstrndx, ehdr->e_shnum);
+    const char *hdr_err = NULL;
+    if (!elf_validate_header(ehdr, expected_machine, &hdr_err)) {
+        ESP_LOGE(TAG, "Invalid ELF header (%s): magic=0x%x machine=%d expected=%d "
+                 "shnum=%u shentsize=%u shstrndx=%u",
+                 hdr_err ? hdr_err : "unknown", ehdr->e_magic, ehdr->e_machine,
+                 expected_machine, ehdr->e_shnum, ehdr->e_shentsize, ehdr->e_shstrndx);
         goto fail;
     }
 
@@ -496,21 +440,15 @@ elf_handle_t *elf_loader_load(const char *path) {
     // Cap symtab/strtab sizes to defend against a corrupted ELF claiming a huge table.
     // 1 MB is far above what any real app needs (typical is <100 KB) but bounded enough
     // that a malformed file cannot OOM the device.
-    if (sym_sh->sh_size == 0 || sym_sh->sh_size > 1024 * 1024) {
-        ESP_LOGE(TAG, "Out-of-range symtab size: %u bytes", sym_sh->sh_size);
-        goto fail;
-    }
-    if (sym_sh->sh_size % sizeof(elf32_sym_t) != 0) {
-        ESP_LOGE(TAG, "Symtab size %u not a multiple of sym entry size", sym_sh->sh_size);
-        goto fail;
-    }
-
     const elf32_shdr_t *str_sh = NULL;
     if (sym_sh->sh_link > 0 && sym_sh->sh_link < ehdr->e_shnum) {
         str_sh = &shdrs[sym_sh->sh_link];
     }
-    if (str_sh && (str_sh->sh_size == 0 || str_sh->sh_size > 1024 * 1024)) {
-        ESP_LOGE(TAG, "Out-of-range strtab size: %u bytes", str_sh->sh_size);
+    const char *sym_err = NULL;
+    if (!elf_validate_symtab(sym_sh, str_sh, &sym_err)) {
+        ESP_LOGE(TAG, "Symbol table rejected (%s): sym_size=%u str_size=%u",
+                 sym_err ? sym_err : "unknown", sym_sh->sh_size,
+                 str_sh ? str_sh->sh_size : 0);
         goto fail;
     }
 
