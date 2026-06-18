@@ -744,7 +744,7 @@ static void render(void) {
 
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
-    int pane_height = rows - 6;
+    int pane_height = rows - 5;
     int left_width = cols / 2;
     int right_width = cols - left_width - 1;
 
@@ -880,7 +880,7 @@ void app_init(app_context_t *ctx) {
     }
     ui2_screen_focus_set(state.screen, UI2_WIDGET(state.lists[0]));
 
-    int btn_row = rows - 5;
+    int btn_row = rows - 4;
     ui2_layout_t *bar = ui2_layout_create(0, btn_row, cols, 3, UI2_LAYOUT_HORIZONTAL);
     ui2_layout_set_gap(bar, 0);
     ui2_layout_add(root, UI2_WIDGET(bar));
