@@ -9,15 +9,11 @@ You need a USB cable and Chrome or Edge.
     <button slot="activate" class="primary" style="font-size: 1.2rem; padding: 0.6rem 2rem;">
         🚀 Connect &amp; Install
     </button>
-    <span slot="unsupported">
-        <p>⚠️ Your browser doesn't support Web Serial. Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on desktop.</p>
-    </span>
-    <span slot="not-allowed">
-        <p>🔒 Connect the ESP32 to this computer via USB first.</p>
-    </span>
+    <span slot="unsupported">⚠️ Your browser doesn't support Web Serial. Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on desktop.</span>
+    <span slot="not-allowed">🔒 Connect the ESP32 to this computer via USB first.</span>
 </esp-web-install-button>
 
-<script type="module" src="https://unpkg.com/esp-web-tools@9/dist/web/install-button.js?module"></script>
+<script type="module" src="https://unpkg.com/esp-web-tools@9/dist/web/install-button.js"></script>
 
 <h2 id="Prerequisites">Prerequisites</h2>
 
@@ -42,7 +38,7 @@ For app files and the catalog, see the [app store](/) or [GitHub](https://github
 Once Esposito OS is running, updates are delivered **over WiFi**:
 
 1. Connect the device to WiFi via Settings
-2. The OS checks GitHub Releases on boot
+2. Open **Settings → Update** to check for a newer release
 3. Firmware is downloaded, **signature-verified** against the embedded public key, and applied
 
 No browser needed for updates after the initial install.

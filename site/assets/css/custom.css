@@ -110,6 +110,12 @@ It loads after theme.css so you can override it.*/
     justify-content: center;
 }
 
+/* ESP Web Tools: hide fallback slots until the component loads */
+esp-web-install-button:not(:defined) [slot="unsupported"],
+esp-web-install-button:not(:defined) [slot="not-allowed"] {
+    display: none;
+}
+
 /* Centered figures */
 figure {
     text-align: center;
