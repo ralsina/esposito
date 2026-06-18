@@ -1,5 +1,6 @@
 #include "ota_update.h"
 #include "ota_keys.h"
+#include "semver.h"
 #include "text_mode.h"
 #include "app_heap.h"
 #include "os_core.h"
@@ -196,54 +197,8 @@ static bool parse_release_json(char *json, size_t json_len,
 }
 
 // --- Semver comparison ---
-
-// Parse leading "v1.2.3" (with optional 'v'/'V' prefix) from s.
-// major/minor/patch receive the parsed numbers (0 on parse failure).
-// Returns pointer to the first character after patch (typically '-' for a
-// pre-release suffix, '+' for build metadata, '\0' for end, etc.).
-static const char *parse_semver(const char *s, int *major, int *minor, int *patch) {
-    *major = *minor = *patch = 0;
-    if (!s) return NULL;
-    if (*s == 'v' || *s == 'V') s++;
-
-    *major = atoi(s);
-    while (*s && *s != '.' && *s != '-' && *s != '+') s++;
-    if (*s == '.') s++;
-
-    *minor = atoi(s);
-    while (*s && *s != '.' && *s != '-' && *s != '+') s++;
-    if (*s == '.') s++;
-
-    *patch = atoi(s);
-    while (*s && *s != '-' && *s != '+') s++;
-    return s;
-}
-
-// Compare two version strings per semver rules.
-// Returns: 1 if a > b, -1 if a < b, 0 if equal.
-// A version with a pre-release suffix (e.g. "v1.0.0-beta.1") is LOWER than
-// the same version without one (per semver spec).
-static int compare_versions(const char *a, const char *b) {
-    int amaj, amin, apat, bmaj, bmin, bpat;
-    const char *a_rest = parse_semver(a, &amaj, &amin, &apat);
-    const char *b_rest = parse_semver(b, &bmaj, &bmin, &bpat);
-
-    if (amaj != bmaj) return amaj < bmaj ? -1 : 1;
-    if (amin != bmin) return amin < bmin ? -1 : 1;
-    if (apat != bpat) return apat < bpat ? -1 : 1;
-
-    // Equal X.Y.Z. Pre-release has lower precedence than no pre-release.
-    bool a_pre = a_rest && *a_rest == '-';
-    bool b_pre = b_rest && *b_rest == '-';
-    if (a_pre && !b_pre) return -1;
-    if (!a_pre && b_pre) return 1;
-    if (a_pre && b_pre && a_rest && b_rest) {
-        // Simple string compare of the pre-release tag (incl. leading '-').
-        int r = strcmp(a_rest, b_rest);
-        return r < 0 ? -1 : (r > 0 ? 1 : 0);
-    }
-    return 0;
-}
+// Moved to main/semver.{c,h} so it can be unit-tested on the host.
+// See tests/test_semver.c.
 
 // --- UI helpers ---
 

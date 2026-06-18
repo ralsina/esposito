@@ -44,5 +44,8 @@ jobs:
       - name: Run reader tests
         run: bash apps/reader/tests/run_tests.sh
 
+      - name: Run host unit tests
+        run: bash tests/run_tests.sh
+
       - name: Build Linux emulator
         run: make -C linux
