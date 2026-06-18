@@ -1030,7 +1030,7 @@ void app_init(app_context_t *ctx) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
 
-    tv = (ui2_tabview_t *)ui2_tabview_create(0, 1, cols, rows - 4, 10);
+    tv = (ui2_tabview_t *)ui2_tabview_create(0, 1, cols, rows - 5, 10);
     UI2_WIDGET(tv)->focusable = true;
 
     for (int s = 0; s < SECTION_COUNT; s++) {
@@ -1088,7 +1088,7 @@ void app_init(app_context_t *ctx) {
             {ICON_ARROW_LEFT, on_toolbar_back,     NULL},
             {ICON_X,          on_exit_btn_click,   NULL},
         };
-        toolbar = ui2_toolbar_create(0, rows - 3, cols, 2, tb_items, 5);
+        toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, tb_items, 5);
     }
 
     render();
