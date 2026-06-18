@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Esposito OS — Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: #020617;
+      min-height: 100vh;
+      padding: 2rem;
+      color: white;
+    }
+    .container { max-width: 1320px; margin: 0 auto; }
+    .header { margin-bottom: 1.5rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot {
+      width: 12px; height: 12px; background: #22d3ee; border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 1rem;
+      border: 1px solid #1e293b;
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+    svg { width: 100%; min-width: 1180px; display: block; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 0.75rem;
+      border: 1px solid #1e293b;
+      padding: 1.25rem;
+    }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.4rem; line-height: 1.4; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Esposito OS — Architecture</h1>
+      </div>
+      <p class="subtitle">Dynamic app-loading OS for ESP32 CYD · event-driven · single-tasking · Palm-style lifecycle</p>
+    </div>
+
+    <!-- Main Diagram -->
+    <div class="diagram-container">
+      <svg viewBox="0 0 1280 960">
+        <defs>
+          <marker id="ah" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="ah-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+          </marker>
+          <marker id="ah-em" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="ah-amb" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" />
+          </marker>
+          <marker id="ah-vio" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <marker id="ah-slate" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background Grid -->
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===================== DEVICE / TRUST BOUNDARY ===================== -->
+        <rect x="20" y="55" width="850" height="765" rx="12"
+              fill="rgba(136,19,55,0.04)" stroke="#fb7185" stroke-width="1.2" stroke-dasharray="5,4"/>
+        <text x="34" y="74" fill="#fb7185" font-size="10" font-weight="600">
+          ESP32 CYD (Cheap Yellow Display, 2USB) — TRUST BOUNDARY · personal device · apps fully trusted · physical = root · network untrusted
+        </text>
+
+        <!-- ===================== APPS LAYER ===================== -->
+        <text x="40" y="98" fill="#22d3ee" font-size="10" font-weight="600">
+          APPS — ELF binaries · dynamically loaded from SD · Palm-style lifecycle (init → event → checkpoint → close)
+        </text>
+        <!-- Row 1 -->
+        <g font-size="9" font-weight="600" fill="white" text-anchor="middle">
+          <!-- launcher -->
+          <rect x="40" y="108" width="108" height="36" rx="5" fill="#0f172a"/><rect x="40" y="108" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="94" y="123">launcher</text><text x="94" y="135" fill="#94a3b8" font-size="7" font-weight="400">app browser</text>
+          <!-- settings -->
+          <rect x="158" y="108" width="108" height="36" rx="5" fill="#0f172a"/><rect x="158" y="108" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="212" y="123">settings</text><text x="212" y="135" fill="#94a3b8" font-size="7" font-weight="400">wifi · OTA</text>
+          <!-- shell -->
+          <rect x="276" y="108" width="108" height="36" rx="5" fill="#0f172a"/><rect x="276" y="108" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="330" y="123">shell</text><text x="330" y="135" fill="#94a3b8" font-size="7" font-weight="400">CLI</text>
+          <!-- clock -->
+          <rect x="394" y="108" width="108" height="36" rx="5" fill="#0f172a"/><rect x="394" y="108" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="448" y="123">clock</text><text x="448" y="135" fill="#94a3b8" font-size="7" font-weight="400">NTP sync</text>
+          <!-- reader -->
+          <rect x="512" y="108" width="108" height="36" rx="5" fill="#0f172a"/><rect x="512" y="108" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="566" y="123">reader</text><text x="566" y="135" fill="#94a3b8" font-size="7" font-weight="400">ebook</text>
+          <!-- kilo -->
+          <rect x="630" y="108" width="108" height="36" rx="5" fill="#0f172a"/><rect x="630" y="108" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="684" y="123">kilo / hecto</text><text x="684" y="135" fill="#94a3b8" font-size="7" font-weight="400">editors</text>
+          <!-- paint -->
+          <rect x="748" y="108" width="108" height="36" rx="5" fill="#0f172a"/><rect x="748" y="108" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="802" y="123">paint / lali</text><text x="802" y="135" fill="#94a3b8" font-size="7" font-weight="400">drawing</text>
+        </g>
+        <!-- Row 2 -->
+        <g font-size="9" font-weight="600" fill="white" text-anchor="middle">
+          <rect x="40" y="150" width="108" height="36" rx="5" fill="#0f172a"/><rect x="40" y="150" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="94" y="165">snake</text><text x="94" y="177" fill="#94a3b8" font-size="7" font-weight="400">game</text>
+          <rect x="158" y="150" width="108" height="36" rx="5" fill="#0f172a"/><rect x="158" y="150" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="212" y="165">breakout</text><text x="212" y="177" fill="#94a3b8" font-size="7" font-weight="400">game</text>
+          <rect x="276" y="150" width="108" height="36" rx="5" fill="#0f172a"/><rect x="276" y="150" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="330" y="165">gameboy</text><text x="330" y="177" fill="#94a3b8" font-size="7" font-weight="400">DMG emu</text>
+          <rect x="394" y="150" width="108" height="36" rx="5" fill="#0f172a"/><rect x="394" y="150" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="448" y="165">file_manager</text><text x="448" y="177" fill="#94a3b8" font-size="7" font-weight="400">2-pane</text>
+          <rect x="512" y="150" width="108" height="36" rx="5" fill="#0f172a"/><rect x="512" y="150" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="566" y="165">file_picker</text><text x="566" y="177" fill="#94a3b8" font-size="7" font-weight="400">dialog</text>
+          <rect x="630" y="150" width="108" height="36" rx="5" fill="#0f172a"/><rect x="630" y="150" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="684" y="165">terminado</text><text x="684" y="177" fill="#94a3b8" font-size="7" font-weight="400">serial term</text>
+          <rect x="748" y="150" width="108" height="36" rx="5" fill="#0f172a"/><rect x="748" y="150" width="108" height="36" rx="5" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="802" y="165">lua / calc</text><text x="802" y="177" fill="#94a3b8" font-size="7" font-weight="400">script · math</text>
+        </g>
+        <text x="40" y="200" fill="#475569" font-size="7">
+          + app_store · bookshop · numbers · image_viewer · hello_world · example_ui2 · app_template  (23 apps total)
+        </text>
+
+        <!-- ===================== OS API SURFACE BAR ===================== -->
+        <rect x="40" y="212" width="816" height="38" rx="6" fill="#0f172a"/>
+        <rect x="40" y="212" width="816" height="38" rx="6" fill="rgba(8,51,68,0.25)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="448" y="229" fill="white" font-size="10" font-weight="700" text-anchor="middle">
+          OS API SURFACE — os_symtab.c (exported symbols)
+        </text>
+        <text x="448" y="243" fill="#94a3b8" font-size="8" text-anchor="middle">
+          app lifecycle · display (pixel + text grid) · input · config · files · wifi · http/https · terminal (VT100) · memory · time/NTP
+        </text>
+
+        <!-- ===================== OS CORE ===================== -->
+        <text x="40" y="270" fill="#34d399" font-size="10" font-weight="600">OS CORE — event loop · app lifecycle · dynamic loading</text>
+        <g font-size="9" font-weight="600" fill="white" text-anchor="middle">
+          <!-- os_core -->
+          <rect x="40" y="280" width="108" height="50" rx="5" fill="#0f172a"/><rect x="40" y="280" width="108" height="50" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="94" y="299">os_core</text><text x="94" y="312" fill="#94a3b8" font-size="7" font-weight="400">event loop</text><text x="94" y="322" fill="#94a3b8" font-size="7" font-weight="400">lifecycle</text>
+          <!-- elf_loader -->
+          <rect x="158" y="280" width="108" height="50" rx="5" fill="#0f172a"/><rect x="158" y="280" width="108" height="50" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="212" y="299">elf_loader</text><text x="212" y="312" fill="#94a3b8" font-size="7" font-weight="400">relocatable</text><text x="212" y="322" fill="#94a3b8" font-size="7" font-weight="400">ELF · symtab</text>
+          <!-- app_loader -->
+          <rect x="276" y="280" width="108" height="50" rx="5" fill="#0f172a"/><rect x="276" y="280" width="108" height="50" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="330" y="299">app_loader</text><text x="330" y="312" fill="#94a3b8" font-size="7" font-weight="400">discovery</text><text x="330" y="322" fill="#94a3b8" font-size="7" font-weight="400">from SD</text>
+          <!-- app_manifest -->
+          <rect x="394" y="280" width="108" height="50" rx="5" fill="#0f172a"/><rect x="394" y="280" width="108" height="50" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="448" y="299">app_manifest</text><text x="448" y="312" fill="#94a3b8" font-size="7" font-weight="400">manifest.cfg</text><text x="448" y="322" fill="#94a3b8" font-size="7" font-weight="400">file assoc</text>
+          <!-- app_config -->
+          <rect x="512" y="280" width="108" height="50" rx="5" fill="#0f172a"/><rect x="512" y="280" width="108" height="50" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="566" y="299">app_config</text><text x="566" y="312" fill="#94a3b8" font-size="7" font-weight="400">state I/O</text><text x="566" y="322" fill="#94a3b8" font-size="7" font-weight="400">per-app</text>
+          <!-- app_heap -->
+          <rect x="630" y="280" width="108" height="50" rx="5" fill="#0f172a"/><rect x="630" y="280" width="108" height="50" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="684" y="299">app_heap</text><text x="684" y="312" fill="#94a3b8" font-size="7" font-weight="400">app-local</text><text x="684" y="322" fill="#94a3b8" font-size="7" font-weight="400">malloc/free</text>
+          <!-- boot -->
+          <rect x="748" y="280" width="108" height="50" rx="5" fill="#0f172a"/><rect x="748" y="280" width="108" height="50" rx="5" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="802" y="299">boot.cpp</text><text x="802" y="312" fill="#94a3b8" font-size="7" font-weight="400">boot seq</text><text x="802" y="322" fill="#94a3b8" font-size="7" font-weight="400">fw check</text>
+        </g>
+
+        <!-- ===================== HAL & DRIVERS ===================== -->
+        <text x="40" y="352" fill="#34d399" font-size="10" font-weight="600">HAL &amp; DRIVERS</text>
+        <g font-size="9" font-weight="600" fill="white" text-anchor="middle">
+          <!-- Row 1 -->
+          <rect x="40" y="362" width="158" height="38" rx="5" fill="#0f172a"/><rect x="40" y="362" width="158" height="38" rx="5" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="119" y="378">hardware.cpp</text><text x="119" y="390" fill="#94a3b8" font-size="7" font-weight="400">HAL · LovyanGFX init</text>
+          <rect x="206" y="362" width="158" height="38" rx="5" fill="#0f172a"/><rect x="206" y="362" width="158" height="38" rx="5" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="285" y="378">text_mode.cpp</text><text x="285" y="390" fill="#94a3b8" font-size="7" font-weight="400">text grid · VT100 lines</text>
+          <rect x="372" y="362" width="158" height="38" rx="5" fill="#0f172a"/><rect x="372" y="362" width="158" height="38" rx="5" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="451" y="378">graphics_mode.cpp</text><text x="451" y="390" fill="#94a3b8" font-size="7" font-weight="400">pixel · RGB565</text>
+          <rect x="538" y="362" width="158" height="38" rx="5" fill="#0f172a"/><rect x="538" y="362" width="158" height="38" rx="5" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="617" y="378">terminal_mode.c</text><text x="617" y="390" fill="#94a3b8" font-size="7" font-weight="400">VT100 emulator</text>
+          <rect x="704" y="362" width="158" height="38" rx="5" fill="#0f172a"/><rect x="704" y="362" width="158" height="38" rx="5" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="783" y="378">bbq20_keyboard.c</text><text x="783" y="390" fill="#94a3b8" font-size="7" font-weight="400">I2C keyboard</text>
+          <!-- Row 2 -->
+          <rect x="40" y="406" width="158" height="38" rx="5" fill="#0f172a"/><rect x="40" y="406" width="158" height="38" rx="5" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="119" y="422">touchscreen.c</text><text x="119" y="434" fill="#94a3b8" font-size="7" font-weight="400">resistive touch</text>
+          <rect x="206" y="406" width="158" height="38" rx="5" fill="#0f172a"/><rect x="206" y="406" width="158" height="38" rx="5" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="285" y="422">sd_card.c</text><text x="285" y="434" fill="#94a3b8" font-size="7" font-weight="400">FAT filesystem</text>
+          <rect x="372" y="406" width="158" height="38" rx="5" fill="#0f172a"/><rect x="372" y="406" width="158" height="38" rx="5" fill="rgba(6,78,59,0.3)" stroke="#34d399" stroke-width="1.5"/>
+          <text x="451" y="422">wifi.cpp</text><text x="451" y="434" fill="#94a3b8" font-size="7" font-weight="400">STA · mbedTLS · TLS 1.2</text>
+          <rect x="538" y="406" width="158" height="38" rx="5" fill="#0f172a"/><rect x="538" y="406" width="158" height="38" rx="5" fill="rgba(136,19,55,0.35)" stroke="#fb7185" stroke-width="1.5"/>
+          <text x="617" y="422">ota_update.c</text><text x="617" y="434" fill="#94a3b8" font-size="7" font-weight="400">resumable · verify</text>
+          <rect x="704" y="406" width="158" height="38" rx="5" fill="#0f172a"/><rect x="704" y="406" width="158" height="38" rx="5" fill="rgba(136,19,55,0.35)" stroke="#fb7185" stroke-width="1.5"/>
+          <text x="783" y="422">credential_store.c</text><text x="783" y="434" fill="#94a3b8" font-size="7" font-weight="400">NVS secrets</text>
+        </g>
+
+        <!-- ===================== HARDWARE PERIPHERALS ===================== -->
+        <text x="40" y="468" fill="#94a3b8" font-size="10" font-weight="600">HARDWARE PERIPHERALS</text>
+        <g font-size="9" font-weight="600" fill="white" text-anchor="middle">
+          <rect x="40" y="478" width="108" height="44" rx="5" fill="#0f172a"/><rect x="40" y="478" width="108" height="44" rx="5" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+          <text x="94" y="495">ESP32 MCU</text><text x="94" y="508" fill="#94a3b8" font-size="7" font-weight="400">dual-core</text><text x="94" y="517" fill="#94a3b8" font-size="7" font-weight="400">ESP-IDF</text>
+          <rect x="158" y="478" width="108" height="44" rx="5" fill="#0f172a"/><rect x="158" y="478" width="108" height="44" rx="5" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+          <text x="212" y="495">ST7789</text><text x="212" y="508" fill="#94a3b8" font-size="7" font-weight="400">320×240</text><text x="212" y="517" fill="#94a3b8" font-size="7" font-weight="400">ILI9341 drv</text>
+          <rect x="276" y="478" width="108" height="44" rx="5" fill="#0f172a"/><rect x="276" y="478" width="108" height="44" rx="5" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+          <text x="330" y="495">BBQ20 kbd</text><text x="330" y="508" fill="#94a3b8" font-size="7" font-weight="400">I2C</text><text x="330" y="517" fill="#94a3b8" font-size="7" font-weight="400">QWERTY</text>
+          <rect x="394" y="478" width="108" height="44" rx="5" fill="#0f172a"/><rect x="394" y="478" width="108" height="44" rx="5" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+          <text x="448" y="495">Touchscreen</text><text x="448" y="508" fill="#94a3b8" font-size="7" font-weight="400">resistive</text><text x="448" y="517" fill="#94a3b8" font-size="7" font-weight="400">SPI</text>
+          <rect x="512" y="478" width="108" height="44" rx="5" fill="#0f172a"/><rect x="512" y="478" width="108" height="44" rx="5" fill="rgba(76,29,149,0.35)" stroke="#a78bfa" stroke-width="1.5"/>
+          <text x="566" y="495">SD card slot</text><text x="566" y="508" fill="#94a3b8" font-size="7" font-weight="400">FAT32</text><text x="566" y="517" fill="#94a3b8" font-size="7" font-weight="400">SPI/SDIO</text>
+          <rect x="630" y="478" width="108" height="44" rx="5" fill="#0f172a"/><rect x="630" y="478" width="108" height="44" rx="5" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+          <text x="684" y="495">WiFi radio</text><text x="684" y="508" fill="#94a3b8" font-size="7" font-weight="400">2.4 GHz</text><text x="684" y="517" fill="#94a3b8" font-size="7" font-weight="400">ESP32 net</text>
+          <rect x="748" y="478" width="108" height="44" rx="5" fill="#0f172a"/><rect x="748" y="478" width="108" height="44" rx="5" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+          <text x="802" y="495">Serial / USB</text><text x="802" y="508" fill="#94a3b8" font-size="7" font-weight="400">CDC ACM</text><text x="802" y="517" fill="#94a3b8" font-size="7" font-weight="400">flash · log</text>
+        </g>
+
+        <!-- ===================== SD CARD FILESYSTEM ===================== -->
+        <rect x="40" y="546" width="816" height="92" rx="6" fill="#0f172a"/>
+        <rect x="40" y="546" width="816" height="92" rx="6" fill="rgba(76,29,149,0.35)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="56" y="565" fill="white" font-size="11" font-weight="700">/sdcard — FAT filesystem</text>
+        <text x="56" y="578" fill="#a78bfa" font-size="8">app storage · per-app state · media · firmware</text>
+        <g font-size="8" fill="#cbd5e1">
+          <text x="56" y="598">/apps/&lt;name&gt;/program.elf</text><text x="56" y="610" fill="#94a3b8" font-size="7">relocatable ELF binaries</text>
+          <text x="56" y="626">/apps/&lt;name&gt;/config/</text><text x="56" y="636" fill="#94a3b8" font-size="7">app state (checkpoint)</text>
+          <text x="320" y="598">/books/</text><text x="320" y="610" fill="#94a3b8" font-size="7">markdown ebooks (reader)</text>
+          <text x="320" y="626">/fonts/</text><text x="320" y="636" fill="#94a3b8" font-size="7">VLW bitmap fonts</text>
+          <text x="560" y="598">/system/firmware.bin</text><text x="560" y="610" fill="#94a3b8" font-size="7">manual OTA image (boot check)</text>
+          <text x="560" y="626">/system/ota/</text><text x="560" y="636" fill="#94a3b8" font-size="7">resumable OTA download</text>
+        </g>
+
+        <!-- ===================== SHARED LIBS (apps link these in) ===================== -->
+        <rect x="40" y="660" width="816" height="60" rx="6" fill="#0f172a"/>
+        <rect x="40" y="660" width="816" height="60" rx="6" fill="rgba(30,41,59,0.35)" stroke="#64748b" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="56" y="678" fill="#cbd5e1" font-size="9" font-weight="600">SHARED LIBS (libs/) — linked into app ELFs at build time via deps file</text>
+        <g font-size="8" fill="#cbd5e1">
+          <text x="56" y="696">ui2 — widget toolkit (button, list, toolbar, OSK, tabview, layout, lucide icons)</text>
+          <text x="56" y="708">ui — legacy widget lib · json — core_json parser · arduboy — game compat layer · lua — scripting · serial_rx</text>
+        </g>
+
+        <!-- ===================== FLOW ANNOTATIONS ===================== -->
+        <g font-size="8" fill="#64748b">
+          <text x="40" y="744" fill="#22d3ee" font-weight="600">APP LOAD FLOW</text>
+          <text x="40" y="756">launcher → app_loader reads manifest.cfg → elf_loader loads program.elf (symtab resolve) →</text>
+          <text x="40" y="767">app_init (subscribe/restore) → os_event_loop dispatches events → app_checkpoint (save on switch) → app_close</text>
+          <text x="40" y="788" fill="#fbbf24" font-weight="600">OTA UPDATE FLOW</text>
+          <text x="40" y="800">Settings → ota_update → wifi (TLS) → OTA server → validate image → flash update partition → reboot</text>
+          <text x="40" y="811">SD path: boot checks /system/firmware.bin → launches stub → applies image → reboots to normal boot</text>
+        </g>
+
+        <!-- ===================== INTER-LAYER ARROWS ===================== -->
+        <!-- Apps -> OS API -->
+        <line x1="120" y1="186" x2="120" y2="210" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
+        <line x1="448" y1="186" x2="448" y2="210" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
+        <line x1="776" y1="186" x2="776" y2="210" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
+        <text x="200" y="203" fill="#22d3ee" font-size="7">link to exported symbols</text>
+        <!-- OS API -> OS Core -->
+        <line x1="200" y1="250" x2="200" y2="278" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-em)"/>
+        <line x1="566" y1="250" x2="566" y2="278" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-em)"/>
+        <line x1="776" y1="250" x2="776" y2="278" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-em)"/>
+        <text x="300" y="266" fill="#34d399" font-size="7">implemented by</text>
+        <!-- OS Core -> HAL -->
+        <line x1="200" y1="330" x2="200" y2="360" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-em)"/>
+        <line x1="566" y1="330" x2="566" y2="360" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-em)"/>
+        <line x1="776" y1="330" x2="776" y2="360" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-em)"/>
+        <text x="300" y="350" fill="#34d399" font-size="7">uses drivers</text>
+        <!-- HAL -> Hardware -->
+        <line x1="119" y1="444" x2="100" y2="476" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ah-slate)"/>
+        <line x1="285" y1="444" x2="330" y2="476" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ah-slate)"/>
+        <line x1="451" y1="444" x2="448" y2="476" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ah-slate)"/>
+        <line x1="617" y1="444" x2="684" y2="476" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ah-slate)"/>
+        <line x1="783" y1="444" x2="802" y2="476" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ah-slate)"/>
+        <text x="460" y="463" fill="#94a3b8" font-size="7">drives HW</text>
+        <!-- SD slot -> SD storage (mounts) -->
+        <line x1="566" y1="522" x2="566" y2="544" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-vio)"/>
+        <text x="572" y="536" fill="#a78bfa" font-size="7">mounts FAT</text>
+        <!-- OS Core (app_loader/app_config/boot) -> SD storage : dashed violet, routed down right margin -->
+        <path d="M 802 330 L 802 340 L 864 340 L 864 558 L 858 558" fill="none" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ah-vio)"/>
+        <text x="560" y="336" fill="#a78bfa" font-size="7">OS ↔ SD: app_loader (ELF) · app_config (state) · boot (fw check)</text>
+
+        <!-- ===================== LINUX EMULATOR (right, outside device) ===================== -->
+        <rect x="890" y="55" width="370" height="430" rx="8" fill="rgba(30,41,59,0.35)" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="6,4"/>
+        <text x="905" y="74" fill="#94a3b8" font-size="10" font-weight="700">LINUX EMULATOR — SDL2 dev host</text>
+        <text x="905" y="87" fill="#64748b" font-size="7">Reimplements OS API surface in plain C for host-side app testing (no flash needed)</text>
+        <g font-size="8" fill="white" text-anchor="middle" font-weight="600">
+          <rect x="905" y="98" width="165" height="32" rx="4" fill="#0f172a"/><rect x="905" y="98" width="165" height="32" rx="4" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="987" y="111">text_mode.c</text><text x="987" y="123" fill="#94a3b8" font-size="7" font-weight="400">VLW fonts · text grid</text>
+          <rect x="1080" y="98" width="165" height="32" rx="4" fill="#0f172a"/><rect x="1080" y="98" width="165" height="32" rx="4" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="1162" y="111">graphics_mode.c</text><text x="1162" y="123" fill="#94a3b8" font-size="7" font-weight="400">4bpp framebuffer</text>
+          <rect x="905" y="136" width="165" height="32" rx="4" fill="#0f172a"/><rect x="905" y="136" width="165" height="32" rx="4" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="987" y="149">sprite.c</text><text x="987" y="161" fill="#94a3b8" font-size="7" font-weight="400">scaled sprites (gameboy)</text>
+          <rect x="1080" y="136" width="165" height="32" rx="4" fill="#0f172a"/><rect x="1080" y="136" width="165" height="32" rx="4" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="1162" y="149">os_core.c</text><text x="1162" y="161" fill="#94a3b8" font-size="7" font-weight="400">pthreads · SDL sem</text>
+          <rect x="905" y="174" width="165" height="32" rx="4" fill="#0f172a"/><rect x="905" y="174" width="165" height="32" rx="4" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="987" y="187">app_config.c</text><text x="987" y="199" fill="#94a3b8" font-size="7" font-weight="400">JSON file on disk</text>
+          <rect x="1080" y="174" width="165" height="32" rx="4" fill="#0f172a"/><rect x="1080" y="174" width="165" height="32" rx="4" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="1162" y="187">hardware.c</text><text x="1162" y="199" fill="#94a3b8" font-size="7" font-weight="400">display/kbd stubs</text>
+          <rect x="905" y="212" width="165" height="32" rx="4" fill="#0f172a"/><rect x="905" y="212" width="165" height="32" rx="4" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="987" y="225">wifi.c</text><text x="987" y="237" fill="#94a3b8" font-size="7" font-weight="400">stub (no network)</text>
+          <rect x="1080" y="212" width="165" height="32" rx="4" fill="#0f172a"/><rect x="1080" y="212" width="165" height="32" rx="4" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="1162" y="225">flash_rom.c</text><text x="1162" y="237" fill="#94a3b8" font-size="7" font-weight="400">ROM loading</text>
+          <rect x="905" y="250" width="340" height="32" rx="4" fill="#0f172a"/><rect x="905" y="250" width="340" height="32" rx="4" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.2"/>
+          <text x="1075" y="263">main.c</text><text x="1075" y="275" fill="#94a3b8" font-size="7" font-weight="400">SDL event loop · key→app event · mouse=touch</text>
+        </g>
+        <text x="905" y="300" fill="#64748b" font-size="7" font-weight="600">LIMITATIONS</text>
+        <g font-size="7" fill="#94a3b8">
+          <text x="905" y="312">• No real WiFi/HTTP — os_http_get() returns errors</text>
+          <text x="905" y="323">• No serial port · no sound · touch via mouse clicks</text>
+          <text x="905" y="334">• App switching (os_load_app) exits current app</text>
+          <text x="905" y="345">• 320×240 at native pixel resolution · -g debug build</text>
+        </g>
+        <text x="905" y="367" fill="#64748b" font-size="7" font-weight="600">RUN</text>
+        <text x="905" y="379" fill="#cbd5e1" font-size="7" font-family="JetBrains Mono">cd linux &amp;&amp; ./run.sh [app_name]</text>
+        <text x="905" y="390" fill="#94a3b8" font-size="7">ESP_SD_CARD=/mnt/sdcard ./run.sh reader</text>
+        <text x="905" y="412" fill="#64748b" font-size="7" font-weight="600">CONTROLS</text>
+        <g font-size="7" fill="#94a3b8">
+          <text x="905" y="424">W/S · ↑/↓ · PgUp/PgDn — navigate</text>
+          <text x="905" y="435">Esc — back · Ctrl+Q — quit · mouse — touch</text>
+          <text x="905" y="446">A-Z · 0-9 — keyboard input</text>
+          <text x="905" y="457">Ctrl+Esc — quit emulator</text>
+        </g>
+        <text x="905" y="475" fill="#64748b" font-size="7" font-style="italic">Mirrors the device API surface so apps run unmodified on host.</text>
+
+        <!-- ===================== NETWORK / INTERNET (right, outside device) ===================== -->
+        <rect x="890" y="500" width="370" height="180" rx="8" fill="rgba(120,53,15,0.12)" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="6,4"/>
+        <text x="905" y="519" fill="#fbbf24" font-size="10" font-weight="700">NETWORK / INTERNET — untrusted</text>
+        <g font-size="8" fill="white" text-anchor="middle" font-weight="600">
+          <rect x="905" y="530" width="110" height="40" rx="5" fill="#0f172a"/><rect x="905" y="530" width="110" height="40" rx="5" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="960" y="547">OTA Server</text><text x="960" y="560" fill="#94a3b8" font-size="7" font-weight="400">firmware images</text>
+          <rect x="1025" y="530" width="110" height="40" rx="5" fill="#0f172a"/><rect x="1025" y="530" width="110" height="40" rx="5" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="1080" y="547">NTP</text><text x="1080" y="560" fill="#94a3b8" font-size="7" font-weight="400">time sync</text>
+          <rect x="1145" y="530" width="100" height="40" rx="5" fill="#0f172a"/><rect x="1145" y="530" width="100" height="40" rx="5" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+          <text x="1195" y="547">HTTP/HTTPS</text><text x="1195" y="560" fill="#94a3b8" font-size="7" font-weight="400">app APIs</text>
+        </g>
+        <text x="905" y="590" fill="#fbbf24" font-size="7" font-weight="600">TLS STACK</text>
+        <g font-size="7" fill="#94a3b8">
+          <text x="905" y="602">• mbedTLS · TLS 1.2 · Mozilla cert bundle (200 roots)</text>
+          <text x="905" y="613">• esp_crt_bundle_attach for verification</text>
+          <text x="905" y="624">• os_http_get / os_http_post app-facing helpers</text>
+          <text x="905" y="635">• Resumable OTA download across interrupted transfers</text>
+        </g>
+        <text x="905" y="657" fill="#fb7185" font-size="7" font-style="italic">Network untrusted → all traffic TLS-verified at boundary.</text>
+
+        <!-- ===================== WIFI -> NETWORK ARROW (crosses trust boundary) ===================== -->
+        <path d="M 684 478 L 684 455 L 880 455 L 880 545 L 890 545" fill="none" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amb)"/>
+        <text x="780" y="449" fill="#fbbf24" font-size="7">WiFi · TLS</text>
+        <!-- ota_update -> wifi (within HAL) -->
+        <path d="M 545 444 L 545 458 L 523 458 L 523 444" fill="none" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ah-amb)"/>
+        <text x="534" y="455" fill="#fbbf24" font-size="7" text-anchor="middle">OTA</text>
+        <!-- Settings app -> ota_update -->
+        <path d="M 158 126 L 28 126 L 28 345 L 536 345 L 536 404 L 538 404" fill="none" stroke="#fb7185" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ah)"/>
+        <text x="32" y="250" fill="#fb7185" font-size="7">trigger</text>
+        <text x="32" y="261" fill="#fb7185" font-size="7">(Settings)</text>
+
+        <!-- ===================== LINUX EMULATOR <-> OS API (dashed, mirrors API) ===================== -->
+        <path d="M 890 231 L 858 231" fill="none" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ah-slate)" marker-start="url(#ah-slate)"/>
+        <text x="800" y="225" fill="#94a3b8" font-size="7" text-anchor="end">mirrors API surface</text>
+
+        <!-- ===================== LEGEND (below all boundaries) ===================== -->
+        <rect x="890" y="700" width="370" height="120" rx="6" fill="rgba(15,23,42,0.5)" stroke="#1e293b" stroke-width="1"/>
+        <text x="905" y="718" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="905" y="728" width="16" height="10" rx="2" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="927" y="736" fill="#94a3b8" font-size="8">Apps (user-facing, ELF)</text>
+        <rect x="905" y="744" width="16" height="10" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="927" y="752" fill="#94a3b8" font-size="8">OS core / drivers (firmware)</text>
+        <rect x="905" y="760" width="16" height="10" rx="2" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="927" y="768" fill="#94a3b8" font-size="8">Storage (SD filesystem)</text>
+        <rect x="905" y="776" width="16" height="10" rx="2" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="927" y="784" fill="#94a3b8" font-size="8">Network / cloud (untrusted)</text>
+        <rect x="905" y="792" width="16" height="10" rx="2" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="927" y="800" fill="#94a3b8" font-size="8">Security / trust boundary</text>
+        <rect x="905" y="808" width="16" height="10" rx="2" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="927" y="816" fill="#94a3b8" font-size="8">External / hardware / host</text>
+        <line x1="1060" y1="733" x2="1080" y2="733" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="1086" y="736" fill="#94a3b8" font-size="8">SD access</text>
+        <line x1="1060" y1="749" x2="1080" y2="749" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="1086" y="752" fill="#94a3b8" font-size="8">OTA flow</text>
+        <line x1="1060" y1="765" x2="1080" y2="765" stroke="#fb7185" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="1086" y="768" fill="#94a3b8" font-size="8">Security flow</text>
+        <line x1="1060" y1="781" x2="1080" y2="781" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="1086" y="784" fill="#94a3b8" font-size="8">Host mirror</text>
+
+        <!-- ===================== BUILD TARGETS note (bottom-left free space) ===================== -->
+        <rect x="890" y="835" width="370" height="68" rx="6" fill="rgba(15,23,42,0.5)" stroke="#1e293b" stroke-width="1"/>
+        <text x="905" y="852" fill="#34d399" font-size="9" font-weight="600">BUILD TARGETS</text>
+        <g font-size="7" fill="#94a3b8">
+          <text x="905" y="865">• Firmware: idf.py build / flash / monitor  (ESP-IDF)</text>
+          <text x="905" y="876">• Per-app ELF: scripts/build_app.sh apps/&lt;name&gt;/app.c</text>
+          <text x="905" y="887">• All-in-one: scripts/build_test.sh (build + deploy + flash)</text>
+          <text x="905" y="898">• Host: cd linux &amp;&amp; make &amp;&amp; ./run.sh  (SDL2)</text>
+        </g>
+      </svg>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Architecture Model</h3>
+        </div>
+        <ul>
+          <li>• Event-driven: central event queue, apps subscribe in app_init()</li>
+          <li>• Single-tasking: one app runs at a time, OS manages switching</li>
+          <li>• Palm-style lifecycle: init → event → checkpoint → close</li>
+          <li>• Dynamic ELF loading from SD card (relocatable, symtab-resolved)</li>
+          <li>• Apps fully trusted — no sandboxing (personal device model)</li>
+          <li>• Layered: apps → API surface → OS core → HAL/drivers → hardware</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>Build &amp; Update Paths</h3>
+        </div>
+        <ul>
+          <li>• ESP-IDF firmware: idf.py build / flash / monitor</li>
+          <li>• Per-app ELFs: scripts/build_app.sh (deps file → link libs)</li>
+          <li>• Linux SDL2 emulator: linux/run.sh [app] for host testing</li>
+          <li>• OTA: Settings app → ota_update → TLS download → verify → flash</li>
+          <li>• SD card update: /system/firmware.bin checked at boot → stub</li>
+          <li>• Flash partitions: factory(2MB) · app_code · update(ota_0) · NVS</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>App Ecosystem</h3>
+        </div>
+        <ul>
+          <li>• 23 apps: launcher, settings, shell, clock, reader, kilo, paint, games…</li>
+          <li>• manifest.cfg: name, launcher visibility, file extensions</li>
+          <li>• deps file: link shared libs (ui2, json, arduboy, lua, serial_rx)</li>
+          <li>• ui2: widget toolkit (button, list, toolbar, OSK, tabview, icons)</li>
+          <li>• File associations → "Open with" via app_manifest_find_apps_for_ext</li>
+          <li>• Per-app config namespace auto-bound before app_init()</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <p class="footer">
+      Esposito OS v0.4 · ESP32 CYD · ESP-IDF · LovyanGFX · generated from ~/code/esposito
+    </p>
+  </div>
+</body>
+</html>
