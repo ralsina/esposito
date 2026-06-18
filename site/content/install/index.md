@@ -2,35 +2,22 @@
 title: Install Esposito OS
 ---
 
-<section class="hero-section" style="position: relative;">
-    <h2 style="color: var(--b16-base0D);">⚡ Install Esposito OS</h2>
-    <p>Flash your ESP32 CYD (Cheap Yellow Display) directly from your browser.
-    No toolchain, no drivers, no terminal — just a USB cable and Chrome or Edge.</p>
-
-  <div class="hero-actions">
-      <a href="#Prerequisites" class="primary contrast" role="button">Prerequisites</span>
-      <a href="#Troubleshooting" role="button" class="contrast">Troubleshooting</a>
-      <a href="https://github.com/ralsina/esposito" role="button" class="contrast">GitHub</a>
-  </div>
-</section>
-
-## Browser Install
+Flash your ESP32 CYD directly from your browser — no toolchain, no terminal.
+You need a USB cable and Chrome or Edge.
 
 <esp-web-install-button manifest="https://github.com/ralsina/esposito/releases/latest/download/manifest.json">
     <button slot="activate" class="primary" style="font-size: 1.2rem; padding: 0.6rem 2rem;">
         🚀 Connect &amp; Install
     </button>
     <span slot="unsupported">
-        <p>⚠️ Your browser doesn't support Web Serial. Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on desktop. (ChromeOS, Linux, macOS, and Windows all work.)</p>
+        <p>⚠️ Your browser doesn't support Web Serial. Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on desktop.</p>
     </span>
     <span slot="not-allowed">
-        <p>🔒 You need to connect the ESP32 to <em>this</em> computer via USB first.</p>
+        <p>🔒 Connect the ESP32 to this computer via USB first.</p>
     </span>
 </esp-web-install-button>
 
 <script type="module" src="https://unpkg.com/esp-web-tools@9/dist/web/install-button.js?module"></script>
-
-The button above connects to your ESP32 over USB (Web Serial), flashes the complete firmware image — bootloader, partition table, Esposito OS, and OTA data — and you're ready to go.
 
 <h2 id="Prerequisites">Prerequisites</h2>
 
@@ -41,17 +28,6 @@ The button above connects to your ESP32 over USB (Web Serial), flashes the compl
    - **Windows**: Drivers from [WCH](https://www.wch-ic.com/downloads/CH341SER_EXE.html)
    - **macOS**: Recent versions include CH340 drivers; if not, install from WCH.
    - **Linux**: Usually built into the kernel already.
-
-## What Gets Installed
-
-| Component | Offset | Size |
-|-----------|--------|------|
-| Bootloader | `0x1000` | ~40 KB |
-| Partition table | `0x8000` | 3 KB |
-| **Esposito OS** (factory app) | `0x10000` | ~2 MB |
-| OTA data (initial) | `0x210000` | 8 KB |
-
-The full image is generated automatically by our [release workflow](https://github.com/ralsina/esposito/actions) for every tagged release.
 
 ## After Install
 
@@ -76,7 +52,7 @@ No browser needed for updates after the initial install.
 <details>
 <summary><strong>The button doesn't do anything</strong></summary>
 
-Make sure you're using Chrome or Edge (desktop). Check that the page is served over HTTPS (this site is). Try refreshing — the Web Serial prompt sometimes needs a second attempt.
+Make sure you're using Chrome or Edge (desktop). Check that the page is served over HTTPS. Try refreshing — the Web Serial prompt sometimes needs a second attempt.
 </details>
 
 <details>
@@ -99,7 +75,7 @@ The ESP32 flash is 4 MB; the full image is under 2 MB so there's room. If it fai
 <details>
 <summary><strong>Screen is blank / white after install</strong></summary>
 
-You may have the original CYD (1-USB) instead of the 2-USB variant — they use different screen controllers. Check the [hardware notes](https://github.com/ralsina/esposito/blob/main/docs/trust-model.md) and the README.
+You may have the original CYD (1-USB) instead of the 2-USB variant — they use different screen controllers. Check the [README](https://github.com/ralsina/esposito) for hardware details.
 </details>
 
 <details>

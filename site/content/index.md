@@ -2,7 +2,7 @@
     <h2 style="color: var(--b16-base0D);">Cheap is <i>good</i></h2>
 
   <div class="hero-actions">
-      <a href="/install.html" class="primary contrast" role="button">⚡ Install</span>
+      <a href="/install/" class="primary contrast" role="button">⚡ Install</span>
       <a href="#Getting-Started" class="contrast" role="button">Get Started</span>
       <a href="https://github.com/ralsina/esposito" role="button" class="contrast">GitHub</a>
       <a href="/posts/index.html" role="button" class="contrast">News</a>
@@ -159,7 +159,7 @@ It's small, it's technically simple, it defines a very basic API for apps to imp
 ## Getting Started
 
 1. Get a CYD [somewhere.](https://es.aliexpress.com/w/wholesale-2432s028.html)
-2. **[Install Esposito OS in your browser](/install.html)** — just a USB cable + Chrome/Edge, no toolchain needed.
+2. **[Install Esposito OS in your browser](/install/)** — just a USB cable + Chrome/Edge, no toolchain needed.
 3. Go to [github](https://github.com/ralsina/esposito) to get apps and the source.
 4. Let's figure it out together
 5. Maybe get a 3d printer and make a nicer case?
