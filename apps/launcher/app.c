@@ -3,6 +3,7 @@
 #include "hardware.h"
 #include "ui2.h"
 #include "lucide_icons.h"
+#include "app_manifest.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -11,7 +12,6 @@ static const char *TAG = "launcher";
 #define APP_LOADER_MAX_APPS 32
 
 extern int app_loader_scan(char (*app_names)[256], int max_apps);
-extern bool app_manifest_get_display_name(const char *app_name, char *display_name, size_t max_len);
 
 static int app_launcher_selected = 0;
 static int app_count = 0;
@@ -35,6 +35,39 @@ static void sort_app_names(void) {
     }
 }
 
+static bool check_app_capabilities(const char *app_name) {
+    app_sd_manifest_t manifest;
+    if (!app_manifest_read(app_name, &manifest)) {
+        return true;
+    }
+    if (!manifest.requires[0]) {
+        return true;
+    }
+    char caps[APP_MANIFEST_CAP_MAX];
+    strncpy(caps, manifest.requires, sizeof(caps) - 1);
+    caps[sizeof(caps) - 1] = '\0';
+
+    char *start = caps;
+    while (*start) {
+        while (*start == ' ') start++;
+        char *end = start;
+        while (*end && *end != ',') end++;
+        char *trim = end;
+        while (trim > start && trim[-1] == ' ') trim--;
+        *trim = '\0';
+        if (start[0] && !os_has_capability(start)) {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "Requires %s", start);
+            ui2_screen_toast_show(screen, msg, TEXT_COLOR_BLACK, TEXT_COLOR_RED, 8);
+            ui2_screen_render(screen);
+            return false;
+        }
+        if (*end == ',') end++;
+        start = end;
+    }
+    return true;
+}
+
 static void on_selection_changed(int new_selection, void *user_data) {
     (void)user_data;
     app_launcher_selected = new_selection;
@@ -43,6 +76,9 @@ static void on_selection_changed(int new_selection, void *user_data) {
 static void on_item_activated(int item_index, void *user_data) {
     (void)user_data;
     if (app_count > 0 && item_index >= 0 && item_index < app_count) {
+        if (!check_app_capabilities(app_names[item_index])) {
+            return;
+        }
         os_log(TAG, "Launching app: %s", app_names[item_index]);
         os_load_app(app_names[item_index]);
     }
@@ -62,6 +98,9 @@ static void on_open_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     if (app_count > 0) {
+        if (!check_app_capabilities(app_names[app_launcher_selected])) {
+            return;
+        }
         os_load_app(app_names[app_launcher_selected]);
     }
 }

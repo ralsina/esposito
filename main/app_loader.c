@@ -81,6 +81,8 @@ bool app_loader_load(const char *app_name) {
             ESP_LOGW(TAG, "SD card not mounted, cannot load ELF apps");
         }
         ESP_LOGE(TAG, "Unknown app: %s", app_name);
+        app_free(ctx);
+        os_set_current_app(NULL);
         return false;
     }
 
@@ -109,6 +111,8 @@ bool app_loader_load(const char *app_name) {
     if (!ctx->init) {
         ESP_LOGE(TAG, "ELF missing app_init entry point");
         elf_loader_unload(handle);
+        app_free(ctx);
+        os_set_current_app(NULL);
         return false;
     }
 
@@ -140,6 +144,8 @@ bool app_loader_load(const char *app_name) {
     }
     if (!caps_ok) {
         elf_loader_unload(handle);
+        app_free(ctx);
+        os_set_current_app(NULL);
         return false;
     }
 

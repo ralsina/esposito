@@ -3,6 +3,7 @@
 #include "text_mode.h"
 #include "app_heap.h"
 #include "os_core.h"
+#include "hardware.h"
 #include "esp_log.h"
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
@@ -134,6 +135,7 @@ static bool parse_release_json(char *json, size_t json_len,
         ESP_LOGE(TAG, "tag_name not found in release JSON");
         return false;
     }
+    if (vlen >= 2 && val[0] == '"') { val++; vlen -= 2; }
     size_t copy = vlen < tag_size - 1 ? vlen : tag_size - 1;
     memcpy(tag, val, copy);
     tag[copy] = '\0';
@@ -144,8 +146,11 @@ static bool parse_release_json(char *json, size_t json_len,
         const char *name_val = NULL;
         size_t name_len = 0;
         snprintf(query, sizeof(query), "assets[%d].name", i);
-        if (JSON_SearchConst(json, json_len, query, strlen(query),
-                              &name_val, &name_len, NULL) != JSONSuccess) {
+        JSONStatus_t s = JSON_SearchConst(json, json_len, query, strlen(query),
+                              &name_val, &name_len, NULL);
+        ESP_LOGI(TAG, "asset[%d] name search: %d", i, s);
+        if (s != JSONSuccess) {
+            ESP_LOGI(TAG, "no more assets at index %d", i);
             break;  // no more assets
         }
 
@@ -154,7 +159,15 @@ static bool parse_release_json(char *json, size_t json_len,
         snprintf(query, sizeof(query), "assets[%d].browser_download_url", i);
         if (JSON_SearchConst(json, json_len, query, strlen(query),
                               &url_val, &url_len, NULL) != JSONSuccess) {
+            ESP_LOGW(TAG, "asset[%d] has name but no download URL", i);
             continue;
+        }
+
+        ESP_LOGI(TAG, "asset[%d]: %.*s", i, (int)name_len, name_val);
+
+        if (name_len >= 2 && name_val[0] == '"') {
+            name_val++;
+            name_len -= 2;
         }
 
         // Match asset name (length-checked to avoid strncasecmp weirdness on non-NUL data).
@@ -163,10 +176,12 @@ static bool parse_release_json(char *json, size_t json_len,
         // Match the longest candidate first so "firmware.bin.sig" isn't
         // accidentally caught by a "firmware.bin" prefix check.
         if (name_len == sizeof(sig_name) - 1 && strncmp(name_val, sig_name, name_len) == 0) {
+            if (url_len >= 2 && url_val[0] == '"') { url_val++; url_len -= 2; }
             size_t c = url_len < sig_url_size - 1 ? url_len : sig_url_size - 1;
             memcpy(sig_url, url_val, c);
             sig_url[c] = '\0';
         } else if (name_len == sizeof(fw_name) - 1 && strncmp(name_val, fw_name, name_len) == 0) {
+            if (url_len >= 2 && url_val[0] == '"') { url_val++; url_len -= 2; }
             size_t c = url_len < fw_url_size - 1 ? url_len : fw_url_size - 1;
             memcpy(fw_url, url_val, c);
             fw_url[c] = '\0';
@@ -192,11 +207,11 @@ static const char *parse_semver(const char *s, int *major, int *minor, int *patc
     if (*s == 'v' || *s == 'V') s++;
 
     *major = atoi(s);
-    while (*s && *s != '.') s++;
+    while (*s && *s != '.' && *s != '-' && *s != '+') s++;
     if (*s == '.') s++;
 
     *minor = atoi(s);
-    while (*s && *s != '.') s++;
+    while (*s && *s != '.' && *s != '-' && *s != '+') s++;
     if (*s == '.') s++;
 
     *patch = atoi(s);
@@ -401,14 +416,23 @@ bool ota_check_for_update(char *latest_version, size_t max_len) {
     bool beta = (os_settings_get_int(OTA_BETA_CHANNEL_KEY, 0) == 1);
     const char *api_url = beta ? OTA_RELEASES_API_BETA : OTA_RELEASES_API_STABLE;
 
-    // GitHub release JSON typically fits in 2-5 KB; allow up to 8 KB.
-    static char json_buf[8192];
-    int total = ota_http_get(api_url, "application/vnd.github+json",
-                              json_buf, sizeof(json_buf), 15000);
-    if (total <= 0) {
-        ESP_LOGE(TAG, "GitHub releases API request failed: %d", total);
+    // GitHub release JSON can be 10-20 KB with release notes and author info.
+    size_t json_buf_size = 20480;
+    char *json_buf = malloc(json_buf_size);
+    if (!json_buf) {
+        ESP_LOGE(TAG, "Failed to allocate %u bytes for GitHub API response", (unsigned)json_buf_size);
         return false;
     }
+    int total = ota_http_get(api_url, "application/vnd.github+json",
+                              json_buf, json_buf_size, 15000);
+    if (total <= 0) {
+        ESP_LOGE(TAG, "GitHub releases API request failed: %d", total);
+        free(json_buf);
+        return false;
+    }
+
+    ESP_LOGI(TAG, "GitHub API response: %d bytes", total);
+    ESP_LOGI(TAG, "Response start: %.200s", json_buf);
 
     // For the beta endpoint the response is a JSON array. parse_release_json
     // expects a single object; seek to the first '{' to skip the array opener.
@@ -417,6 +441,7 @@ bool ota_check_for_update(char *latest_version, size_t max_len) {
         json_start = strchr(json_buf, '{');
         if (!json_start) {
             ESP_LOGE(TAG, "Malformed beta-channel response (no object)");
+            free(json_buf);
             return false;
         }
     }
@@ -427,6 +452,7 @@ bool ota_check_for_update(char *latest_version, size_t max_len) {
                              fw_url, sizeof(fw_url),
                              sig_url, sizeof(sig_url))) {
         ESP_LOGE(TAG, "Failed to parse release JSON");
+        free(json_buf);
         return false;
     }
 
@@ -434,10 +460,12 @@ bool ota_check_for_update(char *latest_version, size_t max_len) {
     printf("[OTA] Current: %s, Latest: %s\n", FIRMWARE_VERSION, tag);
 
     // Rollback protection: refuse to downgrade over the network.
+    // Same-version updates are allowed (e.g. dirty build → clean release).
     int cmp = compare_versions(tag, FIRMWARE_VERSION);
-    if (cmp <= 0) {
+    if (cmp < 0) {
         ESP_LOGI(TAG, "Release %s is not newer than running %s; refusing OTA (use SD-card path to downgrade)",
                  tag, FIRMWARE_VERSION);
+        free(json_buf);
         return false;
     }
 
@@ -446,8 +474,9 @@ bool ota_check_for_update(char *latest_version, size_t max_len) {
     snprintf(cached_firmware_url, sizeof(cached_firmware_url), "%s", fw_url);
     snprintf(cached_sig_url, sizeof(cached_sig_url), "%s", sig_url);
 
-    if (strlen(tag) >= max_len) return false;
+    if (strlen(tag) >= max_len) { free(json_buf); return false; }
     strcpy(latest_version, tag);
+    free(json_buf);
     return true;
 }
 
@@ -630,16 +659,12 @@ static bool download_with_resume(const char *url, const char *dest_filename) {
 
 // --- Public API: apply update ---
 
-void ota_apply_update(void) {
+const char *ota_apply_update(void) {
     ESP_LOGI(TAG, "Starting OTA update");
-    text_mode_clear(TEXT_COLOR_BLACK);
-    text_mode_print_at(0, 0, "Firmware Update");
 
     if (!wifi_is_connected()) {
         ESP_LOGE(TAG, "WiFi not connected");
-        text_mode_print_at(0, 2, "WiFi not connected!");
-        text_mode_flush();
-        return;
+        return "WiFi not connected";
     }
 
     // If the cache is empty (e.g. device rebooted between check and apply),
@@ -647,11 +672,15 @@ void ota_apply_update(void) {
     if (cached_firmware_url[0] == '\0') {
         char tag[32];
         if (!ota_check_for_update(tag, sizeof(tag))) {
-            text_mode_print_at(0, 2, "No update available");
-            text_mode_flush();
-            return;
+            ESP_LOGE(TAG, "OTA aborted: no update available (check failed)");
+            return "No update available";
         }
     }
+
+    ESP_LOGI(TAG, "OTA proceeding: tag=%s url=%s", cached_tag, cached_firmware_url);
+
+    text_mode_clear(TEXT_COLOR_BLACK);
+    text_mode_print_at(0, 0, "Firmware Update");
 
     char current_tag[64];
     snprintf(current_tag, sizeof(current_tag), "Update: %s", cached_tag[0] ? cached_tag : "?");
@@ -739,4 +768,5 @@ void ota_apply_update(void) {
     text_mode_flush();
 
     handoff_to_stub();
+    return NULL;
 }

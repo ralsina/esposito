@@ -38,7 +38,7 @@ bool ota_check_for_update(char *latest_version, size_t max_len);
 // the ECDSA-P256 signature against the public key embedded in main/ota_keys.h,
 // and only then hand off to the update stub to apply. Does not return on
 // success (reboots into the stub).
-void ota_apply_update(void);
+const char *ota_apply_update(void);
 
 // Boot-time SD-card recovery check: if /sdcard/system/firmware.bin exists,
 // hand off to the update stub to apply it. UNSIGNED BY DESIGN -- this is the

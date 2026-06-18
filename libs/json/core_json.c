@@ -287,6 +287,9 @@ static bool search_object( const char * buf,
             if( query[ next_pos ] == '.' ) {
                 return search_path( buf, max, child_start, child_end, query, query_len, next_pos + 1, outValue, outValueLength, outType, depth + 1 );
             }
+            if( query[ next_pos ] == '[' ) {
+                return search_path( buf, max, child_start, child_end, query, query_len, next_pos, outValue, outValueLength, outType, depth + 1 );
+            }
         }
         skip_spaces( buf, max, &index );
         if( index < value_end && buf[ index ] == ',' ) {

@@ -261,7 +261,6 @@ void boot_sequence(void) {
         return;
     }
     boot_display_progress(BOOT_STAGE_FILESYSTEM_INIT, true, "Filesystem ready");
-    boot_apply_log_output_setting();
 
     // Stage 4: Keyboard
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting keyboard init");

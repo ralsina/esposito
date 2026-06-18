@@ -13,7 +13,7 @@ static const char *TAG = "settings";
 
 extern const char *ota_firmware_version(void);
 extern bool ota_check_for_update(char *latest_version, size_t max_len);
-extern void ota_apply_update(void);
+extern const char *ota_apply_update(void);
 
 typedef enum {
     STATE_MAIN,
@@ -564,11 +564,22 @@ static void execute_main_action(settings_action_t action) {
             break;
         }
         case ACTION_APPLY_UPDATE: {
+            if (!wifi_is_connected()) {
+                state = STATE_MESSAGE;
+                set_status("WiFi not connected!");
+                render();
+                break;
+            }
             state = STATE_MESSAGE;
             set_status("Downloading and flashing...");
             render();
             text_mode_flush();
-            ota_apply_update();
+            const char *err = ota_apply_update();
+            if (err) {
+                state = STATE_MESSAGE;
+                set_status(err);
+                render();
+            }
             break;
         }
     }
@@ -710,12 +721,14 @@ static void draw_scan_results(void) {
         int cols = text_mode_get_cols();
         text_mode_print_at_attr_bg((cols - 19) / 2, 4, "No networks found",
                                    TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+        text_mode_print_at_attr_bg((cols - 24) / 2, text_mode_get_rows() - 2, "Press any key to continue",
+                                   TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
     } else if (scan_list) {
         UI2_WIDGET(scan_list)->vtable->draw(UI2_WIDGET(scan_list));
+        int cols = text_mode_get_cols();
+        text_mode_print_at_attr_bg((cols - 13) / 2, text_mode_get_rows() - 2, "ESC to go back",
+                                   TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
     }
-    int cols = text_mode_get_cols();
-    text_mode_print_at_attr_bg((cols - 13) / 2, text_mode_get_rows() - 2, "ESC to go back",
-                               TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 }
 
 static void draw_message(void) {
@@ -776,6 +789,11 @@ static void handle_text_input_confirm(void) {
 }
 
 static void handle_scan_key(char key) {
+    if (scan_count <= 0) {
+        state = STATE_MAIN;
+        render();
+        return;
+    }
     if (key == 27) {
         state = STATE_MAIN;
         render();
@@ -926,8 +944,6 @@ void app_init(app_context_t *ctx) {
     input_ssid[0] = '\0';
     input_password[0] = '\0';
     scan_selected = 0;
-
-    serial_log_output_set_enabled(os_settings_get_bool(SETTINGS_KEY_SERIAL_LOG, false));
 
     os_settings_get_string(SETTINGS_KEY_TIMEZONE, "UTC", input_timezone, sizeof(input_timezone));
     os_settings_get_string(SETTINGS_KEY_LOCATION, "40.4168,-3.7038", input_location, sizeof(input_location));
@@ -1154,6 +1170,11 @@ void app_event(app_context_t *ctx, event_t *event) {
                 break;
             }
             case STATE_SCAN_RESULTS: {
+                if (scan_count <= 0) {
+                    state = STATE_MAIN;
+                    render();
+                    break;
+                }
                 if (scan_list) {
                     app_state_t prev = state;
                     UI2_WIDGET(scan_list)->vtable->handle_touch(UI2_WIDGET(scan_list), x_col, y_col, true);
@@ -1219,6 +1240,10 @@ void app_event(app_context_t *ctx, event_t *event) {
                     state = STATE_MAIN;
                     render();
                 }
+                break;
+            case STATE_MESSAGE:
+                state = STATE_MAIN;
+                render();
                 break;
         }
     } else if (event->type == EVENT_TIMER) {
