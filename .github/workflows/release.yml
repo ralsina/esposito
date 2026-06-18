@@ -65,6 +65,12 @@ jobs:
           path: .
           command: idf.py build
 
+      - name: Build app bundle (SD card apps + fonts + books)
+        env:
+          VERSION: ${{ steps.tag.outputs.name }}
+        run: |
+          bash scripts/build_release_bundle.sh artifacts/sdcard-bundle.zip "${VERSION}"
+
       - name: Stage artifacts
         run: |
           mkdir -p artifacts
@@ -172,4 +178,5 @@ jobs:
             artifacts/partition-table.bin
             artifacts/ota_data_initial.bin
             artifacts/manifest.json
+            artifacts/sdcard-bundle.zip
             artifacts/version.txt
