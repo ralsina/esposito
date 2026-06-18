@@ -21,7 +21,7 @@ You need a USB cable and Chrome or Edge.
 
 <h2 id="Prerequisites">Prerequisites</h2>
 
-1. **Hardware**: A [Cheap Yellow Display (CYD)](https://es.aliexpress.com/w/wholesale-2432s028.html) — the 2-USB variant with ILI9341 touchscreen. (~$10)
+1. **Hardware**: A [Cheap Yellow Display (CYD)](https://es.aliexpress.com/w/wholesale-2432s028.html) — the 2-USB variant with ST7789 touchscreen. (~$10)
 2. **USB cable**: A data-capable USB-C or micro-USB cable (many cables are charge-only).
 3. **Browser**: Google Chrome or Microsoft Edge (desktop). The Web Serial API is required; Firefox and Safari don't support it yet.
 4. **Drivers** (some platforms): If your CYD has a CH340 USB-to-serial chip, you may need drivers:
