@@ -5,7 +5,7 @@ title: Install Esposito OS
 Flash your ESP32 CYD directly from your browser — no toolchain, no terminal.
 You need a USB cable and Chrome or Edge.
 
-<esp-web-install-button manifest="https://github.com/ralsina/esposito/releases/latest/download/manifest.json">
+<esp-web-install-button manifest="/firmware/manifest.json">
     <button slot="activate" class="primary" style="font-size: 1.2rem; padding: 0.6rem 2rem;">
         🚀 Connect &amp; Install
     </button>
@@ -30,9 +30,9 @@ You need a USB cable and Chrome or Edge.
 1. Download [`sdcard-bundle.zip`](https://github.com/ralsina/esposito/releases/latest/download/sdcard-bundle.zip) from the latest release
 2. Format a microSD card as **FAT32**
 3. Extract the zip to the root of the SD card — you'll get `apps/`, `fonts/`, and `books/` directories
-4. Insert the SD card into the CYD and power on — Esposito boots in under a second and shows the launcher
+4. Insert the SD card into the CYD and power on — Esposito boots in a few seconds and shows the launcher
 
-The bundle includes 8 apps (launcher, settings, reader, clock, calculator, snake, breakout, file manager), all system fonts, and 4 classic books to get you started.
+The bundle includes 8 apps (launcher, settings, reader, clock, calculator, snake, breakout, file manager), all system fonts, and 4 classic books to get you started. You can later download more apps and books!
 
 <details>
 <summary><strong>What if I don't have an SD card?</strong></summary>

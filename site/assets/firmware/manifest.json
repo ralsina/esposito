@@ -1,0 +1,17 @@
+{
+  "name": "Esposito OS",
+  "version": "0.5.2",
+  "home_assistant_domain": "esposito",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "/firmware/bootloader.bin", "offset": 4096 },
+        { "path": "/firmware/partition-table.bin", "offset": 32768 },
+        { "path": "/firmware/firmware.bin", "offset": 65536 },
+        { "path": "/firmware/ota_data_initial.bin", "offset": 2162688 }
+      ]
+    }
+  ]
+}
