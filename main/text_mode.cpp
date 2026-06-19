@@ -844,7 +844,7 @@ bool text_mode_save_screenshot(void) {
 
     int disp_w = display_get_width();
     int disp_h = display_get_height();
-    fprintf(fppm, "P6\n%d %d\n255\n", disp_w, disp_h);
+    bool ok = fprintf(fppm, "P6\n%d %d\n255\n", disp_w, disp_h) >= 0;
 
     uint8_t *row_buf = (uint8_t *)malloc((size_t)disp_w * 3);
     if (!row_buf) {
@@ -857,13 +857,13 @@ bool text_mode_save_screenshot(void) {
     int max_gx = grid_cols;
     int max_gy = grid_rows;
 
-    for (int py = 0; py < disp_h; py++) {
+    for (int py = 0; py < disp_h && ok; py++) {
         int gy = py / fh;
         int char_row = py % fh;
 
         if (gy >= max_gy) {
             memset(row_buf, 0, (size_t)disp_w * 3);
-            fwrite(row_buf, 1, (size_t)disp_w * 3, fppm);
+            if (fwrite(row_buf, 1, (size_t)disp_w * 3, fppm) != (size_t)disp_w * 3) ok = false;
             continue;
         }
 
@@ -991,11 +991,12 @@ bool text_mode_save_screenshot(void) {
             }
         }
 
-        fwrite(row_buf, 1, (size_t)disp_w * 3, fppm);
+        if (fwrite(row_buf, 1, (size_t)disp_w * 3, fppm) != (size_t)disp_w * 3) ok = false;
     }
 
     free(row_buf);
     fclose(fppm);
+    if (!ok) return false;
     ESP_LOGI(TAG, "Screenshot saved: %s.ppm", path);
     return true;
 }

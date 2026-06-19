@@ -853,7 +853,7 @@ bool display_save_screenshot_ppm(const char *path) {
 
     const int width = display_get_width();
     const int height = display_get_height();
-    fprintf(fppm, "P6\n%d %d\n255\n", width, height);
+    bool ok = fprintf(fppm, "P6\n%d %d\n255\n", width, height) >= 0;
 
     uint8_t *row_buf = (uint8_t *)malloc(width * 3);
     if (!row_buf) {
@@ -861,7 +861,7 @@ bool display_save_screenshot_ppm(const char *path) {
         return false;
     }
 
-    for (int y = 0; y < height; y++) {
+    for (int y = 0; y < height && ok; y++) {
         uint8_t *p = row_buf;
         for (int x = 0; x < width; x++) {
             uint16_t rgb565 = display_tft->readPixel(x, y);
@@ -872,12 +872,12 @@ bool display_save_screenshot_ppm(const char *path) {
             *p++ = g;
             *p++ = b;
         }
-        fwrite(row_buf, 1, width * 3, fppm);
+        if (fwrite(row_buf, 1, width * 3, fppm) != (size_t)width * 3) ok = false;
     }
 
     free(row_buf);
     fclose(fppm);
-    return true;
+    return ok;
 }
 
 // Keyboard implementation for BBQ20 (based on terminado)
@@ -1087,8 +1087,19 @@ const uint8_t* flash_rom_load(const char *path, size_t *out_size) {
         return NULL;
     }
 
-    fseek(f, 0, SEEK_END);
-    size_t rom_size = ftell(f);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        ESP_LOGE(TAG, "flash_rom_load: fseek failed");
+        fclose(f);
+        return NULL;
+    }
+
+    long file_len = ftell(f);
+    if (file_len < 0) {
+        ESP_LOGE(TAG, "flash_rom_load: ftell failed");
+        fclose(f);
+        return NULL;
+    }
+    size_t rom_size = (size_t)file_len;
     fseek(f, 0, SEEK_SET);
 
     if (rom_size < 0x150) {

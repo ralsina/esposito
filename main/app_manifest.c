@@ -49,23 +49,24 @@ bool app_manifest_write(const char *app_name, const app_sd_manifest_t *manifest)
     FILE *f = fopen(path, "w");
     if (!f) return false;
 
-    fprintf(f, "name=%s\n", manifest->display_name);
+    bool ok = true;
+    if (fprintf(f, "name=%s\n", manifest->display_name) < 0) ok = false;
     if (manifest->short_description[0])
-        fprintf(f, "short_description=%s\n", manifest->short_description);
+        if (fprintf(f, "short_description=%s\n", manifest->short_description) < 0) ok = false;
     if (manifest->long_description[0])
-        fprintf(f, "long_description=%s\n", manifest->long_description);
+        if (fprintf(f, "long_description=%s\n", manifest->long_description) < 0) ok = false;
     if (manifest->homepage[0])
-        fprintf(f, "homepage=%s\n", manifest->homepage);
+        if (fprintf(f, "homepage=%s\n", manifest->homepage) < 0) ok = false;
     if (manifest->version[0])
-        fprintf(f, "version=%s\n", manifest->version);
+        if (fprintf(f, "version=%s\n", manifest->version) < 0) ok = false;
     if (manifest->extensions[0])
-        fprintf(f, "extensions=%s\n", manifest->extensions);
+        if (fprintf(f, "extensions=%s\n", manifest->extensions) < 0) ok = false;
     if (manifest->requires[0])
-        fprintf(f, "requires=%s\n", manifest->requires);
-    fprintf(f, "launcher=%s\n", manifest->show_in_launcher ? "yes" : "no");
+        if (fprintf(f, "requires=%s\n", manifest->requires) < 0) ok = false;
+    if (fprintf(f, "launcher=%s\n", manifest->show_in_launcher ? "yes" : "no") < 0) ok = false;
 
     fclose(f);
-    return true;
+    return ok;
 }
 
 char *app_manifest_get_display_name(const char *app_name, char *out, size_t out_size) {

@@ -100,9 +100,12 @@ bool sd_card_init(void) {
             char buffer[128];
             f = fopen(test_file, "r");
             if (f) {
-                fgets(buffer, sizeof(buffer), f);
+                if (fgets(buffer, sizeof(buffer), f)) {
+                    ESP_LOGI(TAG, "✅ Read back: %s", buffer);
+                } else {
+                    ESP_LOGI(TAG, "✅ Read back: (empty)");
+                }
                 fclose(f);
-                ESP_LOGI(TAG, "✅ Read back: %s", buffer);
 
                 // Clean up test file
                 remove(test_file);

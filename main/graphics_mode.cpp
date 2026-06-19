@@ -174,7 +174,7 @@ bool graphics_mode_save_screenshot(void) {
     FILE *fppm = fopen(path, "wb");
     if (!fppm) return false;
 
-    fprintf(fppm, "P6\n%d %d\n255\n", width, height);
+    bool ok = fprintf(fppm, "P6\n%d %d\n255\n", width, height) >= 0;
 
     uint8_t *row_buf = (uint8_t *)malloc((size_t)width * 3);
     if (!row_buf) {
@@ -182,7 +182,7 @@ bool graphics_mode_save_screenshot(void) {
         return false;
     }
 
-    for (int y = 0; y < height; y++) {
+    for (int y = 0; y < height && ok; y++) {
         uint8_t *p = row_buf;
         for (int x = 0; x < width; x++) {
             int index = y * buf_w + x;
@@ -196,11 +196,12 @@ bool graphics_mode_save_screenshot(void) {
             *p++ = g;
             *p++ = b;
         }
-        fwrite(row_buf, 1, (size_t)width * 3, fppm);
+        if (fwrite(row_buf, 1, (size_t)width * 3, fppm) != (size_t)width * 3) ok = false;
     }
 
     free(row_buf);
     fclose(fppm);
+    if (!ok) return false;
     ESP_LOGI(TAG, "Screenshot saved: %s", path);
     return true;
 }
