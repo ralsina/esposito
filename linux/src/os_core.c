@@ -6,6 +6,13 @@
 #include <time.h>
 #include <pthread.h>
 #include <SDL2/SDL.h>
+#include <sys/stat.h>
+
+// Set by os_load_app(); the main loop checks this to checkpoint and exit
+// the current app, since the emulator can only run one app at a time.
+static bool g_app_switch_pending = false;
+
+#define SETTINGS_DIR "/tmp/esposito_settings"
 
 void os_post_event(event_t *event) {
     (void)event;
@@ -21,8 +28,13 @@ void os_log(const char *tag, const char *fmt, ...) {
 }
 
 bool os_load_app(const char *app_name) {
-    (void)app_name;
-    return false;
+    os_log("os", "Load requested: %s (exiting current app)", app_name ? app_name : "(null)");
+    g_app_switch_pending = true;
+    return true;
+}
+
+bool os_app_switch_pending(void) {
+    return g_app_switch_pending;
 }
 
 void os_exit(void) {
@@ -85,45 +97,93 @@ bool os_download_via_os(const char *url, const char *path, size_t expected_size)
     return false;
 }
 
-size_t os_settings_get_string(const char *key_path, const char *default_value, char *out, size_t out_size) {
-    (void)key_path;
-    if (out && out_size > 0) {
-        snprintf(out, out_size, "%s", default_value ? default_value : "");
+// Settings persistence: one file per key under SETTINGS_DIR.
+// Slashes in key paths are flattened to '_' so "wifi/ssid" -> "wifi_ssid".
+static void settings_path(const char *key_path, char *buf, size_t buf_size) {
+    mkdir(SETTINGS_DIR, 0755);
+    char safe[128];
+    size_t i = 0;
+    if (key_path) {
+        for (; key_path[i] && i < sizeof(safe) - 1; i++)
+            safe[i] = (key_path[i] == '/') ? '_' : key_path[i];
     }
-    return 0;
+    safe[i] = '\0';
+    snprintf(buf, buf_size, "%s/%s", SETTINGS_DIR, safe);
+}
+
+size_t os_settings_get_string(const char *key_path, const char *default_value, char *out, size_t out_size) {
+    char path[256];
+    settings_path(key_path, path, sizeof(path));
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        if (out && out_size > 0)
+            snprintf(out, out_size, "%s", default_value ? default_value : "");
+        return 0;
+    }
+    size_t n = 0;
+    if (out && out_size > 0 && fgets(out, (int)out_size, f)) {
+        n = strlen(out);
+        if (n > 0 && out[n - 1] == '\n') { out[n - 1] = '\0'; n--; }
+    }
+    fclose(f);
+    return n;
 }
 
 bool os_settings_set_string(const char *key_path, const char *value) {
-    (void)key_path;
-    (void)value;
+    char path[256];
+    settings_path(key_path, path, sizeof(path));
+    FILE *f = fopen(path, "w");
+    if (!f) return false;
+    fprintf(f, "%s\n", value ? value : "");
+    fclose(f);
     return true;
 }
 
 int os_settings_get_int(const char *key_path, int default_value) {
-    (void)key_path;
-    return default_value;
+    char path[256];
+    settings_path(key_path, path, sizeof(path));
+    FILE *f = fopen(path, "r");
+    if (!f) return default_value;
+    int val;
+    if (fscanf(f, "%d", &val) != 1) val = default_value;
+    fclose(f);
+    return val;
 }
 
 bool os_settings_set_int(const char *key_path, int value) {
-    (void)key_path;
-    (void)value;
+    char path[256];
+    settings_path(key_path, path, sizeof(path));
+    FILE *f = fopen(path, "w");
+    if (!f) return false;
+    fprintf(f, "%d", value);
+    fclose(f);
     return true;
 }
 
 bool os_settings_get_bool(const char *key_path, bool default_value) {
-    (void)key_path;
-    return default_value;
+    char path[256];
+    settings_path(key_path, path, sizeof(path));
+    FILE *f = fopen(path, "r");
+    if (!f) return default_value;
+    int val;
+    if (fscanf(f, "%d", &val) != 1) val = default_value ? 1 : 0;
+    fclose(f);
+    return val != 0;
 }
 
 bool os_settings_set_bool(const char *key_path, bool value) {
-    (void)key_path;
-    (void)value;
+    char path[256];
+    settings_path(key_path, path, sizeof(path));
+    FILE *f = fopen(path, "w");
+    if (!f) return false;
+    fprintf(f, "%d", value ? 1 : 0);
+    fclose(f);
     return true;
 }
 
 bool os_has_capability(const char *cap) {
     if (strcmp(cap, "keyboard") == 0) return true;
-    if (strcmp(cap, "touch") == 0) return false;
+    if (strcmp(cap, "touch") == 0) return true;
     if (strcmp(cap, "wifi") == 0) return false;
     return false;
 }

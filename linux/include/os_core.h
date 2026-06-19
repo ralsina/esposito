@@ -74,6 +74,7 @@ extern "C" {
 void os_post_event(event_t *event);
 void os_log(const char *tag, const char *fmt, ...);
 bool os_load_app(const char *app_name);
+bool os_app_switch_pending(void);
 void os_exit(void);
 bool os_open_app_with_file(const char *app_name, const char *file_path);
 size_t os_consume_startup_file(char *out, size_t out_size);
@@ -86,7 +87,7 @@ int os_http_post(const char *url, const char *post_data, const char *extra_heade
 int os_http_download(const char *url, const char *path, void (*progress)(int percent, const char *status));
 bool os_download_via_os(const char *url, const char *path, size_t expected_size);
 
-// Settings (stubs)
+// Settings (persisted to disk)
 size_t os_settings_get_string(const char *key_path, const char *default_value, char *out, size_t out_size);
 bool os_settings_set_string(const char *key_path, const char *value);
 int os_settings_get_int(const char *key_path, int default_value);

@@ -198,6 +198,14 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        // An app requested loading another app (e.g. back to launcher).
+        // The emulator runs a single app, so checkpoint and exit cleanly.
+        if (os_app_switch_pending()) {
+            ctx.checkpoint(&ctx);
+            running = false;
+            break;
+        }
+
         // Adaptive sleep: keep loop cadence close to the timer interval
         Uint32 elapsed = SDL_GetTicks() - frame_start;
         int interval = ctx.timer_interval_ms > 0 ? ctx.timer_interval_ms : 16;

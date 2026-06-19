@@ -109,7 +109,7 @@ The emulator lives in `linux/` and reimplements the OS API surface in plain C + 
 - Touch simulated via mouse clicks
 - No serial port — `serial_init` / `serial_write` are no-ops
 - No sound
-- App switching (`os_load_app`) not fully implemented — exits current app
+- App switching (`os_load_app`) checkpoints and exits the current app (the emulator runs one app at a time)
 - 320×240 display at native pixel resolution
 
 ### Debugging
