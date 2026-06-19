@@ -1,8 +1,13 @@
 <section class="hero-section" style="position: relative;">
     <h2 style="color: var(--b16-base0D);">Cheap is <i>good</i></h2>
+    <p style="font-size: 1.15rem; margin: 1rem 0 2rem; max-width: 600px;">
+        <strong>NEW:</strong> Install Esposito OS directly from your browser —
+        just plug in a USB cable and click. No toolchain, no terminal.
+        <a href="/install/">Try it now →</a>
+    </p>
 
   <div class="hero-actions">
-      <a href="/install/" class="primary contrast" role="button">⚡ Install</span>
+      <a href="/install/" class="primary contrast" role="button" style="font-size: 1.2rem; padding: 0.6rem 2rem;">⚡ Install from Browser</span>
       <a href="#Getting-Started" class="contrast" role="button">Get Started</span>
       <a href="https://github.com/ralsina/esposito" role="button" class="contrast">GitHub</a>
       <a href="/posts/index.html" role="button" class="contrast">News</a>
