@@ -26,6 +26,7 @@ cd "$ROOT_DIR"
 APPS=(
     launcher
     settings
+    app_store
     reader
     clock
     calc
