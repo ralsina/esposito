@@ -187,10 +187,6 @@ esposito/
 
 ## App READMEs
 
-### Built-in Apps (firmware)
-- [apps/launcher/README.md](apps/launcher/README.md) - App launcher and file browser
-- [apps/settings/README.md](apps/settings/README.md) - System settings and configuration
-
 ### Text Apps
 - [apps/hecto/README.md](apps/hecto/README.md) - Paged text editor with large file support
 - [apps/kilo/README.md](apps/kilo/README.md) - Lightweight text editor
@@ -202,21 +198,25 @@ esposito/
 - [apps/file_picker/README.md](apps/file_picker/README.md) - File selection dialog
 
 ### Utility Apps
+- [apps/settings/README.md](apps/settings/README.md) - System settings and configuration
 - [apps/calc/README.md](apps/calc/README.md) - Scientific calculator
 - [apps/clock/README.md](apps/clock/README.md) - Clock with NTP sync
-- [apps/numbers/README.md](apps/numbers/README.md) - Number games
+
+### Internet Apps
+- [apps/lali/README.md](apps/lali/README.md) - LLM chat client (OpenRouter)
 
 ### Creative Apps
 - [apps/paint/README.md](apps/paint/README.md) - Drawing application
 - [apps/image_viewer/README.md](apps/image_viewer/README.md) - Image viewer
-- [apps/lali/README.md](apps/lali/README.md) - Drawing app
 
 ### Games
 - [apps/breakout/README.md](apps/breakout/README.md) - Breakout game clone
 - [apps/snake/README.md](apps/snake/README.md) - Snake game
 - [apps/gameboy/README.md](apps/gameboy/README.md) - Game Boy emulator
+- [apps/numbers/README.md](apps/numbers/README.md) - Math puzzle game (Arduboy port)
 
 ### Development Tools
+- [apps/lua/README.md](apps/lua/README.md) - Lua 5.4 REPL and script runner
 - [apps/hello_world/README.md](apps/hello_world/README.md) - Example "Hello World" app
 
 ## References
