@@ -38,7 +38,7 @@ idf_component_register(
         "../fonts/fonts.cpp"
         "../libs/json/core_json.c"
         ${LUA_SOURCES}
-    INCLUDE_DIRS "." ".." "../libs/ui" "../libs/json" "../fonts" "${BOARD_PATH}" "../managed_components/LovyanGFX/src/lgfx/utility" "../libs/lua"
+    INCLUDE_DIRS "." ".." "../libs/json" "../fonts" "${BOARD_PATH}" "../managed_components/LovyanGFX/src/lgfx/utility" "../libs/lua"
     REQUIRES spi_flash driver esp_app_format esp_common esp_hw_support esp_system heap log pthread ${ARCH_DEPS} spiffs esp_driver_spi cxx esp_driver_i2c esp_driver_sdspi esp_driver_uart fatfs wear_levelling esp_wifi esp_netif nvs_flash esp_event lwip esp_http_client mbedtls app_update
 )
 

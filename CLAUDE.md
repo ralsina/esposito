@@ -16,8 +16,10 @@ This script:
 1. Builds the firmware
 2. Generates the OS symbol table
 3. Builds all app ELFs from apps/*/app.c
-4. Copies apps to SD card at `/run/media/ralsina/ESPRESSIF` (override with `SD_MOUNT=`)
-5. Flashes firmware to device
+4. Packages the SDK (`package_sdk.sh`)
+5. Copies apps to SD card at `/run/media/ralsina/ESPRESSIF` (override with `SD_MOUNT=`)
+6. Copies font packs (`.fpack`) to the SD card
+7. Flashes firmware to device
 
 ### Build Firmware Only
 ```bash
@@ -54,10 +56,10 @@ bash scripts/build_app.sh apps/<app_name>/app.c
 # Output: build/apps/<app_name>.elf
 
 # Build app with shared libraries
-bash scripts/build_app.sh -l ui apps/my_app/app.c
+bash scripts/build_app.sh -l ui2 apps/my_app/app.c
 ```
 
-**Important**: Always source the ESP-IDF environment before building apps. The build script needs ESP-IDF tools in the PATH.
+**Important**: Always source the ESP-IDF environment before building apps. The build script needs ESP-IDF tools in the PATH. You must also have a built firmware (`idf.py build`) — `build_app.sh` requires `build/esposito.elf` to generate the symbol table.
 
 ## Project Architecture
 
@@ -88,7 +90,7 @@ Esposito is a dynamic app-loading OS for ESP32 CYD (Cheap Yellow Display). The f
 - `deps` files in app directories list library dependencies (one lib name per line)
 - `app.ld` linker scripts define memory layout (can use template from `apps/app_template/`)
 
-**libs/ui/** - Shared UI library for apps
+**libs/ui2/** - Shared UI library for apps (widgets, buttons, lists, text input, on-screen keyboard)
 
 **fonts/** - Font definitions for display
 
@@ -170,7 +172,7 @@ This builds firmware + all apps, copies apps to SD card, and flashes firmware.
 If an app uses shared libraries from `libs/`, create a `deps` file:
 ```
 # apps/my_app/deps
-ui
+ui2
 json
 ```
 
