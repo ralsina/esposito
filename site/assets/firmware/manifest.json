@@ -1,6 +1,6 @@
 {
   "name": "Esposito OS",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "home_assistant_domain": "esposito",
   "new_install_prompt_erase": false,
   "builds": [
