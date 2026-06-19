@@ -47,7 +47,7 @@ Apps can bypass the text grid and draw directly to the 320×240 display using RG
 
 ### Input handling
 
-- `keyboard_read_event(&key, &pressed)` reads keyboard events (BBQ20 keyboard on serial).
+- `keyboard_read_event(&key, &pressed)` reads keyboard events (BBQ20 keyboard on I2C).
 
 These functions work alongside text mode — `paint` uses `display_draw_pixel` and `display_fill_rect` for canvas drawing while keeping text-mode-style UI at the top. The `clock` app uses `display_draw_scaled_text_bg` for the large time readout. The `image_viewer` app uses `display_draw_jpg_fit` for JPEG rendering.
 
@@ -259,21 +259,9 @@ Minimal example app. Prints a message and exits. Good starting point for new app
 
 ---
 
-### [font_test](font_test/)
-
-Developer utility that renders all available fonts to the display for visual inspection.
-
----
-
 ### [clock](clock/)
 
 Clock app showing current date/time using configured timezone, weather, and NTP sync state.
-
----
-
-### [sd_test](sd_test/)
-
-Developer utility that exercises SD card read/write and reports results to the display.
 
 ---
 

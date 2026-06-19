@@ -172,7 +172,7 @@ The firmware checks these at app load time and refuses to start an app whose req
 
 ## Available OS API
 
-The SDK's `os_symbols.ld` provides ~350 symbols including:
+The SDK's `os_symbols.ld` provides ~329 symbols including:
 
 - **Display**: `display_clear`, `display_draw_text`, `display_draw_jpg_fit`, `display_draw_scaled_text_bg`, etc.
 - **Input**: `keyboard_read_event`, `keyboard_is_available`

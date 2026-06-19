@@ -15,7 +15,7 @@ A simple operating system for ESP32 Cheap Yellow Display (CYD) with dynamic app 
 - Touchscreen and keyboard support (BBQ20)
 - Multiple color palettes (CGA, CGA Light, Solarized Dark, Solarized Light)
 - Arduboy game compatibility layer
-- Game Boy (DMG) emulation via gameboy app (40-60 FPS)
+- Game Boy (DMG) and Game Boy Color emulation via gameboy app (40-60 FPS)
 - Switchable fonts (Hack, IBM Plex Mono, Inconsolata, Ioskeley, Kode Mono, Nova)
 - WiFi connectivity with HTTP/HTTPS support
 
@@ -174,12 +174,16 @@ esposito/
 ├── libs/           # Shared libraries for apps (ui2, json, arduboy, lua, serial_rx)
 ├── fonts/          # Font definitions for display
 ├── boards/         # Per-board hardware configuration (board.h, display_config.h)
+├── components/     # ESP-IDF components (LovyanGFX display driver)
 ├── scripts/        # Build helpers (build_app.sh, build_test.sh, font generators)
+├── tests/          # Host-side unit tests (greatest framework)
 ├── linux/          # Desktop emulator (SDL2) for host-side development
 ├── docs/           # Architecture and design documents
 ├── stub/           # OTA update stub partition
 ├── site/           # Static site sources (website)
+├── books/          # Book content for the reader app
 ├── CMakeLists.txt  # ESP-IDF project root
+├── Makefile        # Convenience targets (check, flash, emulate, deploy-all)
 ├── partitions.csv  # Flash partition layout
 ├── sdkconfig       # ESP-IDF configuration
 └── README.md
@@ -199,7 +203,7 @@ esposito/
 
 ### Utility Apps
 - [apps/settings/README.md](apps/settings/README.md) - System settings and configuration
-- [apps/calc/README.md](apps/calc/README.md) - Scientific calculator
+- [apps/calc/README.md](apps/calc/README.md) - Four-function calculator
 - [apps/clock/README.md](apps/clock/README.md) - Clock with NTP sync
 
 ### Internet Apps

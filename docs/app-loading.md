@@ -132,7 +132,7 @@ Called when switching to another app. The sequence:
    - `app_heap_reset()` -- zero the 96KB app heap
    - `config_unbind_app()`
 3. **Load** the new app via `app_loader_load()`
-4. **Save** as `system/last_app` if the manifest says `show_in_launcher=yes`
+4. **Save** as `system/last_app` if the manifest says `launcher=yes`
 
 If called from within an app callback, the switch is **deferred** -- stored as `pending_app_name` and executed at the top of the next event loop iteration.
 
@@ -255,7 +255,7 @@ Switch to app B:
 
 ## Symbol Table
 
-The OS symbol table (`main/os_symtab.c`) is a flat array mapping ~385 function names to their addresses:
+The OS symbol table (`main/os_symtab.c`) is a flat array mapping ~329 function names to their addresses:
 
 ```c
 static const os_symtab_entry_t symtab[] = {

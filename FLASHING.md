@@ -55,7 +55,7 @@ Writing at 0x00040000... (100%)
 
 ### Expected Boot Sequence
 ```
-I (xxx) esposito: Esposito OS v0.1.0-alpha
+I (xxx) esposito: Esposito OS v0.5.5
 I (xxx) esposito: Starting boot sequence...
 
 I (xxx) boot: ╔═══════════════════════════════════════╗
@@ -64,7 +64,7 @@ I (xxx) boot: ║     ESP32 CYD (2USB version)         ║
 I (xxx) boot: ╚═══════════════════════════════════════╝
 
 I (xxx) boot: ✓ Display Init
-I (xxx) boot:   Display ready (or warnings about incomplete driver)
+I (xxx) boot:   Display ready
 I (xxx) boot: ✓ Hardware Init
 I (xxx) boot:   Hardware ready
 I (xxx) boot: ✓ Filesystem Init
@@ -74,7 +74,7 @@ I (xxx) boot:   Keyboard subsystem ready
 I (xxx) boot: ✓ App Loader Init
 I (xxx) boot:   App loader ready
 I (xxx) boot: ✓ Load Default App
-I (xxx) boot: Available apps: 0
+I (xxx) boot: Available apps: N
 
 I (xxx) boot: ╔═══════════════════════════════════════╗
 I (xxx) boot: ║     BOOT SEQUENCE COMPLETE            ║
@@ -121,17 +121,15 @@ When you first flash Esposito OS, you should see:
 ✅ **Entry to main event loop**
 ✅ **No crashes or Guru Meditation errors**
 
-⚠️ **Expected warnings** (normal for now):
-- Display initialization warnings (driver incomplete)
+⚠️ **Expected warnings** (normal):
 - Keyboard not detected (if BBQ20 not connected)
-- No apps available (dynamic loading not implemented)
 
 ## Next Steps After Successful Boot
 
 1. **Verify hardware**: What components are detected?
-2. **Test display**: Any output on screen (even if just garbage)?
+2. **Test display**: Output on screen
 3. **Test keyboard**: Press keys - any serial output?
-4. **Plan improvements**: What to implement first?
+4. **Load apps**: Copy app ELFs to the SD card to add functionality
 
 ## Success Criteria
 
