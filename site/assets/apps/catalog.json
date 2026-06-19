@@ -8,7 +8,7 @@
     "version": "1.0",
     "requires": "",
     "extensions": "",
-    "size": 230848
+    "size": 120600
   },
   {
     "id": "breakout",
@@ -19,7 +19,7 @@
     "version": "1.0",
     "requires": "keyboard",
     "extensions": "",
-    "size": 27708
+    "size": 27872
   },
   {
     "id": "calc",
@@ -28,9 +28,9 @@
     "long_description": "A simple four-function calculator with keyboard input.",
     "homepage": "https://github.com/ralsina/esposito/tree/main/apps/calc",
     "version": "1.0",
-    "requires": "keyboard",
+    "requires": "",
     "extensions": "",
-    "size": 77380
+    "size": 80820
   },
   {
     "id": "clock",
@@ -41,7 +41,7 @@
     "version": "1.0",
     "requires": "",
     "extensions": "",
-    "size": 93456
+    "size": 96912
   },
   {
     "id": "example_ui2",
@@ -52,7 +52,7 @@
     "version": "1.0",
     "requires": "",
     "extensions": "",
-    "size": 67144
+    "size": 70844
   },
   {
     "id": "file_manager",
@@ -63,7 +63,7 @@
     "version": "1.0",
     "requires": "",
     "extensions": "",
-    "size": 114044
+    "size": 117324
   },
   {
     "id": "gameboy",
@@ -74,7 +74,7 @@
     "version": "1.0",
     "requires": "keyboard",
     "extensions": "gb,gbc",
-    "size": 262492
+    "size": 265384
   },
   {
     "id": "hecto",
@@ -85,7 +85,7 @@
     "version": "0.1.0",
     "requires": "keyboard",
     "extensions": "txt,c,h,md,cfg",
-    "size": 31000
+    "size": 53936
   },
   {
     "id": "kilo",
@@ -96,7 +96,7 @@
     "version": "1.0",
     "requires": "keyboard",
     "extensions": "txt,md,markdown,c,h,py,sh,json,yaml,yml,ini,cfg,log",
-    "size": 30736
+    "size": 31008
   },
   {
     "id": "lali",
@@ -107,7 +107,7 @@
     "version": "1.0",
     "requires": "keyboard",
     "extensions": "",
-    "size": 89800
+    "size": 93268
   },
   {
     "id": "lua",
@@ -118,7 +118,7 @@
     "version": "1.0",
     "requires": "keyboard",
     "extensions": "lua",
-    "size": 51396
+    "size": 51576
   },
   {
     "id": "numbers",
@@ -129,7 +129,7 @@
     "version": "1.0.0",
     "requires": "keyboard",
     "extensions": "",
-    "size": 27356
+    "size": 27532
   },
   {
     "id": "paint",
@@ -140,7 +140,7 @@
     "version": "1.0",
     "requires": "touch",
     "extensions": "",
-    "size": 26616
+    "size": 26784
   },
   {
     "id": "reader",
@@ -151,7 +151,7 @@
     "version": "1.0",
     "requires": "",
     "extensions": "md,markdown,txt",
-    "size": 162104
+    "size": 165748
   },
   {
     "id": "settings",
@@ -162,7 +162,7 @@
     "version": "1.0",
     "requires": "",
     "extensions": "",
-    "size": 117016
+    "size": 122476
   },
   {
     "id": "shell",
@@ -173,7 +173,7 @@
     "version": "1.0",
     "requires": "keyboard",
     "extensions": "",
-    "size": 80116
+    "size": 83604
   },
   {
     "id": "snake",
@@ -182,9 +182,9 @@
     "long_description": "Play the classic Snake game. Eat food, grow longer, and avoid hitting walls.",
     "homepage": "https://github.com/ralsina/esposito/tree/main/apps/snake",
     "version": "1.0",
-    "requires": "keyboard",
+    "requires": "",
     "extensions": "",
-    "size": 31328
+    "size": 31484
   },
   {
     "id": "terminado",
@@ -195,6 +195,6 @@
     "version": "1.0",
     "requires": "keyboard",
     "extensions": "",
-    "size": 36912
+    "size": 37432
   }
 ]
