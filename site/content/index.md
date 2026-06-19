@@ -1,14 +1,7 @@
 <section class="hero-section" style="position: relative;">
     <h2 style="color: var(--b16-base0D);">Cheap is <i>good</i></h2>
-    <p style="font-size: 1.15rem; margin: 1rem 0 2rem; max-width: 600px;">
-        <strong>NEW:</strong> Install Esposito OS directly from your browser —
-        just plug in a USB cable and click. No toolchain, no terminal.
-        <a href="/install/">Try it now →</a>
-    </p>
-
   <div class="hero-actions">
       <a href="/install/" class="primary contrast" role="button" style="font-size: 1.2rem; padding: 0.6rem 2rem;">⚡ Install from Browser</span>
-      <a href="#Getting-Started" class="contrast" role="button">Get Started</span>
       <a href="https://github.com/ralsina/esposito" role="button" class="contrast">GitHub</a>
       <a href="/posts/index.html" role="button" class="contrast">News</a>
 
@@ -43,13 +36,6 @@ Apps, settings, fonts, graphics, games, and more!
 ### 🎯 [Simple](#Simple)
 
 You want to create an app? Use C or C++. Get enough API to make it interesting.
-{{% /card %}}
-
-{{% card %}}
-### 🛠️ [Getting Started](#Getting-Started)
-
-Fully Open Source. Buy the cheapest computer and get started.
-
 {{% /card %}}
 
 {{% /tag %}}
@@ -160,19 +146,6 @@ Of course, if you want to type a lot the on screen keyboard may not be great. Wh
 {{% /tag %}}
 
 It's small, it's technically simple, it defines a very basic API for apps to implement whatever they want.
-
-## Getting Started
-
-1. Get a CYD [somewhere.](https://es.aliexpress.com/w/wholesale-2432s028.html)
-2. **[Install Esposito OS in your browser](/install/)** — just a USB cable + Chrome/Edge, no toolchain needed.
-3. Go to [github](https://github.com/ralsina/esposito) to get apps and the source.
-4. Let's figure it out together
-5. Maybe get a 3d printer and make a nicer case?
-6. Write some apps!
-
-Step 3 is because ... well, I only used this in *my* hardware. Yours may be a bit different. For example, I
-have a "2 USB" CYD, which is not the original. The screen driver is different. But if you are willing to put
-some effort, this project is SIMPLE by most microcontroller standards :-)
 
 I want this to work on more devices. I want it for e-ink. I want it for better systems. Systems with a decent
 memory size. Systems from the future, when our cheapest computer is even *better* than this one.
