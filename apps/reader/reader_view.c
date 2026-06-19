@@ -142,7 +142,7 @@ void reader_view_setup_file_list(reader_state_t *state) {
     ui2_button_t *btn_get = ui2_button_create(0, 0, btn_w, 3, ICON_ARROW_DOWN_TO_LINE);
     ui2_button_set_callback(btn_get, on_file_list_get_click, state);
 
-    ui2_button_t *btn_shop = ui2_button_create(0, 0, btn_w, 3, ICON_EXTERNAL_LINK);
+    ui2_button_t *btn_shop = ui2_button_create(0, 0, btn_w, 3, ICON_DOWNLOAD);
     ui2_button_set_callback(btn_shop, on_file_list_shop_click, state);
 
     ui2_button_t *btn_exit = ui2_button_create(0, 0, btn_w, 3, ICON_X);
