@@ -104,6 +104,18 @@ done
 
 echo ""
 
+# --- 3b. Download app store bundle ------------------------------------------
+
+echo ">>> Downloading app store bundle..."
+mkdir -p /tmp/esposito-release
+gh release download "$TAG" --pattern "app-store-bundle.zip" --clobber --dir /tmp/esposito-release
+rm -rf site/assets/apps/*
+unzip -q -o /tmp/esposito-release/app-store-bundle.zip -d /tmp/esposito-release/
+cp -r /tmp/esposito-release/app-store/* site/assets/apps/
+rm -rf /tmp/esposito-release
+echo "    + $(ls site/assets/apps/ | grep -v catalog | wc -l) apps + catalog.json"
+echo ""
+
 # --- 4. Regenerate manifest.json ---------------------------------------------
 
 echo ">>> Regenerating manifest.json..."
@@ -133,9 +145,9 @@ echo ""
 
 # --- 5. Commit firmware files, push -----------------------------------------
 
-echo ">>> Committing firmware files to main..."
-git add "${FIRMWARE_DIR}/"
-git commit -m "Update site firmware assets for ${TAG}
+echo ">>> Committing firmware + app store files to main..."
+git add "${FIRMWARE_DIR}/" site/assets/apps/
+git commit -m "Update site firmware + app store assets for ${TAG}
 
 Downloaded from release ${TAG} and staged for same-origin hosting."
 git push origin main

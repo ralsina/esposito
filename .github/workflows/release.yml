@@ -68,6 +68,9 @@ jobs:
           command: |
             apt-get update -qq && apt-get install -y -qq zip xxd > /dev/null 2>&1 || true
             idf.py build
+            bash scripts/build_all_apps.sh
+            python3 scripts/generate_catalog.py -o artifacts/app-store
+            cd artifacts && zip -r -q app-store-bundle.zip app-store/ && cd ..
             bash scripts/build_release_bundle.sh artifacts/sdcard-bundle.zip "${{ steps.tag.outputs.name }}"
 
       - name: Fix file ownership from Docker
@@ -181,4 +184,5 @@ jobs:
             artifacts/ota_data_initial.bin
             artifacts/manifest.json
             artifacts/sdcard-bundle.zip
+            artifacts/app-store-bundle.zip
             artifacts/version.txt
