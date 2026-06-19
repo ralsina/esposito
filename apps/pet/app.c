@@ -35,8 +35,13 @@ typedef struct {
 static pet_state_t pet;
 static ui2_screen_t *screen = NULL;
 static char status_msg[48] = "";
-static int status_until;       // unix time until which status_msg shows (0 = none)
+static int64_t status_until;    // mono-ms until which status_msg shows (0 = none)
 static int anim_frame = 0;     // for blink/bob animation
+
+// Forward declarations (defined in the time section below).
+static int trusted_now(void);
+static int64_t mono_ms(void);
+int64_t esp_timer_get_time(void);   // provided by firmware (symbol table)
 
 // --- config persistence ---
 
@@ -54,15 +59,15 @@ static void load_state(void) {
     pet.has_poop    = config_get_bool("poop", false);
     pet.alive       = config_get_bool("alive", true);
 
-    // First launch: a fresh egg.
+    // First launch: a fresh egg. Only stamp the birth time if the clock is
+    // synced; otherwise leave birth=0 and it gets set on the first synced boot.
     if (pet.birth == 0) {
-        int now = (int)0;
-        os_time_status_t ts;
-        if (os_get_time_status(&ts)) now = (int)ts.unix_time;
-        if (now <= 0) now = 1;
-        pet.birth = now;
-        pet.last_update = now;
-        pet.last_poop = now;
+        int now = trusted_now();
+        if (now > 0) {
+            pet.birth = now;
+            pet.last_update = now;
+            pet.last_poop = now;
+        }
     }
 }
 
@@ -85,20 +90,33 @@ static void save_state(void) {
 
 static int clamp100(int v) { return v < 0 ? 0 : (v > 100 ? 100 : v); }
 
-static int now_unix(void) {
+// Wall-clock seconds, but ONLY if NTP has synced. Returns 0 when the clock
+// is untrusted (no RTC, so the clock is garbage until WiFi+NTP succeed).
+// Every persistence/decay decision goes through this: a timestamp is only
+// meaningful if the clock was synced both when stored and when read.
+static int trusted_now(void) {
     os_time_status_t ts;
-    if (os_get_time_status(&ts)) return (int)ts.unix_time;
+    if (os_get_time_status(&ts) && ts.synchronized) return (int)ts.unix_time;
     return 0;
+}
+
+// Monotonic milliseconds since boot — always available, used for short-lived
+// UI timeouts that must work even when the wall clock is unsynced.
+static int64_t mono_ms(void) {
+    return esp_timer_get_time() / 1000;
 }
 
 static stage_t get_stage(void) {
     if (!pet.alive) return STAGE_DEAD;
-    int now = now_unix();
+    if (pet.birth == 0) return STAGE_EGG;          // never born (clock unsynced at first launch)
+    int now = trusted_now();
+    if (now == 0) return STAGE_EGG;                 // clock unsynced: can't know age, show egg (decay is frozen anyway)
     int age = now - pet.birth;
-    if (age < 60)        return STAGE_EGG;     // 1 minute as an egg
-    else if (age < 600)  return STAGE_BABY;    // 10 minutes
-    else if (age < 3600) return STAGE_CHILD;   // 1 hour
-    else if (age < 86400) return STAGE_TEEN;   // 1 day
+    if (age < 0)        return STAGE_EGG;           // clock jumped back; treat as newborn-safe
+    if (age < 60)       return STAGE_EGG;           // 1 minute as an egg
+    else if (age < 600) return STAGE_BABY;          // 10 minutes
+    else if (age < 3600) return STAGE_CHILD;        // 1 hour
+    else if (age < 86400) return STAGE_TEEN;        // 1 day
     else                 return STAGE_ADULT;
 }
 
@@ -124,10 +142,12 @@ static const char *stage_name(stage_t s) {
     }
 }
 
-// Apply real-time decay since last_update.
+// Apply real-time decay since last_update. Frozen entirely while the clock
+// is unsynced — without an RTC we cannot trust elapsed time, so we refuse to
+// decay (and never kill the pet) until NTP gives us a reliable clock.
 static void apply_decay(void) {
-    int now = now_unix();
-    if (now <= 0) return;
+    int now = trusted_now();
+    if (now == 0) return;
 
     stage_t stage = get_stage();
     if (stage == STAGE_EGG || stage == STAGE_DEAD) {
@@ -135,9 +155,17 @@ static void apply_decay(void) {
         return;
     }
 
+    // No trusted timestamp on record yet (e.g. first synced boot after the
+    // pet was created unsynced): seed it now, don't invent decay.
+    if (pet.last_update == 0) {
+        pet.last_update = now;
+        pet.last_poop = now;
+        return;
+    }
+
     int elapsed = now - pet.last_update;
-    if (elapsed <= 0) { pet.last_update = now; return; }
-    if (elapsed > 72 * 3600) elapsed = 72 * 3600;   // cap: 3 days
+    if (elapsed <= 0) { pet.last_update = now; return; }  // clock jumped back
+    if (elapsed > 72 * 3600) elapsed = 72 * 3600;          // cap: 3 days
     double hours = elapsed / 3600.0;
 
     pet.hunger -= (int)(10 * hours);
@@ -193,7 +221,7 @@ static void apply_decay(void) {
 
 static void set_status(const char *msg) {
     snprintf(status_msg, sizeof(status_msg), "%s", msg);
-    status_until = now_unix() + 3;
+    status_until = mono_ms() + 3000;   // monotonic: works even with unsynced clock
 }
 
 // --- actions ---
@@ -251,9 +279,8 @@ static void act_meds(void) {
 
 static void act_rebirth(void) {
     // Bring the pet back as a fresh egg.
-    int now = now_unix();
-    if (now <= 0) now = pet.birth + 1;
-    pet.birth = now;
+    int now = trusted_now();
+    pet.birth = now;           // 0 if unsynced -> waits as egg until synced
     pet.last_update = now;
     pet.last_poop = now;
     pet.hunger = pet.happy = pet.energy = pet.clean = pet.health = 100;
@@ -382,40 +409,54 @@ static void draw_stat(int row, const char *label, int value) {
 
 static void draw_header(void) {
     stage_t stage = get_stage();
-    char hdr[64];
-    int age = now_unix() - pet.birth;
-    if (age < 0) age = 0;
-    int days = age / 86400;
-    int hours = (age % 86400) / 3600;
-    int mins = (age % 3600) / 60;
-    if (days > 0)
-        snprintf(hdr, sizeof(hdr), "%s the %s   age %dd %dh", PET_NAME, stage_name(stage), days, hours);
-    else
-        snprintf(hdr, sizeof(hdr), "%s the %s   age %dh %dm", PET_NAME, stage_name(stage), hours, mins);
+    char hdr[80];
+    int now = trusted_now();
+    if (pet.birth != 0 && now != 0) {
+        int age = now - pet.birth;
+        if (age < 0) age = 0;
+        int days = age / 86400;
+        int hours = (age % 86400) / 3600;
+        int mins = (age % 3600) / 60;
+        if (days > 0)
+            snprintf(hdr, sizeof(hdr), "%s the %s   age %dd %dh", PET_NAME, stage_name(stage), days, hours);
+        else
+            snprintf(hdr, sizeof(hdr), "%s the %s   age %dh %dm", PET_NAME, stage_name(stage), hours, mins);
+    } else {
+        // Clock unsynced (or pet not yet born): show name + stage without age.
+        snprintf(hdr, sizeof(hdr), "%s the %s", PET_NAME, stage_name(stage));
+    }
     text_mode_print_at_attr(0, 0, hdr, TEXT_COLOR_BRIGHT_CYAN, TEXT_ATTR_BOLD);
 }
 
 static void draw_status(int row) {
-    if (status_until > 0 && now_unix() < status_until && status_msg[0]) {
+    if (status_until > 0 && mono_ms() < status_until && status_msg[0]) {
         print_centered(row, status_msg, TEXT_COLOR_BRIGHT_WHITE, TEXT_ATTR_NORMAL);
-    } else if (pet.has_poop && get_stage() != STAGE_EGG) {
-        print_centered(row, "(there's a mess to clean!)", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
-    } else {
-        stage_t s = get_stage();
-        mood_t m = get_mood(s);
-        const char *line = "";
-        if (s == STAGE_EGG)       line = "(the egg is warm... waiting)";
-        else if (s == STAGE_DEAD) line = "Press [R] or New for a new egg";
-        else switch (m) {
-            case MOOD_SLEEPING: line = "Zzz..."; break;
-            case MOOD_SICK:     line = "*cough* I don't feel well..."; break;
-            case MOOD_SAD:      line = "I'm sad... pay attention to me!"; break;
-            case MOOD_NEUTRAL:  line = "I'm okay."; break;
-            case MOOD_HAPPY:    line = "I love you!"; break;
-            default: break;
-        }
-        print_centered(row, line, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+        return;
     }
+    // Warn when the clock isn't synced: time-based decay is paused.
+    if (trusted_now() == 0) {
+        print_centered(row, "(clock not synced — time paused until NTP)", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+        return;
+    }
+    if (pet.has_poop && get_stage() != STAGE_EGG) {
+        print_centered(row, "(there's a mess to clean!)", TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+        return;
+    }
+
+    stage_t s = get_stage();
+    mood_t m = get_mood(s);
+    const char *line = "";
+    if (s == STAGE_EGG)       line = "(the egg is warm... waiting)";
+    else if (s == STAGE_DEAD) line = "Press [R] or New for a new egg";
+    else switch (m) {
+        case MOOD_SLEEPING: line = "Zzz..."; break;
+        case MOOD_SICK:     line = "*cough* I don't feel well..."; break;
+        case MOOD_SAD:      line = "I'm sad... pay attention to me!"; break;
+        case MOOD_NEUTRAL:  line = "I'm okay."; break;
+        case MOOD_HAPPY:    line = "I love you!"; break;
+        default: break;
+    }
+    print_centered(row, line, TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
 }
 
 static void draw_stats(int top_row) {
