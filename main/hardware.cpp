@@ -166,6 +166,12 @@ bool display_init(void) {
     tft.begin();
     ESP_LOGI(TAG, "LovyanGFX begin() called");
 
+#ifdef BOARD_LCD_INVERT
+    // Some panels (e.g. NV3041A) ignore the config `invert` flag in their init
+    // sequence, so force it explicitly here to get correct colors.
+    tft.invertDisplay(BOARD_LCD_INVERT);
+#endif
+
     // Set default rotation (will be overridden by settings later when SD card is available)
     current_rotation = DEFAULT_DISPLAY_ROTATION;
     tft.setRotation(current_rotation);
@@ -572,6 +578,15 @@ int display_get_width(void) {
 int display_get_height(void) {
     if (!display_initialized || !display_tft) return SCREEN_HEIGHT;
     return display_tft->height();
+}
+
+uint8_t display_get_touch(int16_t *x, int16_t *y) {
+    if (!display_initialized || !display_tft) return 0;
+    int16_t tx = 0, ty = 0;
+    uint8_t count = display_tft->getTouch(&tx, &ty);
+    if (x) *x = tx;
+    if (y) *y = ty;
+    return count;
 }
 
 void display_set_rotation(int rotation) {

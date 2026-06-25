@@ -1,0 +1,10 @@
+# Esposito OS - ESP32-S3 SDK Configuration Defaults
+# Applied automatically when `idf.py set-target esp32s3` is used (e.g. the
+# Guition JC4827W543). These do NOT affect the ESP32 (CYD) build.
+# Shared settings (flash size, partition table, mbedTLS, ...) come from
+# sdkconfig.defaults.
+
+# Guition JC4827W543 ships with 8 MB OPI (octal) PSRAM.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y

@@ -68,6 +68,10 @@ void timer_set_interval(uint32_t interval_ms);
 // Backlight control
 void display_set_backlight(uint8_t brightness);  // 0-255
 
+// Touch read (boards whose touch is driven by LovyanGFX, e.g. GT911).
+// Returns number of touch points (0 = not touched); sets x,y to the first point.
+uint8_t display_get_touch(int16_t *x, int16_t *y);
+
 void display_start_write(void);
 void display_end_write(void);
 void display_set_window(int x, int y, int w, int h);

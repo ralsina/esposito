@@ -45,6 +45,21 @@ static const char *TAG = "elf_loader";
 #define EXPECTED_RELOC_TYPE R_XTENSA_32
 #endif
 
+/*
+ * App rodata placement.
+ * On classic ESP32 the app partition is flash-mapped to the data-cache region,
+ * which permits byte-aligned access, so rodata can stay in flash.
+ * On newer chips (e.g. ESP32-S3) that data-cache mapping for an arbitrary
+ * partition is unreliable (PSRAM consumes the data VADDR pool) and rodata can
+ * land in the instruction region, which forbids sub-word loads and crashes on
+ * the first string/byte access. On those targets we back rodata with DRAM.
+ */
+#if !defined(CONFIG_IDF_TARGET_ESP32)
+#define ELF_RODATA_IN_DRAM 1
+#else
+#define ELF_RODATA_IN_DRAM 0
+#endif
+
 #define APP_PARTITION_LABEL "app_code"
 
 /* ELF32 on-disk struct definitions (elf32_ehdr_t, elf32_shdr_t, elf32_sym_t)
@@ -84,6 +99,9 @@ struct elf_handle {
     esp_partition_mmap_handle_t data_mmap_handle;
     void *inst_base;
     void *data_base_flash;
+#if ELF_RODATA_IN_DRAM
+    void *rodata_base;   /* DRAM-backed rodata (see ELF_RODATA_IN_DRAM) */
+#endif
 
     void *data_base;
     size_t data_size;
@@ -503,9 +521,7 @@ elf_handle_t *elf_loader_load(const char *path) {
         }
     }
 
-    // Step 3: mmap code into IROM (for execution) and rodata into DROM (for data access)
-    // .text goes to IROM (instruction cache), .rodata goes to DROM (data cache).
-    // This is required because on ESP32, data loads from IROM cause LoadStoreError.
+    // Step 3: map code into IROM (instruction cache) for execution.
     ret = esp_partition_mmap(handle->flash_part, 0, code_size,
                               ESP_PARTITION_MMAP_INST,
                               (const void **)&handle->inst_base,
@@ -515,6 +531,17 @@ elf_handle_t *elf_loader_load(const char *path) {
         goto fail;
     }
 
+#if ELF_RODATA_IN_DRAM
+    // rodata lives in DRAM (byte-accessible); allocate it now.
+    if (rodata_size > 0) {
+        handle->rodata_base = app_malloc(rodata_size);
+        if (!handle->rodata_base) {
+            ESP_LOGE(TAG, "Failed to allocate %d bytes for rodata", (int)rodata_size);
+            goto fail;
+        }
+    }
+#else
+    // rodata is flash-mapped to DROM (data cache) for byte-aligned access.
     if (rodata_size > 0) {
         ret = esp_partition_mmap(handle->flash_part, code_size, rodata_size,
                                   ESP_PARTITION_MMAP_DATA,
@@ -528,9 +555,21 @@ elf_handle_t *elf_loader_load(const char *path) {
         handle->data_base_flash = NULL;
         handle->data_mmap_handle = 0;
     }
+#endif
 
-    ESP_LOGI(TAG, "IROM base: %p, DROM base: %p, code=%d rodata=%d",
-             handle->inst_base, handle->data_base_flash, code_size, rodata_size);
+    ESP_LOGI(TAG, "IROM base: %p, %s base: %p, code=%d rodata=%d",
+             handle->inst_base,
+#if ELF_RODATA_IN_DRAM
+             "rodata(DRAM)",
+#else
+             "DROM",
+#endif
+#if ELF_RODATA_IN_DRAM
+             handle->rodata_base,
+#else
+             handle->data_base_flash,
+#endif
+             code_size, rodata_size);
 
     // Step 4: Build runtime section table for code/rodata
     {
@@ -554,7 +593,11 @@ elf_handle_t *elf_loader_load(const char *path) {
                 ls->load_addr = (uint32_t)handle->inst_base + co_off;
                 if (sh->sh_type != SHT_NOBITS) co_off += (sh->sh_size + 3) & ~3;
             } else {
+#if ELF_RODATA_IN_DRAM
+                ls->load_addr = (uint32_t)handle->rodata_base + ro_off;
+#else
                 ls->load_addr = (uint32_t)handle->data_base_flash + ro_off;
+#endif
                 if (sh->sh_type != SHT_NOBITS) ro_off += (sh->sh_size + 3) & ~3;
             }
             ESP_LOGD(TAG, "  section[%d]: vma=0x%x size=%d load=0x%lx flags=0x%x",
@@ -575,6 +618,9 @@ elf_handle_t *elf_loader_load(const char *path) {
     int total_patched = 0;
     for (int pass = 0; pass < 2; pass++) {
         size_t write_offset = (pass == 0) ? 0 : code_size;
+#if ELF_RODATA_IN_DRAM
+        size_t dram_offset = 0;   // rodata offset within rodata_base (pass 1)
+#endif
         for (int section_index = 0; section_index < ehdr->e_shnum; section_index++) {
             const elf32_shdr_t *sh = &shdrs[section_index];
             if (!(sh->sh_flags & SHF_ALLOC)) continue;
@@ -603,14 +649,24 @@ elf_handle_t *elf_loader_load(const char *path) {
                 goto fail;
             }
 
+#if ELF_RODATA_IN_DRAM
+            if (pass == 0) {
+                ret = esp_partition_write(handle->flash_part, write_offset, section_buf, sh->sh_size);
+                write_offset += (sh->sh_size + 3) & ~3;
+            } else {
+                memcpy((uint8_t *)handle->rodata_base + dram_offset, section_buf, sh->sh_size);
+                dram_offset += (sh->sh_size + 3) & ~3;
+                ret = ESP_OK;
+            }
+#else
             ret = esp_partition_write(handle->flash_part, write_offset, section_buf, sh->sh_size);
+            write_offset += (sh->sh_size + 3) & ~3;
+#endif
             app_free(section_buf);
             if (ret != ESP_OK) {
                 ESP_LOGE(TAG, "Failed to write to flash: %s", esp_err_to_name(ret));
                 goto fail;
             }
-
-            write_offset += (sh->sh_size + 3) & ~3;
         }
     }
 
@@ -633,11 +689,15 @@ elf_handle_t *elf_loader_load(const char *path) {
 
     ESP_LOGI(TAG, "Patched %d relocations", total_patched);
 
-    // Step 8: Invalidate cache for both IROM and DROM mappings
-    esp_cache_msync(handle->inst_base, code_size, ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+    // Step 8: Invalidate cache for code (and rodata when flash-mapped).
+    esp_cache_msync(handle->inst_base, code_size,
+                    ESP_CACHE_MSYNC_FLAG_INVALIDATE | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
+#if !ELF_RODATA_IN_DRAM
     if (handle->data_base_flash && rodata_size > 0) {
-        esp_cache_msync(handle->data_base_flash, rodata_size, ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+        esp_cache_msync(handle->data_base_flash, rodata_size,
+                        ESP_CACHE_MSYNC_FLAG_INVALIDATE | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
     }
+#endif
 
     // Step 9: Resolve entry points
     if (!elf_resolve_entry_points(handle, ehdr, shdrs, symtab, strtab)) {
@@ -674,6 +734,11 @@ void elf_loader_unload(elf_handle_t *handle) {
     if (handle->data_base) {
         app_free(handle->data_base);
     }
+#if ELF_RODATA_IN_DRAM
+    if (handle->rodata_base) {
+        app_free(handle->rodata_base);
+    }
+#endif
     if (handle->bss_base) {
         app_free(handle->bss_base);
     }

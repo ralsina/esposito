@@ -104,7 +104,7 @@ void boot_display_progress(boot_stage_t stage, bool success, const char *message
 bool boot_display_init(void) {
     ESP_LOGI(TAG, "=== Esposito OS Boot ===");
     ESP_LOGI(TAG, "Version: 0.1.0-alpha");
-    ESP_LOGI(TAG, "Hardware: ESP32 CYD (2USB version)");
+    ESP_LOGI(TAG, "Hardware: %s", BOARD_NAME);
 
     // Try to initialize display
     if (!display_init()) {
@@ -224,7 +224,7 @@ void boot_sequence(void) {
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "╔═══════════════════════════════════════╗");
     ESP_LOGI(TAG, "║     Esposito OS Boot Sequence        ║");
-    ESP_LOGI(TAG, "║     ESP32 CYD (2USB version)         ║");
+    ESP_LOGI(TAG, "║     %-31s║", BOARD_NAME);
     ESP_LOGI(TAG, "╚═══════════════════════════════════════╝");
     ESP_LOGI(TAG, "");
 

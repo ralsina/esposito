@@ -7,6 +7,8 @@
 #include "freertos/task.h"
 #include <string.h>
 
+#if BOARD_HAS_BBQ20_KEYBOARD
+
 static const char *TAG = "bbq20_kbd";
 
 // BBQ20 I2C configuration
@@ -388,3 +390,17 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
     // No keys available
     return false;
 }
+
+#else /* BOARD_HAS_BBQ20_KEYBOARD */
+
+// Stubs for boards without a BBQ20 keyboard. Keeps the translation unit
+// linkable; callers in hardware.cpp guard their use with BOARD_HAS_BBQ20_KEYBOARD.
+bool   bbq20_keyboard_init(void)                 { return false; }
+void   bbq20_keyboard_deinit(void)               { }
+bool   bbq20_read_key_event(bbq20_key_event_t *event) { (void)event; return false; }
+char   bbq20_key_to_ascii(uint8_t key_code, uint8_t state) { (void)key_code; (void)state; return 0; }
+uint8_t bbq20_get_modifiers(void)                { return 0; }
+void   bbq20_set_backlight(uint8_t brightness)   { (void)brightness; }
+uint8_t bbq20_get_backlight(void)                { return 0; }
+
+#endif /* BOARD_HAS_BBQ20_KEYBOARD */
