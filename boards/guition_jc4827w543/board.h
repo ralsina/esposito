@@ -40,10 +40,14 @@
 // mirrored or axis-swapped, try other values (the upstream board example used 6).
 #define BOARD_TOUCH_OFFSET_ROTATION 0
 
-// I2C / Keyboard: no BBQ20 keyboard on this board. (I2C bus SDA=8/SCL=4 is
-// shared with the GT911 touch above.)
-#define BOARD_HAS_BBQ20_KEYBOARD 0
-#define BOARD_HAS_KEYBOARD_BACKLIGHT 0
+// BBQ20 keyboard on I2C_NUM_1 (separate from touch I2C on GPIO8/4).
+// Connector: IO17(SDA)/IO18(SCL)/GND/3.3V (JST 1.25mm 4-pin)
+#define BOARD_HAS_BBQ20_KEYBOARD 1
+#define BOARD_HAS_KEYBOARD_BACKLIGHT 1
+#define BOARD_BBQ20_SDA 17
+#define BOARD_BBQ20_SCL 18
+#define BOARD_BBQ20_PORT I2C_NUM_1
+#define BOARD_BBQ20_FREQ 100000
 
 // SD Card: microSD slot on SPI (pins per the JC4827W543 "Dev Device Pins").
 // Routed to SPI2_HOST so it does not share the display's QSPI bus (SPI3_HOST).
