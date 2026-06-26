@@ -295,9 +295,9 @@ static void update_cell_range(int x, int y, int count) {
     // Draw background for the whole run
     display_fill_rect(px, py, font_width * count, font_height, bg);
 
-    // Draw text (transparent so it doesn't overwrite our fill_rect background)
+    // Draw text with background color for proper anti-aliased blending
     if (buf_len > 0) {
-        display_draw_text_transparent(px, py, buf, fg);
+        display_draw_text_bg(px, py, buf, fg, bg);
     }
 
     // Draw borders (single rect per border type for the run)
