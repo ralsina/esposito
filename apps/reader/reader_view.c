@@ -43,7 +43,6 @@ static void draw_window(int x, int y, int w, int h, const char *title) {
 }
 
 static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t bg, uint8_t base_attr, int *bold_pending, int *underline_pending) {
-    int cur_x = x;
     uint8_t attr = base_attr;
     int bold_active = 0;
     int underline_active = 0;
@@ -59,20 +58,42 @@ static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t b
         *underline_pending = 0;
     }
 
+    char batch_buf[256];
+    int batch_len = 0;
+    int batch_x = x;
+
     while (*text) {
         if (*text == MD_FORMAT_UNDERLINE) {
+            if (batch_len > 0) {
+                batch_buf[batch_len] = '\0';
+                text_mode_print_at_attr_bg(batch_x, y, batch_buf, fg, bg, attr);
+                batch_x += batch_len;
+                batch_len = 0;
+            }
             if (attr & TEXT_ATTR_UNDERLINE) attr &= ~TEXT_ATTR_UNDERLINE;
             else attr |= TEXT_ATTR_UNDERLINE;
             text++;
             continue;
         }
         if (*text == MD_FORMAT_BOLD) {
+            if (batch_len > 0) {
+                batch_buf[batch_len] = '\0';
+                text_mode_print_at_attr_bg(batch_x, y, batch_buf, fg, bg, attr);
+                batch_x += batch_len;
+                batch_len = 0;
+            }
             if (attr & TEXT_ATTR_BOLD) { attr &= ~TEXT_ATTR_BOLD; bold_active = 0; }
             else { attr |= TEXT_ATTR_BOLD; bold_active = 1; }
             text++;
             continue;
         }
         if (*text == MD_FORMAT_TOGGLE) {
+            if (batch_len > 0) {
+                batch_buf[batch_len] = '\0';
+                text_mode_print_at_attr_bg(batch_x, y, batch_buf, fg, bg, attr);
+                batch_x += batch_len;
+                batch_len = 0;
+            }
             if (attr & TEXT_ATTR_ITALIC) { attr &= ~TEXT_ATTR_ITALIC; underline_active = 0; }
             else { attr |= TEXT_ATTR_ITALIC; underline_active = 1; }
             text++;
@@ -82,11 +103,25 @@ static void draw_rich_line(int x, int y, const char *text, uint8_t fg, uint8_t b
         int utf8_len = 1;
         if ((*text & 0xE0) == 0xC0) utf8_len = 2;
         else if ((*text & 0xF0) == 0xE0) utf8_len = 3;
-        char buf[4] = {0};
-        for (int i = 0; i < utf8_len && text[i]; i++) buf[i] = text[i];
-        text_mode_print_at_attr_bg(cur_x, y, buf, fg, bg, attr);
-        cur_x++;
+
+        if (batch_len + utf8_len >= (int)sizeof(batch_buf) - 1) {
+            if (batch_len > 0) {
+                batch_buf[batch_len] = '\0';
+                text_mode_print_at_attr_bg(batch_x, y, batch_buf, fg, bg, attr);
+                batch_x += batch_len;
+            }
+            batch_len = 0;
+        }
+
+        for (int i = 0; i < utf8_len && text[i]; i++) {
+            batch_buf[batch_len++] = text[i];
+        }
         text += utf8_len;
+    }
+
+    if (batch_len > 0) {
+        batch_buf[batch_len] = '\0';
+        text_mode_print_at_attr_bg(batch_x, y, batch_buf, fg, bg, attr);
     }
 
     if (bold_active) *bold_pending = 1;

@@ -36,7 +36,7 @@
 class LGFX : public lgfx::LGFX_Device
 {
 public:
-    guition::Bus_Stub             _bus_instance;
+    guition::GuitionQSPIBus          _bus_instance;
     guition::Panel_NV3041A_Guition _panel_instance;
     lgfx::Light_PWM               _light_instance;
     lgfx::Touch_GT911             _touch_instance;

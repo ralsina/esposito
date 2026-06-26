@@ -8,11 +8,13 @@
 
 static const uint16_t C_WHITE = 0xFFFF;
 static const uint16_t C_RED   = 0xF800;
+static const uint16_t C_GREEN = 0x07E0;
+static const uint16_t C_BLUE  = 0x001F;
 
 class TestGFX : public lgfx::LGFX_Device
 {
 public:
-    guition::Bus_Stub             _bus;
+    guition::GuitionQSPIBus       _bus;
     guition::Panel_NV3041A_Guition panel;
     lgfx::Light_PWM               light;
 
@@ -79,17 +81,28 @@ extern "C" void app_main(void)
     ESP_LOGI("test", "single red dot");
     tft.drawPixel(430, y0, C_RED);
 
-    // TEXT -- the last untested path (font rendering via writeImage/writePixels)
-    tft.setTextColor(0x0000, C_WHITE);  // black on white
-    tft.setCursor(10, 120);
+    // Anti-aliased text on coloured backgrounds — the failing scenario.
+    // Left: black text on green (transparent mode). Right: white text on blue.
+    tft.fillRect(10, 110, 200, 50, C_GREEN);
+    tft.fillRect(250, 110, 200, 50, C_BLUE);
+
+    tft.setTextColor(0x0000);  // black, no bg = transparent
+    tft.setCursor(20, 120);
     tft.setTextSize(2);
-    tft.print("Hello Guition!");
+    tft.print("Black on green");
 
-    tft.setTextColor(C_RED, C_WHITE);
-    tft.setCursor(10, 150);
-    tft.setTextSize(3);
-    tft.print("TEXT OK");
+    tft.setTextColor(C_WHITE);  // white, no bg = transparent
+    tft.setCursor(260, 120);
+    tft.setTextSize(2);
+    tft.print("White on blue");
 
-    ESP_LOGI("test", "done -- expect red squares + ladder + text on white");
+    // Also test: black text with explicit green bg (non-transparent)
+    tft.fillRect(10, 180, 200, 50, 0x0000);  // black rect
+    tft.setTextColor(0x0000, C_GREEN);  // black fg, green bg
+    tft.setCursor(20, 190);
+    tft.setTextSize(2);
+    tft.print("fg/bg mode");
+
+    ESP_LOGI("test", "done");
     while (true) { vTaskDelay(pdMS_TO_TICKS(1000)); }
 }

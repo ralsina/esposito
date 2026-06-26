@@ -2,6 +2,7 @@
 #define HARDWARE_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include "os_core.h"
 #include "fonts.h"
 
@@ -48,6 +49,12 @@ bool display_save_screenshot_ppm(const char *path);
 // Screen dimension functions
 int display_get_width(void);
 int display_get_height(void);
+
+// Offscreen render target (sprite double-buffering)
+// When set, drawing functions write to the offscreen target instead of the
+// display. Call display_get_render_target() to get the active target.
+void display_set_offscreen(void *target);
+void *display_get_offscreen(void);
 
 // Display rotation functions
 void display_set_rotation(int rotation);  // 0-3 for 0°, 90°, 180°, 270°

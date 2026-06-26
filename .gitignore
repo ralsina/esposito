@@ -63,6 +63,7 @@ compile_commands.json
 *.tmp
 *.log
 *.bak
+*.old
 *.swp
 
 # vcpkg
