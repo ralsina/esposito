@@ -1,0 +1,5 @@
+# Match the Guition's ESP32-S3 environment (8 MB OPI PSRAM) so the cache/MMU
+# setup is identical to the failing firmware.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y

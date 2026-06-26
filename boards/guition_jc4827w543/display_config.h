@@ -5,8 +5,7 @@
 
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
-#include <lgfx/v1/platforms/esp32/Bus_SPI.hpp>
-#include <lgfx/v1/panel/Panel_NV3041A.hpp>
+#include "guition_bus.hpp"
 #include <lgfx/v1/touch/Touch_GT911.hpp>
 
 #define TFT_BLACK       0x0000
@@ -29,41 +28,27 @@
 #define TFT_GREENYELLOW 0xAFE5
 #define TFT_PINK        0xF81F
 
-// Guition JC4827W543: 4.3" 480x272 TFT, NV3041A driver over QSPI.
-// Configuring all four io pins puts LovyanGFX's Bus_SPI into Quad-SPI mode.
+// Guition JC4827W543: 4.3" 480x272 TFT, NV3041A over QSPI.
+// Uses a self-contained LovyanGFX panel (Panel_NV3041A_Guition) that bypasses
+// LovyanGFX's Bus_SPI/init orchestration and drives the panel directly via the
+// ESP-IDF spi_device driver (Arduino_GFX framing). LovyanGFX is kept for
+// high-level features (fonts, sprites, JPEG).
 class LGFX : public lgfx::LGFX_Device
 {
 public:
-    lgfx::Bus_SPI       _bus_instance;
-    lgfx::Panel_NV3041A _panel_instance;
-    lgfx::Light_PWM     _light_instance;
-    lgfx::Touch_GT911   _touch_instance;
+    guition::Bus_Stub             _bus_instance;
+    guition::Panel_NV3041A_Guition _panel_instance;
+    lgfx::Light_PWM               _light_instance;
+    lgfx::Touch_GT911             _touch_instance;
 
     LGFX(void)
     {
-        {
-            auto cfg = _bus_instance.config();
-            cfg.spi_host    = BOARD_LCD_SPI_HOST;
-            cfg.spi_mode    = BOARD_LCD_SPI_MODE;
-            cfg.freq_write  = BOARD_LCD_FREQ_WRITE;
-            cfg.freq_read   = BOARD_LCD_FREQ_READ;
-            cfg.spi_3wire   = true;
-            cfg.use_lock    = true;
-            cfg.dma_channel = SPI_DMA_CH_AUTO;
-            cfg.pin_dc   = -1;   // D/C sent as 9th bit in 3-wire mode
-            cfg.pin_sclk = BOARD_LCD_SCLK;
-            cfg.pin_io0  = BOARD_LCD_QSPI_D0;
-            cfg.pin_io1  = BOARD_LCD_QSPI_D1;
-            cfg.pin_io2  = BOARD_LCD_QSPI_D2;
-            cfg.pin_io3  = BOARD_LCD_QSPI_D3;
-            _bus_instance.config(cfg);
-            _panel_instance.setBus(&_bus_instance);
-        }
+        _panel_instance.setBus(&_bus_instance);
 
         {
             auto cfg = _panel_instance.config();
-            cfg.pin_cs   = BOARD_LCD_CS;
-            cfg.pin_rst  = -1;        // RST not wired (tested config)
+            cfg.pin_cs   = -1;        // the panel owns CS (toggles per transaction)
+            cfg.pin_rst  = -1;        // RST not wired
             cfg.pin_busy = -1;
             cfg.memory_width  = BOARD_SCREEN_WIDTH;
             cfg.memory_height = BOARD_SCREEN_HEIGHT;
@@ -72,15 +57,11 @@ public:
             cfg.offset_x      = 0;
             cfg.offset_y      = 0;
             cfg.offset_rotation = 0;
-            cfg.dummy_read_pixel = 8;
-            cfg.dummy_read_bits  = 1;
-            cfg.readable   = true;
-            // Panel_NV3041A ignores this in its init; display_init() forces it
-            // via setInvert() after begin(). true == INVON == correct colors.
-            cfg.invert     = true;
+            cfg.readable   = false;
+            cfg.invert     = true;   // INVON is sent in the panel init
             cfg.rgb_order  = true;
             cfg.dlen_16bit = false;
-            cfg.bus_shared = true;
+            cfg.bus_shared = false;
             _panel_instance.config(cfg);
         }
 
