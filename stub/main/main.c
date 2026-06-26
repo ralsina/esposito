@@ -8,16 +8,17 @@
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_common.h"
+#include "board.h"
 #include <dirent.h>
 
 static const char *TAG = "stub";
 static sdmmc_card_t *sd_card = NULL;
 
-#define SD_MISO_PIN 19
-#define SD_MOSI_PIN 23
-#define SD_CLK_PIN  18
-#define SD_CS_PIN    5
-#define SD_SPI_HOST SPI2_HOST
+#define SD_MISO_PIN BOARD_SD_MISO_PIN
+#define SD_MOSI_PIN BOARD_SD_MOSI_PIN
+#define SD_CLK_PIN  BOARD_SD_CLK_PIN
+#define SD_CS_PIN   BOARD_SD_CS_PIN
+#define SD_SPI_HOST BOARD_SD_SPI_HOST
 
 static bool mount_sd_card(void) {
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {

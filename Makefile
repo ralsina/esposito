@@ -1,7 +1,7 @@
 # Esposito OS - Makefile
 # Convenience targets for building, flashing, and monitoring
 
-.PHONY: all build stub flash flash-stub monitor clean help size menuconfig deploy-all check emulate
+.PHONY: all build stub flash flash-stub monitor clean help size menuconfig deploy-all check emulate cyd guition set-target
 
 # Default target
 all: build
@@ -65,6 +65,29 @@ menuconfig:
 	@echo "Opening configuration menu..."
 	. /opt/esp-idf/export.sh && idf.py menuconfig
 
+# --- Board selection --------------------------------------------------------
+# Switch the active board. These regenerate sdkconfig (via `idf.py set-target`)
+# from sdkconfig.defaults (+ sdkconfig.defaults.<target>), then build.
+#   make cyd                     ESP32 Cheap Yellow Display (cyd_2usb)
+#   make guition                 Guition JC4827W543 (esp32s3)
+#   make set-target TARGET=t     any IDF target (esp32 / esp32s3 / esp32c3)
+# The board is otherwise inferred from the target in main/CMakeLists.txt,
+# or forced with:  make build BOARD=guition_jc4827w543
+TARGET ?= esp32
+ESP_IDF := . /opt/esp-idf/export.sh && idf.py
+
+cyd:
+	@echo "Switching to CYD (esp32 / cyd_2usb)..."
+	$(ESP_IDF) set-target esp32 && idf.py build
+
+guition:
+	@echo "Switching to Guition JC4827W543 (esp32s3)..."
+	$(ESP_IDF) set-target esp32s3 && idf.py build
+
+set-target:
+	@echo "Setting IDF target to $(TARGET)..."
+	$(ESP_IDF) set-target $(TARGET) && idf.py build
+
 # Build firmware + stub + all apps, copy to SD card, flash.
 # (Despite the historical name, this is a deploy target, not a test.)
 deploy-all: build stub
@@ -96,6 +119,9 @@ help:
 	@echo "make clean         - Clean build files"
 	@echo "make size          - Show binary size"
 	@echo "make menuconfig    - Open ESP-IDF configuration menu"
+	@echo "make cyd           - Switch to CYD board (esp32 / cyd_2usb) and build"
+	@echo "make guition       - Switch to Guition board (esp32s3) and build"
+	@echo "make set-target TARGET=esp32s3 - Switch to any IDF target and build"
 	@echo "make deploy-all    - Build firmware + stub + all apps, copy to SD card, flash"
 	@echo "make check         - Run host-side tests (reader tokenizer + host unit tests)"
 	@echo "make emulate       - Build the Linux/SDL2 desktop emulator"

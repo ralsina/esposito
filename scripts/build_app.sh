@@ -43,7 +43,27 @@ if [[ "$APP_NAME" == "gameboy" ]]; then
     EXTRA_CFLAGS="-fjump-tables -ftree-switch-conversion -fno-strict-aliasing"
     echo "  Enabling jump table optimizations for gameboy"
 fi
-TOOLCHAIN_PREFIX="${TOOLCHAIN_PREFIX:-xtensa-esp32-elf}"
+
+# --- Target detection -------------------------------------------------------
+# Derive toolchain / chip include paths / board dir from the main firmware's
+# configured target (sdkconfig). Override with IDF_TARGET=... / BOARD=... /
+# TOOLCHAIN_PREFIX=... on the command line.
+IDF_TARGET="${IDF_TARGET:-$(grep -oE '^CONFIG_IDF_TARGET="[^"]+"' sdkconfig 2>/dev/null | sed -E 's/^CONFIG_IDF_TARGET="([^"]+)".*/\1/')}"
+IDF_TARGET="${IDF_TARGET:-esp32}"
+case "$IDF_TARGET" in
+    esp32s3) CHIP=esp32s3; ARCH=xtensa; DEFAULT_BOARD=guition_jc4827w543 ;;
+    esp32c3) CHIP=esp32c3; ARCH=riscv;  DEFAULT_BOARD=elecrow_round ;;
+    *)       CHIP=esp32;   ARCH=xtensa; DEFAULT_BOARD=cyd_2usb ;;
+esac
+BOARD_DIR="${BOARD:-$DEFAULT_BOARD}"
+if [ -z "$TOOLCHAIN_PREFIX" ]; then
+    if [ "$ARCH" = "riscv" ]; then
+        TOOLCHAIN_PREFIX="riscv32-esp-elf"
+    else
+        TOOLCHAIN_PREFIX="xtensa-${CHIP}-elf"
+    fi
+fi
+echo "  Target: $IDF_TARGET ($ARCH), board: $BOARD_DIR, toolchain: $TOOLCHAIN_PREFIX"
 
 FIRMWARE_ELF="build/esposito.elf"
 # Look for app.ld in the app's directory first, fall back to template
@@ -83,7 +103,7 @@ PROJECT_ROOT="$(pwd)"
 
 # Build include flags
 IDF_PATH="${IDF_PATH:-/opt/esp-idf}"
-INCLUDE_FLAGS="-I main -I . -I fonts -I boards/cyd_2usb -I build/config -I libs/lua"
+INCLUDE_FLAGS="-I main -I . -I fonts -I boards/${BOARD_DIR} -I build/config -I libs/lua"
 if [ -d "$IDF_PATH" ]; then
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_common/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_system/include"
@@ -91,8 +111,8 @@ if [ -d "$IDF_PATH" ]; then
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/include/freertos"
-    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/portable/xtensa/include"
-    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/portable/xtensa/include/freertos"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/portable/${ARCH}/include"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/FreeRTOS-Kernel/portable/${ARCH}/include/freertos"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/config/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/config/include/freertos"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/freertos/config/xtensa/include"
@@ -105,11 +125,13 @@ if [ -d "$IDF_PATH" ]; then
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/hal/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_hw_support/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_rom/include"
-    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/hal/esp32/include"
-    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/xtensa/include"
-    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/xtensa/esp32/include"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/hal/${CHIP}/include"
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_app_format/include"
-    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/soc/esp32/include"
+    INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/soc/${CHIP}/include"
+    if [ "$ARCH" = "xtensa" ]; then
+        INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/xtensa/include"
+        INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/xtensa/${CHIP}/include"
+    fi
     INCLUDE_FLAGS="$INCLUDE_FLAGS -I $IDF_PATH/components/esp_hw_support/etm/include"
 fi
 

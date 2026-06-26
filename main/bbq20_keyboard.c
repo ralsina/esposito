@@ -7,11 +7,25 @@
 #include "freertos/task.h"
 #include <string.h>
 
+#if BOARD_HAS_BBQ20_KEYBOARD
+
 static const char *TAG = "bbq20_kbd";
 
 // BBQ20 I2C configuration
 #define BBQ20_I2C_ADDR     0x1F
 #define BBQ20_I2C_FREQ_HZ  100000
+
+// Use BBQ20-specific I2C pins when defined (Guition), fall back to generic
+// BOARD_I2C_* (CYD).
+#ifdef BOARD_BBQ20_SDA
+#define BBQ20_SDA BOARD_BBQ20_SDA
+#define BBQ20_SCL BOARD_BBQ20_SCL
+#define BBQ20_PORT BOARD_BBQ20_PORT
+#else
+#define BBQ20_SDA BOARD_I2C_SDA
+#define BBQ20_SCL BOARD_I2C_SCL
+#define BBQ20_PORT BOARD_I2C_PORT
+#endif
 
 // BBQ20 special key codes (from terminado project)
 #define BBQ20_KEY_ESCAPE     5   // Escape key
@@ -104,8 +118,8 @@ static void bbq20_recover_i2c(void) {
     }
 
     // Force release GPIO pins so they can be re-claimed
-    gpio_reset_pin(BOARD_I2C_SDA);
-    gpio_reset_pin(BOARD_I2C_SCL);
+    gpio_reset_pin((gpio_num_t)BBQ20_SDA);
+    gpio_reset_pin((gpio_num_t)BBQ20_SCL);
     vTaskDelay(pdMS_TO_TICKS(10));
 
     // Re-initialize from scratch
@@ -188,12 +202,12 @@ bool bbq20_keyboard_init(void) {
     }
 
     ESP_LOGI(TAG, "Initializing BBQ20 keyboard via I2C (new driver)");
-    ESP_LOGI(TAG, "I2C pins: SDA=GPIO%d, SCL=GPIO%d", BOARD_I2C_SDA, BOARD_I2C_SCL);
+    ESP_LOGI(TAG, "I2C pins: SDA=GPIO%d, SCL=GPIO%d", BBQ20_SDA, BBQ20_SCL);
 
     i2c_master_bus_config_t i2c_bus_config = {
-        .i2c_port = BOARD_I2C_PORT,
-        .sda_io_num = BOARD_I2C_SDA,
-        .scl_io_num = BOARD_I2C_SCL,
+        .i2c_port = BBQ20_PORT,
+        .sda_io_num = BBQ20_SDA,
+        .scl_io_num = BBQ20_SCL,
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = true,
@@ -271,7 +285,7 @@ bool bbq20_keyboard_init(void) {
 
     ESP_LOGW(TAG, "⚠️  No BBQ20 keyboard found on I2C bus");
     ESP_LOGW(TAG, "⚠️  Checked addresses: 0x1F, 0x3F, 0x1E, 0x2E");
-    ESP_LOGW(TAG, "Check connections: SDA=GPIO%d, SCL=GPIO%d", BOARD_I2C_SDA, BOARD_I2C_SCL);
+    ESP_LOGW(TAG, "Check connections: SDA=GPIO%d, SCL=GPIO%d", BBQ20_SDA, BBQ20_SCL);
     bbq20_initialized = false;
     return false;
 }
@@ -388,3 +402,17 @@ bool bbq20_read_key_event(bbq20_key_event_t *event) {
     // No keys available
     return false;
 }
+
+#else /* BOARD_HAS_BBQ20_KEYBOARD */
+
+// Stubs for boards without a BBQ20 keyboard. Keeps the translation unit
+// linkable; callers in hardware.cpp guard their use with BOARD_HAS_BBQ20_KEYBOARD.
+bool   bbq20_keyboard_init(void)                 { return false; }
+void   bbq20_keyboard_deinit(void)               { }
+bool   bbq20_read_key_event(bbq20_key_event_t *event) { (void)event; return false; }
+char   bbq20_key_to_ascii(uint8_t key_code, uint8_t state) { (void)key_code; (void)state; return 0; }
+uint8_t bbq20_get_modifiers(void)                { return 0; }
+void   bbq20_set_backlight(uint8_t brightness)   { (void)brightness; }
+uint8_t bbq20_get_backlight(void)                { return 0; }
+
+#endif /* BOARD_HAS_BBQ20_KEYBOARD */

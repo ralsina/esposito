@@ -7,6 +7,49 @@
 #include "freertos/task.h"
 
 #if BOARD_HAS_TOUCHSCREEN
+
+#if defined(BOARD_TOUCH_GT911) && BOARD_TOUCH_GT911
+// ===================== GT911 (capacitive, via LovyanGFX) =====================
+// The GT911 is attached to the LovyanGFX panel in display_config.h and is
+// initialized during display_init(). Here we only poll it.
+static const char *TAG = "touchscreen";
+static bool touchscreen_initialized = false;
+
+bool touchscreen_init(void) {
+    ESP_LOGI(TAG, "GT911 touch via LovyanGFX (I2C SDA=%d SCL=%d RST=%d INT=%d)",
+             BOARD_TOUCH_I2C_SDA, BOARD_TOUCH_I2C_SCL, BOARD_TOUCH_RST, BOARD_TOUCH_INT);
+    touchscreen_initialized = true;
+    return true;
+}
+
+bool touchscreen_is_available(void) {
+    return touchscreen_initialized;
+}
+
+bool touchscreen_get_position(uint16_t *x, uint16_t *y, bool *pressed) {
+    if (!touchscreen_initialized) {
+        if (pressed) *pressed = false;
+        return false;
+    }
+    int16_t tx = 0, ty = 0;
+    if (display_get_touch(&tx, &ty) > 0) {
+        if (x) *x = (uint16_t)tx;
+        if (y) *y = (uint16_t)ty;
+        if (pressed) *pressed = true;
+        return true;
+    }
+    if (pressed) *pressed = false;
+    return false;
+}
+
+void touchscreen_get_raw_values(uint16_t *raw_x, uint16_t *raw_y) {
+    // GT911 reports screen-space coordinates directly; no raw ADC values.
+    if (raw_x) *raw_x = 0;
+    if (raw_y) *raw_y = 0;
+}
+
+#else
+// ===================== XPT2046 (resistive, GPIO bit-bang) ====================
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 
@@ -246,6 +289,8 @@ void touchscreen_get_raw_values(uint16_t *raw_x, uint16_t *raw_y) {
     if (raw_x) *raw_x = last_raw_x;
     if (raw_y) *raw_y = last_raw_y;
 }
+
+#endif /* BOARD_TOUCH_GT911 / XPT2046 */
 
 #else // BOARD_HAS_TOUCHSCREEN
 

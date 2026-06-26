@@ -1,10 +1,28 @@
+# Board selection.
+# Precedence (highest first):
+#   1. BOARD cache variable  -> -DBOARD=guition_jc4827w543
+#   2. IDF_TARGET inference:
+#        esp32c3 -> elecrow_round   (RISC-V)
+#        esp32s3 -> guition_jc4827w543
+#        esp32 / default -> cyd_2usb
+# The CYD (esp32) build is unchanged when no override is given.
 if(IDF_TARGET STREQUAL "esp32c3")
     set(ARCH_DEPS riscv)
-    set(BOARD_PATH "${CMAKE_CURRENT_LIST_DIR}/../boards/elecrow_round")
 else()
     set(ARCH_DEPS xtensa)
-    set(BOARD_PATH "${CMAKE_CURRENT_LIST_DIR}/../boards/cyd_2usb")
 endif()
+
+if(DEFINED BOARD)
+    set(ESP_BOARD "${BOARD}")
+elseif(IDF_TARGET STREQUAL "esp32c3")
+    set(ESP_BOARD "elecrow_round")
+elseif(IDF_TARGET STREQUAL "esp32s3")
+    set(ESP_BOARD "guition_jc4827w543")
+else()
+    set(ESP_BOARD "cyd_2usb")
+endif()
+set(BOARD_PATH "${CMAKE_CURRENT_LIST_DIR}/../boards/${ESP_BOARD}")
+message(STATUS "Esposito: target=${IDF_TARGET} board=${ESP_BOARD}")
 
 # Collect Lua source files from libs/lua/
 file(GLOB LUA_SOURCES "../libs/lua/*.c")

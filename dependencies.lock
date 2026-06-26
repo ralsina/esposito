@@ -15,5 +15,5 @@ direct_dependencies:
 - LovyanGFX
 - idf
 manifest_hash: 4d845e5e2ec303b07d4e0dc922ad05b388bdf3ce597e84d4eb8e027aa6d01cb9
-target: esp32
+target: esp32s3
 version: 3.0.0

@@ -4,6 +4,9 @@
 #include "fonts.h"
 #include "sd_card.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
+#include "lovgfx_config.h"
+#include <lgfx/v1/LGFX_Sprite.hpp>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +39,46 @@ static int cursor_y = 0;
 static uint8_t bg_color = 0;
 static bool initialized = false;
 static bool graphics = false;
+
+// Double-buffer sprite (PSRAM-backed when available)
+static LGFX_Sprite *text_sprite = NULL;
+
+static void text_sprite_create(void) {
+    if (text_sprite) return;
+
+    size_t fb_size = (size_t)display_get_width() * display_get_height() * 2;
+    size_t psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+    if (psram < fb_size + 4096) {
+        ESP_LOGI(TAG, "Not enough PSRAM for sprite (%zu needed, %zu available)", fb_size, psram);
+        return;
+    }
+
+    void *buf = heap_caps_malloc(fb_size, MALLOC_CAP_SPIRAM);
+    if (!buf) {
+        ESP_LOGI(TAG, "Failed to allocate PSRAM framebuffer");
+        return;
+    }
+
+    text_sprite = new LGFX_Sprite(display_tft);
+    if (!text_sprite) {
+        free(buf);
+        return;
+    }
+
+    text_sprite->setColorDepth(16);
+    text_sprite->setBuffer(buf, display_get_width(), display_get_height(), 16);
+
+    text_sprite->fillScreen(0);
+    display_set_offscreen(text_sprite);
+    // Load font on sprite directly — TFT already has its own font loaded
+    size_t _data_size;
+    const uint8_t *_data = font_get_variant_data(current_font, current_variant, &_data_size);
+    if (_data) {
+        text_sprite->loadFont(_data);
+    }
+    ESP_LOGI(TAG, "Created PSRAM double-buffer sprite (%zux%zu, %zu bytes)",
+             (size_t)display_get_width(), (size_t)display_get_height(), fb_size);
+}
 
 static void update_cell(int x, int y);
 
@@ -173,9 +216,9 @@ static void update_cell(int x, int y) {
         uint16_t tmp = fg; fg = bg; bg = tmp;
     }
 
-    display_fill_rect(px, py, font_width, font_height, bg);
-
-    if (cell->character != ' ') {
+    if (cell->character == ' ') {
+        display_fill_rect(px, py, font_width, font_height, bg);
+    } else {
         font_variant_t needed = FONT_VARIANT_REGULAR;
         if (cell->attributes & TEXT_ATTR_BOLD && cell->attributes & TEXT_ATTR_ITALIC) {
             needed = FONT_VARIANT_BOLDITALIC;
@@ -292,12 +335,18 @@ static void update_cell_range(int x, int y, int count) {
         return;
     }
 
-    // Draw background for the whole run
+    // Fill background for the entire cell range first (guarantees no gaps
+    // regardless of glyph widths not matching grid cell widths)
     display_fill_rect(px, py, font_width * count, font_height, bg);
 
-    // Draw text (transparent so it doesn't overwrite our fill_rect background)
-    if (buf_len > 0) {
-        display_draw_text_transparent(px, py, buf, fg);
+    // Draw each glyph at its exact grid cell position (avoids positional drift
+    // from display_draw_text_bg advancing by glyph width instead of cell width)
+    for (int i = 0; i < count; i++) {
+        text_cell_t *cell = &grid[start_idx + i];
+        uint16_t cp = cell->character;
+        if (cp != ' ') {
+            display_draw_unicode_at(px + i * font_width, py, cp, fg, bg);
+        }
     }
 
     // Draw borders (single rect per border type for the run)
@@ -418,6 +467,9 @@ bool text_mode_init_ex(font_id_t font) {
 
     // Deactivate graphics mode if it was active
     graphics_mode_deinit();
+
+    // Create double-buffer sprite (PSRAM-backed if available)
+    text_sprite_create();
 
     cursor_x = 0;
     cursor_y = 0;
@@ -590,7 +642,17 @@ void text_mode_reinit_grid(void) {
     cursor_x = 0;
     cursor_y = 0;
 
-    // Clear the screen
+    // Recreate sprite for new display dimensions after rotation
+    if (text_sprite) {
+        display_set_offscreen(NULL);
+        text_sprite->unloadFont();
+        text_sprite->deleteSprite();
+        delete text_sprite;
+        text_sprite = NULL;
+    }
+    text_sprite_create();
+
+    // Clear the screen (now targets the new sprite or the display directly)
     display_clear(color_palette[TEXT_COLOR_BLACK]);
 
     ESP_LOGI(TAG, "Grid reinitialized to %dx%d for rotation", grid_cols, grid_rows);
@@ -1002,17 +1064,31 @@ bool text_mode_save_screenshot(void) {
 }
 
 void text_mode_switch_graphics(void) {
+    if (text_sprite) {
+        text_sprite->pushSprite(0, 0);
+        display_set_offscreen(NULL);
+    }
     graphics = true;
 }
 
-void text_mode_flush(void) {}
+void text_mode_flush(void) {
+    if (text_sprite) {
+        text_sprite->pushSprite(0, 0);
+    }
+}
 
 void text_mode_switch_text(void) {
     graphics = false;
+    if (text_sprite) {
+        display_set_offscreen(text_sprite);
+    }
     for (int y = 0; y < grid_rows; y++) {
         for (int x = 0; x < grid_cols; x++) {
             update_cell(x, y);
         }
+    }
+    if (text_sprite) {
+        text_sprite->pushSprite(0, 0);
     }
 }
 

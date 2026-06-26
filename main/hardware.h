@@ -2,6 +2,7 @@
 #define HARDWARE_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include "os_core.h"
 #include "fonts.h"
 
@@ -49,6 +50,12 @@ bool display_save_screenshot_ppm(const char *path);
 int display_get_width(void);
 int display_get_height(void);
 
+// Offscreen render target (sprite double-buffering)
+// When set, drawing functions write to the offscreen target instead of the
+// display. Call display_get_render_target() to get the active target.
+void display_set_offscreen(void *target);
+void *display_get_offscreen(void);
+
 // Display rotation functions
 void display_set_rotation(int rotation);  // 0-3 for 0°, 90°, 180°, 270°
 int display_get_rotation(void);
@@ -67,6 +74,10 @@ void timer_set_interval(uint32_t interval_ms);
 
 // Backlight control
 void display_set_backlight(uint8_t brightness);  // 0-255
+
+// Touch read (boards whose touch is driven by LovyanGFX, e.g. GT911).
+// Returns number of touch points (0 = not touched); sets x,y to the first point.
+uint8_t display_get_touch(int16_t *x, int16_t *y);
 
 void display_start_write(void);
 void display_end_write(void);

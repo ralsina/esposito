@@ -9,6 +9,7 @@
 static const char *TAG = "app_heap";
 
 #define APP_HEAP_SIZE (96 * 1024)
+#define APP_HEAP_SIZE_PSRAM (1024 * 1024)
 
 static void *app_heap_storage = NULL;
 static size_t app_heap_size = 0;
@@ -52,12 +53,19 @@ bool app_heap_init(void) {
     }
 
     if (!app_heap_storage) {
-        app_heap_storage = heap_caps_malloc(APP_HEAP_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        size_t psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+        app_heap_size = (psram > 0) ? APP_HEAP_SIZE_PSRAM : APP_HEAP_SIZE;
+        uint32_t caps = (psram > 0) ? (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+                                     : (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        const char *where = (psram > 0) ? "PSRAM" : "internal DRAM";
+
+        app_heap_storage = heap_caps_malloc(app_heap_size, caps);
         if (!app_heap_storage) {
-            ESP_LOGE(TAG, "Failed to reserve %u bytes for app heap", (unsigned)APP_HEAP_SIZE);
+            ESP_LOGE(TAG, "Failed to reserve %u bytes for app heap in %s",
+                     (unsigned)app_heap_size, where);
             return false;
         }
-        app_heap_size = APP_HEAP_SIZE;
+        ESP_LOGI(TAG, "App heap reserved: %u bytes in %s", (unsigned)app_heap_size, where);
     }
 
     app_heap = multi_heap_register(app_heap_storage, app_heap_size);
