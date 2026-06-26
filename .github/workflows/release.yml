@@ -57,14 +57,12 @@ jobs:
           ref: ${{ steps.tag.outputs.name }}
           submodules: false
 
-      - name: Build firmware + app bundle
+      - name: Build CYD (ESP32) firmware + app bundle
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v6.0.1
           target: esp32
           path: .
-          # Both steps run inside the IDF Docker container so the
-          # xtensa-esp32-elf toolchain and IDF includes are in PATH.
           command: |
             apt-get update -qq && apt-get install -y -qq zip xxd > /dev/null 2>&1 || true
             idf.py build
@@ -72,38 +70,37 @@ jobs:
             python3 scripts/generate_catalog.py -o artifacts/app-store
             cd artifacts && zip -r -q app-store-bundle.zip app-store/ && cd ..
             bash scripts/build_release_bundle.sh artifacts/sdcard-bundle.zip "${{ steps.tag.outputs.name }}"
+            # Stage CYD firmware
+            mkdir -p artifacts/esp32
+            cp build/esposito.bin artifacts/firmware.bin
+            cp build/bootloader/bootloader.bin       artifacts/esp32/bootloader.bin
+            cp build/partition_table/partition-table.bin artifacts/esp32/partition-table.bin
+            cp build/ota_data_initial.bin            artifacts/esp32/ota_data_initial.bin
+            echo "${{ steps.tag.outputs.name }}" > artifacts/version.txt
+
+      - name: Build Guition (ESP32-S3) firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.1
+          target: esp32s3
+          path: .
+          command: |
+            apt-get update -qq && apt-get install -y -qq zip xxd > /dev/null 2>&1 || true
+            idf.py build
+            # Stage Guition firmware (use existing artifacts from CYD step)
+            mkdir -p artifacts/esp32s3
+            cp build/esposito.bin artifacts/firmware-esp32s3.bin
+            cp build/bootloader/bootloader.bin       artifacts/esp32s3/bootloader.bin
+            cp build/partition_table/partition-table.bin artifacts/esp32s3/partition-table.bin
+            cp build/ota_data_initial.bin            artifacts/esp32s3/ota_data_initial.bin
 
       - name: Fix file ownership from Docker
         run: sudo chown -R $(id -u):$(id -g) build/ artifacts/
 
-      - name: Stage artifacts
-        run: |
-          mkdir -p artifacts
-          # OTA update artifact (renamed for clarity)
-          cp build/esposito.bin artifacts/firmware.bin
-          echo "${{ steps.tag.outputs.name }}" > artifacts/version.txt
-
-          # Full-flash binaries for ESP Web Tools (browser-based install).
-          # Offsets come from build/flash_args, which ESP-IDF generates from
-          # partitions.csv. These let a user flash the complete firmware image
-          # from a web browser without any toolchain installed.
-          cp build/bootloader/bootloader.bin       artifacts/bootloader.bin
-          cp build/partition_table/partition-table.bin artifacts/partition-table.bin
-          cp build/ota_data_initial.bin            artifacts/ota_data_initial.bin
-
       - name: Generate ESP Web Tools manifest
         run: |
-          # Manifest for ESP Web Tools (https://esphome.github.io/esp-web-tools/).
-          # Paths are relative to the manifest's own URL (the GitHub release
-          # assets directory), so they resolve to sibling release assets.
-          #
-          # Offsets are decimal; sourced from build/flash_args:
-          #   0x1000  bootloader
-          #   0x8000  partition table
-          #   0x10000 application
-          #   0x210000 OTA data (initial)
           TAG="${{ steps.tag.outputs.name }}"
-          VERSION="${TAG#v}"   # strip leading 'v'
+          VERSION="${TAG#v}"
           cat > artifacts/manifest.json <<EOF
           {
             "name": "Esposito OS",
@@ -113,10 +110,19 @@ jobs:
               {
                 "chipFamily": "ESP32",
                 "parts": [
-                  { "path": "bootloader.bin",       "offset": 4096 },
-                  { "path": "partition-table.bin",  "offset": 32768 },
-                  { "path": "firmware.bin",         "offset": 65536 },
-                  { "path": "ota_data_initial.bin", "offset": 2162688 }
+                  { "path": "esp32/bootloader.bin",       "offset": 4096 },
+                  { "path": "esp32/partition-table.bin",  "offset": 32768 },
+                  { "path": "firmware.bin",               "offset": 65536 },
+                  { "path": "esp32/ota_data_initial.bin", "offset": 2162688 }
+                ]
+              },
+              {
+                "chipFamily": "ESP32-S3",
+                "parts": [
+                  { "path": "esp32s3/bootloader.bin",       "offset": 0 },
+                  { "path": "esp32s3/partition-table.bin",  "offset": 32768 },
+                  { "path": "firmware-esp32s3.bin",         "offset": 65536 },
+                  { "path": "esp32s3/ota_data_initial.bin", "offset": 2162688 }
                 ]
               }
             ]
@@ -134,22 +140,28 @@ jobs:
           printf '%s\n' "$OTA_KEY" > /tmp/ota_release_private.pem
           chmod 600 /tmp/ota_release_private.pem
 
-      - name: Sign firmware
+      - name: Sign CYD firmware
         run: |
           bash scripts/sign_firmware.sh artifacts/firmware.bin /tmp/ota_release_private.pem
 
-          # Sanity check: verify the signature against the public key embedded
-          # in main/ota_keys.h. If this fails, the secret private key and the
-          # committed public key are mismatched -- fail the release closed.
-          #
-          # Extract the PEM: each quoted literal in ota_keys.h is one PEM line,
-          # trailing \n escapes translate to PEM's line breaks.
+      - name: Sign Guition firmware
+        run: |
+          bash scripts/sign_firmware.sh artifacts/firmware-esp32s3.bin /tmp/ota_release_private.pem
+
+      - name: Verify signatures
+        run: |
+          # Extract embedded public key from CYD firmware
           grep -oE '"[^"]*"' main/ota_keys.h \
             | sed 's/^"//; s/"$//; s/\\n$//' > /tmp/embedded_pub.pem
+          # Verify both signatures
           openssl dgst -sha256 \
             -verify /tmp/embedded_pub.pem \
             -signature artifacts/firmware.bin.sig \
             artifacts/firmware.bin
+          openssl dgst -sha256 \
+            -verify /tmp/embedded_pub.pem \
+            -signature artifacts/firmware-esp32s3.bin.sig \
+            artifacts/firmware-esp32s3.bin
 
       - name: Shred signing key
         if: always()
@@ -174,14 +186,20 @@ jobs:
           tag_name: ${{ steps.tag.outputs.name }}
           name: ${{ steps.tag.outputs.name }}
           generate_release_notes: true
-          prerelease: ${{ steps.rel.outputs.prerelease == 'true' }}
+          prerelease: ${{ steps.rel.prerelease == 'true' }}
           files: |
             artifacts/firmware.bin
             artifacts/firmware.bin.sig
             artifacts/firmware.bin.sha256
-            artifacts/bootloader.bin
-            artifacts/partition-table.bin
-            artifacts/ota_data_initial.bin
+            artifacts/firmware-esp32s3.bin
+            artifacts/firmware-esp32s3.bin.sig
+            artifacts/firmware-esp32s3.bin.sha256
+            artifacts/esp32/bootloader.bin
+            artifacts/esp32/partition-table.bin
+            artifacts/esp32/ota_data_initial.bin
+            artifacts/esp32s3/bootloader.bin
+            artifacts/esp32s3/partition-table.bin
+            artifacts/esp32s3/ota_data_initial.bin
             artifacts/manifest.json
             artifacts/sdcard-bundle.zip
             artifacts/app-store-bundle.zip

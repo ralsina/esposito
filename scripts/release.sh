@@ -8,7 +8,7 @@
 # What it does:
 #   1. Bumps version in main/main.c, commits, tags v<version>, pushes
 #   2. Waits for the GitHub Actions release workflow to complete
-#   3. Downloads the 4 flash binaries into site/assets/firmware/
+#   3. Downloads per-board firmware binaries into site/assets/firmware/
 #   4. Regenerates site/assets/firmware/manifest.json
 #   5. Commits + pushes the firmware files
 #   6. Builds the site (nicolino build)
@@ -21,8 +21,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-# Flash offsets from partitions.csv (stable unless partition table changes)
+# Flash offsets from partitions.csv (stable unless partition table changes).
+# ESP32 (CYD)
 OFFSET_BOOTLOADER=4096      # 0x1000
+# ESP32-S3 (Guition)
+OFFSET_BOOTLOADER_S3=0      # 0x0
 OFFSET_PARTITIONS=32768     # 0x8000
 OFFSET_FIRMWARE=65536       # 0x10000
 OFFSET_OTA_DATA=2162688     # 0x210000
@@ -95,11 +98,37 @@ echo ""
 # --- 3. Download firmware binaries ------------------------------------------
 
 echo ">>> Downloading release assets..."
-mkdir -p "${FIRMWARE_DIR}"
 
-for f in bootloader.bin partition-table.bin ota_data_initial.bin firmware.bin; do
+# CYD (ESP32) firmware into esp32/ subdirectory
+mkdir -p "${FIRMWARE_DIR}/esp32"
+for f in bootloader.bin partition-table.bin ota_data_initial.bin; do
+    gh release download "$TAG" --pattern "esp32/$f" --clobber --dir "${FIRMWARE_DIR}/esp32"
+    # gh may flatten; if file ends up in root, move it
+    if [ -f "${FIRMWARE_DIR}/esp32/$f" ]; then
+        echo "    + esp32/$f ($(du -h "${FIRMWARE_DIR}/esp32/$f" | cut -f1))"
+    elif [ -f "${FIRMWARE_DIR}/$f" ]; then
+        mv "${FIRMWARE_DIR}/$f" "${FIRMWARE_DIR}/esp32/$f"
+    fi
+done
+
+# Guition (ESP32-S3) firmware into esp32s3/ subdirectory
+mkdir -p "${FIRMWARE_DIR}/esp32s3"
+for f in bootloader.bin partition-table.bin ota_data_initial.bin firmware-esp32s3.bin; do
+    gh release download "$TAG" --pattern "esp32s3/$f" --clobber --dir "${FIRMWARE_DIR}/esp32s3"
+    if [ -f "${FIRMWARE_DIR}/esp32s3/$f" ]; then
+        echo "    + esp32s3/$f ($(du -h "${FIRMWARE_DIR}/esp32s3/$f" | cut -f1))"
+    fi
+done
+
+# Rename firmware-esp32s3.bin → firmware.bin in the esp32s3 subdirectory
+if [ -f "${FIRMWARE_DIR}/esp32s3/firmware-esp32s3.bin" ]; then
+    mv "${FIRMWARE_DIR}/esp32s3/firmware-esp32s3.bin" "${FIRMWARE_DIR}/esp32s3/firmware.bin"
+fi
+
+# Download OTA firmware (flat, for site root / OTA server)
+for f in firmware.bin firmware-esp32s3.bin firmware.bin.sig firmware-esp32s3.bin.sig; do
     gh release download "$TAG" --pattern "$f" --clobber --dir "${FIRMWARE_DIR}"
-    echo "    + ${f} ($(du -h "${FIRMWARE_DIR}/${f}" | cut -f1))"
+    echo "    + $f ($(du -h "${FIRMWARE_DIR}/${f}" | cut -f1))"
 done
 
 echo ""
@@ -130,10 +159,19 @@ cat > "${FIRMWARE_DIR}/manifest.json" <<EOF
     {
       "chipFamily": "ESP32",
       "parts": [
-        { "path": "/firmware/bootloader.bin", "offset": ${OFFSET_BOOTLOADER} },
-        { "path": "/firmware/partition-table.bin", "offset": ${OFFSET_PARTITIONS} },
-        { "path": "/firmware/firmware.bin", "offset": ${OFFSET_FIRMWARE} },
-        { "path": "/firmware/ota_data_initial.bin", "offset": ${OFFSET_OTA_DATA} }
+        { "path": "esp32/bootloader.bin", "offset": ${OFFSET_BOOTLOADER} },
+        { "path": "esp32/partition-table.bin", "offset": ${OFFSET_PARTITIONS} },
+        { "path": "esp32/firmware.bin", "offset": ${OFFSET_FIRMWARE} },
+        { "path": "esp32/ota_data_initial.bin", "offset": ${OFFSET_OTA_DATA} }
+      ]
+    },
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        { "path": "esp32s3/bootloader.bin", "offset": ${OFFSET_BOOTLOADER_S3} },
+        { "path": "esp32s3/partition-table.bin", "offset": ${OFFSET_PARTITIONS} },
+        { "path": "esp32s3/firmware.bin", "offset": ${OFFSET_FIRMWARE} },
+        { "path": "esp32s3/ota_data_initial.bin", "offset": ${OFFSET_OTA_DATA} }
       ]
     }
   ]
