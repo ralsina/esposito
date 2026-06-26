@@ -125,3 +125,78 @@ div.warning {
     background-color: var(--b16-base02);
     border: 3px solid red;
 }
+
+/* Board selector for install page */
+.board-selector {
+    display: flex;
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.board-option {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    border: 2px solid var(--b16-base02);
+    border-radius: var(--pico-border-radius);
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.board-option:hover {
+    border-color: var(--b16-base0D);
+    background: var(--b16-base01);
+}
+
+input[name="board"]:checked + .board-option {
+    border-color: var(--b16-base0D);
+    background: var(--b16-base01);
+}
+
+.board-option small {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--pico-muted-color);
+    font-size: 0.85rem;
+}
+
+/* Per-board install buttons */
+.install-block {
+    text-align: center;
+    margin: 1.5rem 0;
+}
+
+/* Board-specific prerequisites */
+.board-prereqs {
+    display: flex;
+    gap: 1.5rem;
+    margin: 1rem 0;
+}
+
+.board-prereqs .prereq-block {
+    flex: 1;
+    padding: 1rem;
+    border: 1px solid var(--b16-base02);
+    border-radius: var(--pico-border-radius);
+}
+
+.board-prereqs h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    color: var(--b16-base0D);
+}
+
+.board-prereqs ol {
+    margin-bottom: 0;
+    padding-left: 1.2rem;
+}
+
+/* Manual flash commands */
+.flash-command {
+    margin: 0.75rem 0;
+}
+
+.flash-command strong {
+    display: block;
+    margin-bottom: 0.3rem;
+}

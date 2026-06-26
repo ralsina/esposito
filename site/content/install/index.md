@@ -2,52 +2,97 @@
 title: Install Esposito OS
 ---
 
-Flash your ESP32 CYD directly from your browser — no toolchain, no terminal.
+Flash your ESP32 directly from your browser — no toolchain, no terminal.
 You need a USB cable and Chrome or Edge.
 
-<esp-web-install-button manifest="/firmware/manifest.json">
+## Choose Your Board
+
+<div class="board-selector">
+  <input type="radio" name="board" id="board-cyd" value="cyd" checked hidden>
+  <label for="board-cyd" class="board-option" onclick="switchBoard('cyd')">
+    <strong>CYD 2-USB</strong>
+    <small>ESP32, 320×240 ST7789, ~$10</small>
+  </label>
+
+  <input type="radio" name="board" id="board-guition" value="guition" hidden>
+  <label for="board-guition" class="board-option" onclick="switchBoard('guition')">
+    <strong>Guition JC4827W543</strong>
+    <small>ESP32-S3, 480×272 NV3041A, ~$18</small>
+  </label>
+</div>
+
+<div id="install-cyd" class="install-block">
+  <esp-web-install-button manifest="/firmware/manifest.json">
     <button slot="activate" class="primary" style="font-size: 1.2rem; padding: 0.6rem 2rem;">
-        🚀 Connect &amp; Install
+      🚀 Install on CYD (ESP32)
     </button>
     <span slot="unsupported">⚠️ Your browser doesn't support Web Serial. Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on desktop.</span>
     <span slot="not-allowed">🔒 Connect the ESP32 to this computer via USB first.</span>
-</esp-web-install-button>
+  </esp-web-install-button>
+</div>
+
+<div id="install-guition" class="install-block" style="display:none">
+  <esp-web-install-button manifest="/firmware/manifest.json">
+    <button slot="activate" class="primary" style="font-size: 1.2rem; padding: 0.6rem 2rem;">
+      🚀 Install on Guition (ESP32-S3)
+    </button>
+    <span slot="unsupported">⚠️ Your browser doesn't support Web Serial. Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> on desktop.</span>
+    <span slot="not-allowed">🔒 Connect the ESP32-S3 to this computer via USB first.</span>
+  </esp-web-install-button>
+</div>
 
 <script type="module" src="https://unpkg.com/esp-web-tools@9/dist/web/install-button.js"></script>
+<script>
+function switchBoard(board) {
+  document.getElementById('install-cyd').style.display = board === 'cyd' ? 'block' : 'none';
+  document.getElementById('install-guition').style.display = board === 'guition' ? 'block' : 'none';
+}
+</script>
 
 <h2 id="Prerequisites">Prerequisites</h2>
 
-1. **Hardware**: A [Cheap Yellow Display (CYD)](https://es.aliexpress.com/w/wholesale-2432s028.html) — the 2-USB variant with ST7789 touchscreen. (~$10)
-2. **USB cable**: A data-capable USB-C or micro-USB cable (many cables are charge-only).
-3. **Browser**: Google Chrome or Microsoft Edge (desktop). The Web Serial API is required; Firefox and Safari don't support it yet.
-4. **Drivers** (some platforms): If your CYD has a CH340 USB-to-serial chip, you may need drivers:
-   - **Windows**: Drivers from [WCH](https://www.wch-ic.com/downloads/CH341SER_EXE.html)
-   - **macOS**: Recent versions include CH340 drivers; if not, install from WCH.
-   - **Linux**: Usually built into the kernel already.
+<div class="board-prereqs">
+<div class="prereq-block">
+<h3>CYD 2-USB</h3>
+<ol>
+  <li><strong>Hardware</strong>: A <a href="https://es.aliexpress.com/w/wholesale-2432s028.html">Cheap Yellow Display (CYD)</a> — the 2-USB variant with ST7789 touchscreen.</li>
+  <li><strong>USB cable</strong>: USB-C or micro-USB (data-capable).</li>
+  <li><strong>Drivers</strong>: Some CYD boards use a CH340 USB-serial chip; <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html">drivers</a> may be needed on Windows.</li>
+</ol>
+</div>
+
+<div class="prereq-block">
+<h3>Guition JC4827W543</h3>
+<ol>
+  <li><strong>Hardware</strong>: A Guition JC4827W543 (ESP32-S3, 480×272, NV3041A QSPI display).</li>
+  <li><strong>USB cable</strong>: USB-C (data-capable).</li>
+  <li><strong>Note</strong>: USB CDC is enabled — no extra drivers needed; serial shows up automatically.</li>
+</ol>
+</div>
+</div>
 
 ## After Install
 
-1. Download [`sdcard-bundle.zip`](https://github.com/ralsina/esposito/releases/latest/download/sdcard-bundle.zip) from the latest release
-2. Format a microSD card as **FAT32**
-3. Extract the zip to the root of the SD card — you'll get `apps/`, `fonts/`, and `books/` directories
-4. Insert the SD card into the CYD and power on — Esposito boots in a few seconds and shows the launcher
+1. Download <a href="https://github.com/ralsina/esposito/releases/latest/download/sdcard-bundle.zip"><code>sdcard-bundle.zip</code></a> from the latest release
+2. Format a microSD card as <strong>FAT32</strong>
+3. Extract the zip to the root of the SD card — you'll get <code>apps/</code>, <code>fonts/</code>, and <code>books/</code> directories
+4. Insert the SD card and power on
 
-The bundle includes 8 apps (launcher, settings, reader, clock, calculator, snake, breakout, file manager), all system fonts, and 4 classic books to get you started. You can later download more apps and books!
+The bundle includes 8 apps (launcher, settings, reader, clock, calculator, snake, breakout, file manager), all system fonts, and 4 classic books to get you started.
 
 <details>
 <summary><strong>What if I don't have an SD card?</strong></summary>
 
-The firmware runs without an SD card, but you'll have no apps, no fonts beyond the boot font, and no books. The SD card is essential for the full experience.
-
+The firmware runs without an SD card, but you'll have no apps, no fonts beyond the boot font, and no books.
 </details>
 
 ## OTA Updates
 
-Once Esposito OS is running, updates are delivered **over WiFi**:
+Once Esposito OS is running, updates are delivered <strong>over WiFi</strong>:
 
 1. Connect the device to WiFi via Settings
-2. Open **Settings → Update** to check for a newer release
-3. Firmware is downloaded, **signature-verified** against the embedded public key, and applied
+2. Open <strong>Settings → Update</strong> to check for a newer release
+3. Firmware is downloaded, <strong>signature-verified</strong> against the embedded public key, and applied
 
 No browser needed for updates after the initial install.
 
@@ -62,36 +107,46 @@ Make sure you're using Chrome or Edge (desktop). Check that the page is served o
 <details>
 <summary><strong>"No serial port selected" or connection fails</strong></summary>
 
-- Use a **data** USB cable, not a charge-only one.
-- On Linux, add your user to the `dialout` or `tty` group: `sudo usermod -aG dialout $USER` then log out/in.
-- On macOS, close any other serial monitor (Arduino IDE, `idf.py monitor`, `screen`).
+- Use a <strong>data</strong> USB cable, not a charge-only one.
+- On Linux, add your user to the <code>dialout</code> or <code>tty</code> group: <code>sudo usermod -aG dialout $USER</code> then log out/in.
+- On macOS, close any other serial monitor (Arduino IDE, <code>idf.py monitor</code>, <code>screen</code>).
 - Try a different USB port (avoid hubs).
 </details>
 
 <details>
 <summary><strong>Flash fails partway through</strong></summary>
 
-The ESP32 flash is 4 MB; the full image is under 2 MB so there's room. If it fails:
-1. Hold the **BOOT** button on the CYD, press **RST**, then release BOOT (puts it in download mode)
+The flash is 4 MB; the full image is under 2 MB so there's room. If it fails:
+1. Hold the <strong>BOOT</strong> button, press <strong>RST</strong>, then release BOOT (download mode)
 2. Click the install button again
 </details>
 
 <details>
 <summary><strong>Screen is blank / white after install</strong></summary>
 
-You may have the original CYD (1-USB) instead of the 2-USB variant — they use different screen controllers. Check the [README](https://github.com/ralsina/esposito) for hardware details.
+You may have selected the wrong board, or your CYD is the 1-USB variant (different screen controller). Check the <a href="https://github.com/ralsina/esposito">README</a> for hardware details.
 </details>
 
 <details>
-<summary><strong>I want to flash manually with esptool / idf.py</strong></summary>
+<summary><strong>Manual flash with esptool</strong></summary>
 
-Download the four `.bin` files from the [latest release](https://github.com/ralsina/esposito/releases/latest) and flash at the offsets above:
+Download the four <code>.bin</code> files from the <a href="https://github.com/ralsina/esposito/releases/latest">latest release</a> and flash:
 
-```bash
-esptool.py --port /dev/ttyUSB0 write_flash \
+<div class="flash-command">
+<strong>CYD (ESP32):</strong>
+<pre><code>esptool.py --chip esp32 --port /dev/ttyUSB0 write_flash \
   0x1000 bootloader.bin \
   0x8000 partition-table.bin \
   0x10000 firmware.bin \
-  0x210000 ota_data_initial.bin
-```
+  0x210000 ota_data_initial.bin</code></pre>
+</div>
+
+<div class="flash-command">
+<strong>Guition (ESP32-S3):</strong>
+<pre><code>esptool.py --chip esp32s3 --port /dev/ttyUSB0 write_flash \
+  0x0 bootloader.bin \
+  0x8000 partition-table.bin \
+  0x10000 firmware.bin \
+  0x210000 ota_data_initial.bin</code></pre>
+</div>
 </details>
