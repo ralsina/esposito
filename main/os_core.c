@@ -54,6 +54,10 @@ bool os_has_capability(const char *cap) {
         size_t psram_size = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
         return psram_size > 0;
     }
+    if (strcmp(cap, "ble") == 0) {
+        extern bool ble_keyboard_is_available(void);
+        return ble_keyboard_is_available();
+    }
 
     // Unknown capability — assume not available
     return false;
@@ -97,6 +101,7 @@ void os_log(const char *tag, const char *fmt, ...) {
 static event_t event_queue[EVENT_QUEUE_SIZE];
 static size_t event_queue_head = 0;
 static size_t event_queue_tail = 0;
+static portMUX_TYPE event_queue_mux = portMUX_INITIALIZER_UNLOCKED;
 static app_context_t *current_app = NULL;
 static bool pending_app_switch = false;
 static char pending_app_name[256];
@@ -194,22 +199,28 @@ static void serial_ring_clear(void) {
 
 // Event queue management
 static bool event_queue_push(event_t *event) {
+    portENTER_CRITICAL(&event_queue_mux);
     size_t next = (event_queue_head + 1) % EVENT_QUEUE_SIZE;
     if (next == event_queue_tail) {
+        portEXIT_CRITICAL(&event_queue_mux);
         ESP_LOGW(TAG, "Event queue full");
         return false;
     }
     event_queue[event_queue_head] = *event;
     event_queue_head = next;
+    portEXIT_CRITICAL(&event_queue_mux);
     return true;
 }
 
 static bool event_queue_pop(event_t *event) {
+    portENTER_CRITICAL(&event_queue_mux);
     if (event_queue_tail == event_queue_head) {
+        portEXIT_CRITICAL(&event_queue_mux);
         return false;
     }
     *event = event_queue[event_queue_tail];
     event_queue_tail = (event_queue_tail + 1) % EVENT_QUEUE_SIZE;
+    portEXIT_CRITICAL(&event_queue_mux);
     return true;
 }
 

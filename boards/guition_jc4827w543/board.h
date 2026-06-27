@@ -61,4 +61,7 @@
 // Boot button (GPIO0 on ESP32-S3 dev modules).
 #define BOARD_BOOT_BUTTON_GPIO GPIO_NUM_0
 
+// BLE HID Host: ESP32-S3 supports BLE — use for wireless keyboards.
+#define BOARD_HAS_BLE_KEYBOARD 1
+
 #endif // BOARD_GUITION_JC4827W543_H

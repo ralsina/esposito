@@ -15,6 +15,7 @@
 #include "fonts.h"
 #include "wifi.h"
 #include "ota_update.h"
+#include "ble_keyboard.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -98,6 +99,16 @@ static const os_symtab_entry_t symtab[] = {
     {"os_has_capability",       os_has_capability},
     {"os_get_chip_arch",        os_get_chip_arch},
     {"os_get_current_app",      os_get_current_app},
+    // BLE HID Host
+    {"ble_keyboard_is_available",    ble_keyboard_is_available},
+    {"ble_keyboard_start_scan",      ble_keyboard_start_scan},
+    {"ble_keyboard_get_scan_count",  ble_keyboard_get_scan_count},
+    {"ble_keyboard_get_scan_name",   ble_keyboard_get_scan_name},
+    {"ble_keyboard_get_scan_rssi",   ble_keyboard_get_scan_rssi},
+    {"ble_keyboard_connect",         ble_keyboard_connect},
+    {"ble_keyboard_disconnect",      ble_keyboard_disconnect},
+    {"ble_keyboard_is_connected",    ble_keyboard_is_connected},
+    {"ble_keyboard_get_connected_name", ble_keyboard_get_connected_name},
     {"appcfg_get_int",          appcfg_get_int},
     {"appcfg_get_string",       appcfg_get_string},
     {"config_delete",           config_delete},

@@ -8,6 +8,7 @@
 #include "text_mode.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#include "nvs_flash.h"
 #include "lovgfx_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -19,6 +20,7 @@ extern "C" {
     #include "touchscreen.h"
     #include "wifi.h"
     #include "ota_update.h"
+    #include "ble_keyboard.h"
 }
 
 extern "C" bool font_cache_init(void);
@@ -290,24 +292,34 @@ void boot_sequence(void) {
     display_apply_saved_rotation();
     display_apply_saved_backlight();
 
-    // Stage 4.6: WiFi
+    // Initialize NVS early (needed by BLE, WiFi, and PHY calibration).
+    esp_err_t nvs_err = nvs_flash_init();
+    if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvs_err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(nvs_err);
+
+    // Stage 4.6: WiFi (initializes PHY for the radio)
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting WiFi init");
 
     if (wifi_init()) {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "WiFi ready");
     } else {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "WiFi not available");
-        // Continue anyway - WiFi is optional
     }
 
-    // Stage 4.7: Touchscreen
+    // Stage 4.7: BLE HID Host (after WiFi so PHY is already calibrated)
+    boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting BLE init");
+    ble_keyboard_init_async();
+
+    // Stage 4.8: Touchscreen
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting touchscreen init");
 
     if (touchscreen_init()) {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Touchscreen ready");
     } else {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "Touchscreen not available");
-        // Continue anyway - touchscreen is optional
     }
 
     // Stage 5: App loader

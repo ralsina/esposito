@@ -6,6 +6,7 @@
 #include "wifi.h"
 #include "app_config.h"
 #include "hardware.h"
+#include "ble_keyboard.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,6 +42,7 @@ static int scan_selected = 0;
 static char scan_labels[20][48];
 static const char *scan_items[20];
 static ui2_list_t *scan_list;
+static bool is_ble_scan = false;
 
 static ui2_text_input_t *ssid_input;
 static ui2_text_input_t *password_input;
@@ -65,6 +67,7 @@ static bool layout_needs_rebuild = false;
 
 typedef enum {
     SECTION_WIFI,
+    SECTION_BLUETOOTH,
     SECTION_TIME,
     SECTION_DISPLAY,
     SECTION_DEBUG,
@@ -89,6 +92,9 @@ typedef enum {
     ACTION_TOGGLE_SERIAL,
     ACTION_CHECK_UPDATE,
     ACTION_APPLY_UPDATE,
+    ACTION_BLE_SCAN,
+    ACTION_BLE_CONNECT,
+    ACTION_BLE_DISCONNECT,
 } settings_action_t;
 
 typedef struct {
@@ -97,7 +103,7 @@ typedef struct {
 } section_option_t;
 
 static const char *section_labels[SECTION_COUNT] = {
-    "WiFi", "Time", "Display", "Debug", "System",
+    "WiFi", "BT", "Time", "Display", "Debug", "System",
 };
 
 static const section_option_t wifi_options[] = {
@@ -106,6 +112,11 @@ static const section_option_t wifi_options[] = {
     {"Pass", ACTION_ENTER_PASSWORD},
     {"Save+Conn", ACTION_SAVE_CONNECT},
     {"Disconnect", ACTION_DISCONNECT},
+};
+
+static const section_option_t ble_options[] = {
+    {"Scan", ACTION_BLE_SCAN},
+    {"Disconnect", ACTION_BLE_DISCONNECT},
 };
 
 static const section_option_t time_options[] = {
@@ -313,6 +324,7 @@ static const section_option_t *section_options(settings_section_t section, int *
     if (count_out) *count_out = 0;
     switch (section) {
         case SECTION_WIFI: if (count_out) *count_out = (int)(sizeof(wifi_options) / sizeof(wifi_options[0])); return wifi_options;
+        case SECTION_BLUETOOTH: if (count_out) *count_out = (int)(sizeof(ble_options) / sizeof(ble_options[0])); return ble_options;
         case SECTION_TIME: if (count_out) *count_out = (int)(sizeof(time_options) / sizeof(time_options[0])); return time_options;
         case SECTION_DISPLAY: if (count_out) *count_out = (int)(sizeof(display_options) / sizeof(display_options[0])); return display_options;
         case SECTION_DEBUG: if (count_out) *count_out = (int)(sizeof(debug_options) / sizeof(debug_options[0])); return debug_options;
@@ -339,6 +351,15 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
             break;
         case ACTION_DISCONNECT:
             snprintf(out, out_size, "%s", "now");
+            break;
+        case ACTION_BLE_SCAN:
+            snprintf(out, out_size, "%s", ble_keyboard_is_available() ? "ready" : "off");
+            break;
+        case ACTION_BLE_CONNECT:
+            snprintf(out, out_size, "%s", ble_keyboard_is_connected() ? ble_keyboard_get_connected_name() : "none");
+            break;
+        case ACTION_BLE_DISCONNECT:
+            snprintf(out, out_size, "%s", ble_keyboard_is_connected() ? "connected" : "—");
             break;
         case ACTION_SET_TIMEZONE:
             snprintf(out, out_size, "%s", input_timezone[0] ? input_timezone : "UTC");
@@ -444,6 +465,7 @@ static void on_toolbar_back(ui2_button_t *button, void *user_data) {
 static void execute_main_action(settings_action_t action) {
     switch (action) {
         case ACTION_SCAN: {
+            is_ble_scan = false;
             wifi_init();
             scan_count = wifi_scan();
             scan_selected = 0;
@@ -629,6 +651,52 @@ static void execute_main_action(settings_action_t action) {
             }
             break;
         }
+        case ACTION_BLE_SCAN: {
+            is_ble_scan = true;
+            if (!ble_keyboard_is_available()) {
+                set_status("BLE not available on this device");
+                render();
+                break;
+            }
+            set_status("Scanning for BLE keyboards...");
+            render();
+            text_mode_flush();
+            ble_keyboard_start_scan(10);
+            int ble_count = ble_keyboard_get_scan_count();
+            if (ble_count == 0) {
+                set_status("No BLE devices found");
+                render();
+                break;
+            }
+            scan_count = ble_count;
+            scan_selected = 0;
+            for (int i = 0; i < scan_count && i < 20; i++) {
+                const char *name = ble_keyboard_get_scan_name(i);
+                int rssi = ble_keyboard_get_scan_rssi(i);
+                snprintf(scan_labels[i], sizeof(scan_labels[i]), "%-24s %3ddBm", name, rssi);
+                scan_items[i] = scan_labels[i];
+            }
+            if (scan_list) { UI2_WIDGET(scan_list)->vtable->destroy(UI2_WIDGET(scan_list)); scan_list = NULL; }
+            scan_list = ui2_list_create(1, 1, text_mode_get_cols() - 2, text_mode_get_rows() - 5);
+            ui2_list_set_title(scan_list, "BLE Keyboards");
+            ui2_list_set_colors(scan_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                                TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+            ui2_list_set_border(scan_list, true);
+            ui2_list_set_scrollbar_width(scan_list, 1);
+            ui2_list_set_callbacks(scan_list, NULL, on_scan_activated, NULL);
+            ui2_list_set_items(scan_list, scan_items, scan_count);
+            ui2_list_set_selection(scan_list, scan_selected);
+            state = STATE_SCAN_RESULTS;
+            msg_timer = 0;
+            status_msg[0] = '\0';
+            render();
+            break;
+        }
+        case ACTION_BLE_DISCONNECT:
+            ble_keyboard_disconnect();
+            set_status("BLE keyboard disconnected");
+            render();
+            break;
     }
 }
 
@@ -799,6 +867,20 @@ static void draw_message(void) {
 static void on_scan_activated(int item_index, void *user_data) {
     (void)user_data;
     if (item_index < 0 || item_index >= scan_count) return;
+
+    if (is_ble_scan) {
+        set_status("Connecting...");
+        render();
+        text_mode_flush();
+        if (ble_keyboard_connect(item_index)) {
+            set_status("BLE keyboard connected");
+        } else {
+            set_status("BLE connection failed");
+        }
+        render();
+        return;
+    }
+
     const char *ssid = wifi_scan_get_ssid(item_index);
     if (ssid && ssid[0]) {
         strncpy(input_ssid, ssid, sizeof(input_ssid) - 1);
