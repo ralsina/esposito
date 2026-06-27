@@ -96,6 +96,7 @@ static const os_symtab_entry_t symtab[] = {
     {"os_settings_get_bool",    os_settings_get_bool},
     {"os_settings_set_bool",    os_settings_set_bool},
     {"os_has_capability",       os_has_capability},
+    {"os_get_chip_arch",        os_get_chip_arch},
     {"os_get_current_app",      os_get_current_app},
     {"appcfg_get_int",          appcfg_get_int},
     {"appcfg_get_string",       appcfg_get_string},

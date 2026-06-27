@@ -36,6 +36,8 @@ typedef struct {
     char elf_url[256];
 } catalog_app_t;
 
+static char chip_arch[16] = "";
+
 typedef enum {
     STATUS_NEW,
     STATUS_INSTALLED,
@@ -256,11 +258,11 @@ static int catalog_read_one(int index, catalog_app_t *app) {
     if (s == JSONSuccess) extract_string(val, vallen, app->extensions, sizeof(app->extensions));
     else app->extensions[0] = '\0';
 
-    snprintf(query, sizeof(query), "[%d].size", index);
+    snprintf(query, sizeof(query), "[%d].arch.%s.size", index, chip_arch);
     s = JSON_SearchT(buf, len, query, strlen(query), &val, &vallen, &type);
     app->size = (s == JSONSuccess) ? atoi(val) : 0;
 
-    snprintf(app->elf_url, sizeof(app->elf_url), "%s%s/program.elf", ELF_BASE, app->id);
+    snprintf(app->elf_url, sizeof(app->elf_url), "%s%s/%s/program.elf", ELF_BASE, app->id, chip_arch);
 
     free(buf);
     return 0;
@@ -707,6 +709,9 @@ static void on_exit_click(ui2_button_t *btn, void *data) {
 void app_init(app_context_t *ctx) {
     ctx->subscriptions = EVENT_KEYBOARD | EVENT_TOUCH | EVENT_TIMER;
     ctx->timer_interval_ms = 250;
+    const char *arch = os_get_chip_arch();
+    strncpy(chip_arch, arch ? arch : "esp32", sizeof(chip_arch) - 1);
+    chip_arch[sizeof(chip_arch) - 1] = '\0';
     text_mode_init();
 
     list_texts = malloc(MAX_APPS * DISPLAY_LEN);

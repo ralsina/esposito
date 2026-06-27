@@ -8,13 +8,15 @@
 #   3. Assembles the SD card directory tree (apps/, fonts/, books/)
 #   4. Produces a zip ready to extract onto a FAT32 SD card
 #
-# Usage: build_release_bundle.sh <output_zip> [version]
-# Example: build_release_bundle.sh artifacts/sdcard-bundle.zip 0.5.1
+# Usage: build_release_bundle.sh <output_zip> [version] [target]
+#   target: esp32 (default) or esp32s3
+# Example: build_release_bundle.sh artifacts/sdcard-bundle-esp32.zip 0.5.1 esp32
 
 set -e
 
 OUTPUT_ZIP="${1:-artifacts/sdcard-bundle.zip}"
 VERSION="${2:-unknown}"
+TARGET="${3:-${IDF_TARGET:-esp32}}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
@@ -35,15 +37,17 @@ APPS=(
     file_manager
 )
 
-echo "=== Building release SD card bundle (v${VERSION}) ==="
+echo "=== Building release SD card bundle for ${TARGET} (v${VERSION}) ==="
+
+BUILD_DIR="build/apps-${TARGET}"
 
 # --- 1. Generate symbol table -------------------------------------------------
 echo ">>> Generating OS symbol table..."
 scripts/gen_symtab.sh build/esposito.elf build/os_symbols.ld
 
 # --- 2. Build app ELFs --------------------------------------------------------
-echo ">>> Building ${#APPS[@]} apps..."
-mkdir -p build/apps
+echo ">>> Building ${#APPS[@]} apps for ${TARGET}..."
+mkdir -p "${BUILD_DIR}"
 
 for app_name in "${APPS[@]}"; do
     app_dir="apps/${app_name}"
@@ -61,7 +65,7 @@ for app_name in "${APPS[@]}"; do
         DEPS=$(while read -r lib; do echo -n "-l $lib "; done < "${app_dir}/deps")
     fi
     echo "  Building ${app_name}..."
-    scripts/build_app.sh $DEPS "$app_src" build/apps
+    scripts/build_app.sh -t "${TARGET}" $DEPS "$app_src" "${BUILD_DIR}"
 done
 
 # --- 3. Assemble SD card directory -------------------------------------------
@@ -71,7 +75,7 @@ trap 'rm -rf "$STAGING"' EXIT
 
 # Apps
 for app_name in "${APPS[@]}"; do
-    elf="build/apps/${app_name}.elf"
+    elf="${BUILD_DIR}/${app_name}.elf"
     [ -f "$elf" ] || { echo "  WARNING: ${app_name}.elf not found, skipping"; continue; }
     mkdir -p "$STAGING/apps/${app_name}"
     cp "$elf" "$STAGING/apps/${app_name}/program.elf"

@@ -188,6 +188,10 @@ bool os_has_capability(const char *cap) {
     return false;
 }
 
+const char *os_get_chip_arch(void) {
+    return "esp32";
+}
+
 // --- Task API ---
 os_task_handle_t *os_task_create(os_task_func_t task_func, const char *name, int stack_size, int priority, int core_id) {
     (void)name; (void)stack_size; (void)priority; (void)core_id;

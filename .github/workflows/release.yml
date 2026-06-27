@@ -57,7 +57,7 @@ jobs:
           ref: ${{ steps.tag.outputs.name }}
           submodules: false
 
-      - name: Build CYD (ESP32) firmware + app bundle
+      - name: Build CYD (ESP32) firmware + apps
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v6.0.1
@@ -66,10 +66,9 @@ jobs:
           command: |
             apt-get update -qq && apt-get install -y -qq zip xxd > /dev/null 2>&1 || true
             idf.py build
-            bash scripts/build_all_apps.sh
-            python3 scripts/generate_catalog.py -o artifacts/app-store
-            cd artifacts && zip -r -q app-store-bundle.zip app-store/ && cd ..
-            bash scripts/build_release_bundle.sh artifacts/sdcard-bundle.zip "${{ steps.tag.outputs.name }}"
+            bash scripts/build_all_apps.sh esp32
+            python3 scripts/generate_catalog.py -o artifacts/app-store -t esp32
+            bash scripts/build_release_bundle.sh artifacts/sdcard-bundle-esp32.zip "${{ steps.tag.outputs.name }}" esp32
             # Stage CYD firmware
             mkdir -p artifacts/esp32
             cp build/esposito.bin artifacts/firmware.bin
@@ -78,7 +77,7 @@ jobs:
             cp build/ota_data_initial.bin            artifacts/esp32/ota_data_initial.bin
             echo "${{ steps.tag.outputs.name }}" > artifacts/version.txt
 
-      - name: Build Guition (ESP32-S3) firmware
+      - name: Build Guition (ESP32-S3) firmware + apps
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v6.0.1
@@ -87,6 +86,10 @@ jobs:
           command: |
             apt-get update -qq && apt-get install -y -qq zip xxd > /dev/null 2>&1 || true
             idf.py build
+            bash scripts/build_all_apps.sh esp32s3
+            python3 scripts/generate_catalog.py -o artifacts/app-store -t esp32s3 --merge
+            bash scripts/build_release_bundle.sh artifacts/sdcard-bundle-esp32s3.zip "${{ steps.tag.outputs.name }}" esp32s3
+            cd artifacts && zip -r -q app-store-bundle.zip app-store/ && cd ..
             # Stage Guition firmware (use existing artifacts from CYD step)
             mkdir -p artifacts/esp32s3
             cp build/esposito.bin artifacts/firmware-esp32s3.bin
@@ -201,6 +204,7 @@ jobs:
             artifacts/esp32s3/partition-table.bin
             artifacts/esp32s3/ota_data_initial.bin
             artifacts/manifest.json
-            artifacts/sdcard-bundle.zip
+            artifacts/sdcard-bundle-esp32.zip
+            artifacts/sdcard-bundle-esp32s3.zip
             artifacts/app-store-bundle.zip
             artifacts/version.txt

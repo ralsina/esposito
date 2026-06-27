@@ -95,6 +95,7 @@ bool os_settings_set_int(const char *key_path, int value);
 bool os_settings_get_bool(const char *key_path, bool default_value);
 bool os_settings_set_bool(const char *key_path, bool value);
 bool os_has_capability(const char *cap);
+const char *os_get_chip_arch(void);
 
 // Task and synchronization API
 typedef void (*os_task_func_t)(void *parameter);

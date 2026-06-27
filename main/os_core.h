@@ -157,6 +157,9 @@ bool os_set_cpu_freq_mhz(int freq_mhz);
 // Recognized capabilities: keyboard, touch, wifi, psram
 bool os_has_capability(const char *cap);
 
+// Returns the chip architecture string for this build ("esp32", "esp32s3", etc.).
+const char *os_get_chip_arch(void);
+
 #ifdef __cplusplus
 }
 #endif

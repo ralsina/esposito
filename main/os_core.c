@@ -59,6 +59,16 @@ bool os_has_capability(const char *cap) {
     return false;
 }
 
+const char *os_get_chip_arch(void) {
+#if CONFIG_IDF_TARGET_ESP32S3
+    return "esp32s3";
+#elif CONFIG_IDF_TARGET_ESP32C3
+    return "esp32c3";
+#else
+    return "esp32";
+#endif
+}
+
 void os_log_global_heap_stats(const char *label) {
     size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     size_t largest_8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);

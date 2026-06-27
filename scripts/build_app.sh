@@ -7,11 +7,13 @@ set -e
 LIBS=()
 OPT_LEVEL="-Os"
 EXTRA_CFLAGS=""
+CLI_TARGET=""
 
-while getopts "l:O:" opt; do
+while getopts "l:O:t:" opt; do
     case $opt in
         l) LIBS+=("$OPTARG") ;;
         O) OPT_LEVEL="-O$OPTARG" ;;
+        t) CLI_TARGET="$OPTARG" ;;
         ?) exit 1 ;;
     esac
 done
@@ -19,13 +21,14 @@ shift $((OPTIND-1))
 
 APP_SRC="${1}"
 if [ -z "$APP_SRC" ]; then
-    echo "Usage: $0 [-l <lib>...] <app.c|app_dir> [output_dir]"
+    echo "Usage: $0 [-t <target>] [-l <lib>...] <app.c|app_dir> [output_dir]"
     echo "Builds an app .c file(s) into a relocatable ELF for SD card loading"
     echo ""
-    echo "  -l <lib>    Link against a library from libs/<lib>/ (repeatable)"
+    echo "  -t <target>  Target architecture: esp32 (default), esp32s3, etc."
+    echo "  -l <lib>     Link against a library from libs/<lib>/ (repeatable)"
     echo "  If a .c file is given, the app directory is its parent."
     echo "  All .c files in the app directory are compiled together."
-    echo "  Example: $0 -l ui apps/my_app/app.c  ->  build/apps/my_app.elf"
+    echo "  Example: $0 -t esp32s3 -l ui apps/my_app/app.c  ->  build/apps/my_app.elf"
     exit 1
 fi
 
@@ -46,10 +49,14 @@ fi
 
 # --- Target detection -------------------------------------------------------
 # Derive toolchain / chip include paths / board dir from the main firmware's
-# configured target (sdkconfig). Override with IDF_TARGET=... / BOARD=... /
-# TOOLCHAIN_PREFIX=... on the command line.
-IDF_TARGET="${IDF_TARGET:-$(grep -oE '^CONFIG_IDF_TARGET="[^"]+"' sdkconfig 2>/dev/null | sed -E 's/^CONFIG_IDF_TARGET="([^"]+)".*/\1/')}"
-IDF_TARGET="${IDF_TARGET:-esp32}"
+# configured target (sdkconfig). Override with -t <target>, IDF_TARGET=...,
+# BOARD=..., or TOOLCHAIN_PREFIX=... on the command line.
+if [ -n "$CLI_TARGET" ]; then
+    IDF_TARGET="$CLI_TARGET"
+else
+    IDF_TARGET="${IDF_TARGET:-$(grep -oE '^CONFIG_IDF_TARGET="[^"]+"' sdkconfig 2>/dev/null | sed -E 's/^CONFIG_IDF_TARGET="([^"]+)".*/\1/')}"
+    IDF_TARGET="${IDF_TARGET:-esp32}"
+fi
 case "$IDF_TARGET" in
     esp32s3) CHIP=esp32s3; ARCH=xtensa; DEFAULT_BOARD=guition_jc4827w543 ;;
     esp32c3) CHIP=esp32c3; ARCH=riscv;  DEFAULT_BOARD=elecrow_round ;;
