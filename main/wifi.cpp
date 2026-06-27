@@ -55,26 +55,26 @@ static void migrate_credentials_from_sd_if_present(void) {
     }
 
     ESP_LOGI(TAG, "Migrating WiFi credentials from SD card to NVS (SSID: %s)", legacy_ssid);
-    if (credential_store_set(legacy_ssid, legacy_password)) {
-        // Bind to the "settings" app namespace (must match OS_SETTINGS_APP_NAME
-        // in os_core.c) to reach the legacy /sdcard/apps/settings/config/ files.
-        bool deleted = false;
-        if (config_bind_app("settings")) {
-            bool del_ssid = config_delete(WIFI_SETTINGS_SSID_KEY);
-            bool del_pass = config_delete(WIFI_SETTINGS_PASSWORD_KEY);
-            config_unbind_app();
-            deleted = del_ssid && del_pass;
-        }
-        if (deleted) {
-            ESP_LOGI(TAG, "Migration complete; plaintext credentials removed from SD card");
-        } else {
-            // NVS now has the creds, but the SD plaintext files are still there.
-            // The trust-model guarantee (creds live in NVS) holds for new code,
-            // but the user should know the SD files weren't cleaned up.
-            ESP_LOGW(TAG, "Migration copied to NVS, but failed to delete plaintext SD files");
-        }
+    bool nvs_ok = credential_store_set(legacy_ssid, legacy_password);
+    if (!nvs_ok) {
+        ESP_LOGE(TAG, "Migration to NVS failed; will still attempt to remove plaintext SD files");
+    }
+
+    // Always delete the SD-card plaintext files, even if NVS migration failed,
+    // to avoid leaving credentials in a recoverable state on the SD card.
+    bool deleted = false;
+    if (config_bind_app("settings")) {
+        bool del_ssid = config_delete(WIFI_SETTINGS_SSID_KEY);
+        bool del_pass = config_delete(WIFI_SETTINGS_PASSWORD_KEY);
+        config_unbind_app();
+        deleted = del_ssid && del_pass;
+    }
+    if (nvs_ok && deleted) {
+        ESP_LOGI(TAG, "Migration complete; plaintext credentials removed from SD card");
+    } else if (!nvs_ok) {
+        ESP_LOGW(TAG, "NVS migration failed; SD plaintext files %s", deleted ? "deleted" : "could not be deleted");
     } else {
-        ESP_LOGE(TAG, "Migration to NVS failed; plaintext credentials remain on SD card");
+        ESP_LOGW(TAG, "Migration copied to NVS, but failed to delete plaintext SD files");
     }
 
     // Scrub the local copies; the caller will re-read from NVS. Use secure_zero
