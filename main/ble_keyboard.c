@@ -491,9 +491,9 @@ static void ble_init_task(void *arg) {
 
 void ble_keyboard_init_async(void) {
 #if CONFIG_FREERTOS_NUMBER_OF_CORES > 1
-    xTaskCreatePinnedToCore(ble_init_task, "ble_init", 8192, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(ble_init_task, "ble_init", 12288, NULL, 1, NULL, 1);
 #else
-    xTaskCreatePinnedToCore(ble_init_task, "ble_init", 8192, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(ble_init_task, "ble_init", 12288, NULL, 1, NULL, 0);
 #endif
     ESP_LOGI(TAG, "BLE init started in background task");
 }
