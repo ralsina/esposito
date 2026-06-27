@@ -13,6 +13,7 @@
 #include "esp_gap_ble_api.h"
 #include "esp_gap_bt_api.h"
 #include "esp_hidh.h"
+#include "esp_hidh_gattc.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -39,6 +40,7 @@ typedef struct {
 static scan_result_t scan_results[MAX_SCAN_RESULTS];
 static int scan_count = 0;
 static bool ble_initialized = false;
+static bool ble_initializing = false;
 static bool ble_scanning = false;
 static int scan_duration = 10;
 
@@ -331,7 +333,8 @@ bool ble_keyboard_init(void) {
     esp_err_t ret;
 
     // Release Classic BT memory (not used — ESP32-S3 is BLE only).
-    esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
+    ret = esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
+    ESP_LOGI(TAG, "mem_release: %s", esp_err_to_name(ret));
 
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     ret = esp_bt_controller_init(&bt_cfg);
@@ -339,11 +342,14 @@ bool ble_keyboard_init(void) {
         ESP_LOGE(TAG, "Controller init failed: %s", esp_err_to_name(ret));
         return false;
     }
+    ESP_LOGI(TAG, "Controller init OK");
+
     ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Controller enable failed: %s", esp_err_to_name(ret));
         return false;
     }
+    ESP_LOGI(TAG, "Controller enable OK");
 
     ret = esp_bluedroid_init();
     if (ret != ESP_OK) {
@@ -355,15 +361,28 @@ bool ble_keyboard_init(void) {
         ESP_LOGE(TAG, "Bluedroid enable failed: %s", esp_err_to_name(ret));
         return false;
     }
+    ESP_LOGI(TAG, "Bluedroid OK");
 
     // Register GAP callback and set scan parameters.
+    ESP_LOGI(TAG, "Registering GAP callback...");
     ret = esp_ble_gap_register_callback(gap_event_handler);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "GAP callback register failed: %s", esp_err_to_name(ret));
         return false;
     }
+    ESP_LOGI(TAG, "GAP callback OK");
+
+    // Register GATT client callback (required before esp_hidh_init for BLE HID).
+    ESP_LOGI(TAG, "Registering GATT client callback...");
+    ret = esp_ble_gattc_register_callback(esp_hidh_gattc_event_handler);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "GATT client callback register failed: %s", esp_err_to_name(ret));
+        return false;
+    }
+    ESP_LOGI(TAG, "GATT client callback OK");
 
     // Initialize HID Host.
+    ESP_LOGI(TAG, "Initializing HID Host...");
     esp_hidh_config_t hidh_config = {
         .callback = hidh_event_handler,
         .event_stack_size = 4096,
@@ -374,6 +393,7 @@ bool ble_keyboard_init(void) {
         ESP_LOGE(TAG, "HIDH init failed: %s", esp_err_to_name(ret));
         return false;
     }
+    ESP_LOGI(TAG, "HIDH init OK");
 
     ble_initialized = true;
     ESP_LOGI(TAG, "BLE HID Host ready");
@@ -485,11 +505,18 @@ const char *ble_keyboard_get_connected_name(void) {
 }
 
 static void ble_init_task(void *arg) {
-    ble_keyboard_init();
+    bool ok = ble_keyboard_init();
+    ble_initializing = false;
+    if (ok) {
+        ESP_LOGI(TAG, "BLE init task completed successfully");
+    } else {
+        ESP_LOGE(TAG, "BLE init task failed");
+    }
     vTaskDelete(NULL);
 }
 
 void ble_keyboard_init_async(void) {
+    ble_initializing = true;
 #if CONFIG_FREERTOS_NUMBER_OF_CORES > 1
     xTaskCreatePinnedToCore(ble_init_task, "ble_init", 12288, NULL, 1, NULL, 1);
 #else
@@ -498,12 +525,17 @@ void ble_keyboard_init_async(void) {
     ESP_LOGI(TAG, "BLE init started in background task");
 }
 
+bool ble_keyboard_is_initializing(void) {
+    return ble_initializing;
+}
+
 #else
 
 // Stubs for boards without BLE.
 bool ble_keyboard_init(void) { return false; }
 void ble_keyboard_init_async(void) {}
 bool ble_keyboard_is_available(void) { return false; }
+bool ble_keyboard_is_initializing(void) { return false; }
 int ble_keyboard_start_scan(int duration_seconds) { (void)duration_seconds; return 0; }
 int ble_keyboard_get_scan_count(void) { return 0; }
 const char *ble_keyboard_get_scan_name(int index) { (void)index; return ""; }

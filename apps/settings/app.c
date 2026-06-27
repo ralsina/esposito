@@ -353,7 +353,11 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
             snprintf(out, out_size, "%s", "now");
             break;
         case ACTION_BLE_SCAN:
-            snprintf(out, out_size, "%s", ble_keyboard_is_available() ? "ready" : "off");
+            if (ble_keyboard_is_initializing()) {
+                snprintf(out, out_size, "%s", "init...");
+            } else {
+                snprintf(out, out_size, "%s", ble_keyboard_is_available() ? "ready" : "off");
+            }
             break;
         case ACTION_BLE_CONNECT:
             snprintf(out, out_size, "%s", ble_keyboard_is_connected() ? ble_keyboard_get_connected_name() : "none");
@@ -654,7 +658,11 @@ static void execute_main_action(settings_action_t action) {
         case ACTION_BLE_SCAN: {
             is_ble_scan = true;
             if (!ble_keyboard_is_available()) {
-                set_status("BLE not available on this device");
+                if (ble_keyboard_is_initializing()) {
+                    set_status("BLE still initializing, try again...");
+                } else {
+                    set_status("BLE not available on this device");
+                }
                 render();
                 break;
             }

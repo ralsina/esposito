@@ -101,6 +101,7 @@ static const os_symtab_entry_t symtab[] = {
     {"os_get_current_app",      os_get_current_app},
     // BLE HID Host
     {"ble_keyboard_is_available",    ble_keyboard_is_available},
+    {"ble_keyboard_is_initializing", ble_keyboard_is_initializing},
     {"ble_keyboard_start_scan",      ble_keyboard_start_scan},
     {"ble_keyboard_get_scan_count",  ble_keyboard_get_scan_count},
     {"ble_keyboard_get_scan_name",   ble_keyboard_get_scan_name},

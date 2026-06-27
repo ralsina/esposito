@@ -20,6 +20,9 @@ void ble_keyboard_init_async(void);
 // Whether BLE HID Host is available on this board.
 bool ble_keyboard_is_available(void);
 
+// Whether BLE init is currently in progress (background task).
+bool ble_keyboard_is_initializing(void);
+
 // --- Scanning ---
 
 // Start a scan for BLE HID devices. Returns number of devices found so far.
