@@ -5,6 +5,7 @@
 #include "app_heap.h"
 #include "sd_card.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_partition.h"
 #include "esp_cache.h"
 #include "freertos/FreeRTOS.h"
@@ -393,6 +394,7 @@ static bool elf_resolve_entry_points(elf_handle_t *handle,
 }
 
 elf_handle_t *elf_loader_load(const char *path) {
+    int64_t t_start = esp_timer_get_time();
     ESP_LOGI(TAG, "Loading ELF: %s", path);
 
     FILE *fp = fopen(path, "r");
@@ -400,6 +402,8 @@ elf_handle_t *elf_loader_load(const char *path) {
         ESP_LOGE(TAG, "Cannot open %s", path);
         return NULL;
     }
+    int64_t t_fopen = esp_timer_get_time();
+    ESP_LOGI(TAG, "  elf: fopen     %lld ms", (t_fopen - t_start) / 1000);
 
     // All resources tracked here are freed either on the success path (returning handle)
     // or via the `fail:` label at the bottom. Initialize to NULL so cleanup is uniform.
@@ -688,6 +692,8 @@ elf_handle_t *elf_loader_load(const char *path) {
     }
 
     ESP_LOGI(TAG, "Patched %d relocations", total_patched);
+    int64_t t_reloc = esp_timer_get_time();
+    ESP_LOGI(TAG, "  elf: sections+reloc %lld ms", (t_reloc - t_fopen) / 1000);
 
     // Step 8: Invalidate cache for code (and rodata when flash-mapped).
     esp_cache_msync(handle->inst_base, code_size,
@@ -709,6 +715,9 @@ elf_handle_t *elf_loader_load(const char *path) {
     app_free(symtab);
     app_free(shdrs);
     fclose(fp);
+    int64_t t_end = esp_timer_get_time();
+    ESP_LOGI(TAG, "  elf: resolve+cleanup %lld ms", (t_end - t_reloc) / 1000);
+    ESP_LOGI(TAG, "  elf: TOTAL %lld ms", (t_end - t_start) / 1000);
     ESP_LOGI(TAG, "ELF loaded: %s", handle->name);
     return handle;
 

@@ -7,6 +7,7 @@
 #include "sd_card.h"
 #include "hardware.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include <string.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -101,12 +102,15 @@ bool app_loader_load(const char *app_name) {
 
     // Reset keyboard after flash operations to recover I2C bus,
     // but only when a keyboard is actually present.
+    int64_t t_kbd0 = esp_timer_get_time();
     if (keyboard_is_available()) {
         keyboard_deinit();
         if (!keyboard_init()) {
             ESP_LOGW(TAG, "Keyboard reset failed; continuing without keyboard");
         }
     }
+    int64_t t_kbd1 = esp_timer_get_time();
+    ESP_LOGI(TAG, "  app_loader: keyboard_reset %lld ms", (t_kbd1 - t_kbd0) / 1000);
 
     if (!ctx->init) {
         ESP_LOGE(TAG, "ELF missing app_init entry point");
@@ -152,7 +156,10 @@ bool app_loader_load(const char *app_name) {
     if (!config_bind_app(ctx->name)) {
         ESP_LOGW(TAG, "Failed to bind config namespace for app %s", ctx->name);
     }
+    int64_t t_init0 = esp_timer_get_time();
     ctx->init(ctx);
+    int64_t t_init1 = esp_timer_get_time();
+    ESP_LOGI(TAG, "  app_loader: app_init %lld ms", (t_init1 - t_init0) / 1000);
     ESP_LOGI(TAG, "%s loaded from SD card and initialized", app_name);
     return true;
 }

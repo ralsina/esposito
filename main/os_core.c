@@ -267,16 +267,16 @@ void os_set_current_app(app_context_t *app) {
 
 void os_unload_app(void) {
     if (current_app) {
+        int64_t t0 = esp_timer_get_time();
+
         // Let the app clean up its own resources (including tasks it created).
-        // This must happen BEFORE orphan cleanup and before ELF unload, so the
-        // app's close handler can still execute its code and properly shut down
-        // background tasks via os_task_delete().
         if (current_app->close) {
             current_app->close(current_app);
         }
+        int64_t t_close = esp_timer_get_time();
+        ESP_LOGI(TAG, "  unload: close    %lld ms", (t_close - t0) / 1000);
 
         // Clean up any tasks the app forgot to delete.
-        ESP_LOGI(TAG, "Cleaning up app tasks...");
         TaskHandle_t tasks_to_delete[MAX_TRACKED_TASKS];
         int num_tasks_to_delete = 0;
 
@@ -293,22 +293,27 @@ void os_unload_app(void) {
             ESP_LOGI(TAG, "Deleting orphaned app task %p", tasks_to_delete[i]);
             vTaskDelete(tasks_to_delete[i]);
         }
+        int64_t t_tasks = esp_timer_get_time();
+        ESP_LOGI(TAG, "  unload: tasks    %lld ms (%d orphans)", (t_tasks - t_close) / 1000, num_tasks_to_delete);
 
-        os_log_global_heap_stats("before unload");
-        app_heap_log_stats("before unload");
         if (current_app->handle) {
             elf_loader_unload((elf_handle_t *)current_app->handle);
         }
+        int64_t t_elf = esp_timer_get_time();
+        ESP_LOGI(TAG, "  unload: elf_unload %lld ms", (t_elf - t_tasks) / 1000);
+
         app_free(current_app);
         current_app = NULL;
         config_unbind_app();
         terminal_mode_clear_active();
         app_heap_reset();
-        os_log_global_heap_stats("after unload");
-        app_heap_log_stats("after unload");
+        int64_t t_heap = esp_timer_get_time();
+        ESP_LOGI(TAG, "  unload: heap_reset %lld ms", (t_heap - t_elf) / 1000);
+        ESP_LOGI(TAG, "  unload: TOTAL     %lld ms", (t_heap - t0) / 1000);
+
+        // Keep UART0 driver alive across app switches
+        serial_ring_clear();
     }
-    // Keep UART0 driver alive across app switches; apps can reconfigure it via serial_init().
-    serial_ring_clear();
 }
 
 void os_exit(void) {
@@ -350,7 +355,10 @@ static bool os_load_app_internal(const char *app_name, bool push_current) {
 
     if (current_app) {
         if (current_app->checkpoint) {
+            int64_t t_cp0 = esp_timer_get_time();
             current_app->checkpoint(current_app);
+            int64_t t_cp1 = esp_timer_get_time();
+            ESP_LOGI(TAG, "  checkpoint: %lld ms", (t_cp1 - t_cp0) / 1000);
         }
         os_unload_app();
     }
@@ -358,17 +366,19 @@ static bool os_load_app_internal(const char *app_name, bool push_current) {
     ESP_LOGI(TAG, "Loading app: %s", app_name);
 
     // Use app_loader to load the app
+    int64_t t_load0 = esp_timer_get_time();
     if (!app_loader_load(app_name)) {
         ESP_LOGE(TAG, "Failed to load app %s via app_loader", app_name);
         return false;
     }
+    int64_t t_load1 = esp_timer_get_time();
+    ESP_LOGI(TAG, "  app_loader_load: %lld ms", (t_load1 - t_load0) / 1000);
 
     ESP_LOGI(TAG, "App %s loaded successfully with subscriptions 0x%lX",
              app_name, (unsigned long)current_app->subscriptions);
-    os_log_global_heap_stats("after load");
-    app_heap_log_stats("after load");
 
     // Only save as last app if it should appear in the launcher
+    int64_t t_post0 = esp_timer_get_time();
     app_sd_manifest_t *manifest = malloc(sizeof(app_sd_manifest_t));
     bool show = false;
     if (manifest) {
@@ -379,6 +389,9 @@ static bool os_load_app_internal(const char *app_name, bool push_current) {
         os_settings_set_string("system/last_app", app_name);
     }
     config_bind_app(app_name);
+    int64_t t_post1 = esp_timer_get_time();
+    ESP_LOGI(TAG, "  post-load: %lld ms", (t_post1 - t_post0) / 1000);
+    ESP_LOGI(TAG, "  TOTAL switch: %lld ms", (t_post1 - t_load0) / 1000);
     return true;
 }
 
