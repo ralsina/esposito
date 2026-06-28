@@ -110,6 +110,8 @@ static const os_symtab_entry_t symtab[] = {
     {"ble_keyboard_disconnect",      ble_keyboard_disconnect},
     {"ble_keyboard_is_connected",    ble_keyboard_is_connected},
     {"ble_keyboard_get_connected_name", ble_keyboard_get_connected_name},
+    {"ble_keyboard_save_device",     ble_keyboard_save_device},
+    {"ble_keyboard_reconnect",       ble_keyboard_reconnect},
     {"appcfg_get_int",          appcfg_get_int},
     {"appcfg_get_string",       appcfg_get_string},
     {"config_delete",           config_delete},

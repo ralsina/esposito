@@ -853,8 +853,8 @@ static void draw_scan_results(void) {
     } else if (scan_list) {
         UI2_WIDGET(scan_list)->vtable->draw(UI2_WIDGET(scan_list));
         int cols = text_mode_get_cols();
-        text_mode_print_at_attr_bg((cols - 13) / 2, text_mode_get_rows() - 2, "ESC to go back",
-                                   TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+        text_mode_print_at_attr_bg((cols - 22) / 2, text_mode_get_rows() - 2, "[ << Back ]",
+                                   TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_BLUE, TEXT_ATTR_BOLD);
     }
 }
 
@@ -1326,7 +1326,9 @@ void app_event(app_context_t *ctx, event_t *event) {
                 break;
             }
             case STATE_SCAN_RESULTS: {
-                if (scan_count <= 0) {
+                int rows = text_mode_get_rows();
+                if (scan_count <= 0 || y_col >= rows - 3) {
+                    // Bottom area or empty list = Back
                     state = STATE_MAIN;
                     render();
                     break;

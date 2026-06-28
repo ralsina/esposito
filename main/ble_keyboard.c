@@ -180,6 +180,8 @@ static void hidh_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
                 }
                 connected_dev = param->open.dev;
                 ESP_LOGI(TAG, "Connected: %s", connected_name);
+                // Save for auto-reconnect
+                ble_keyboard_save_device();
             } else {
                 ESP_LOGE(TAG, "Open failed: %s", esp_err_to_name(param->open.status));
                 connected_dev = NULL;
@@ -397,6 +399,9 @@ bool ble_keyboard_init(void) {
 
     ble_initialized = true;
     ESP_LOGI(TAG, "BLE HID Host ready");
+
+    // Try to reconnect to the last paired keyboard.
+    ble_keyboard_reconnect();
     return true;
 }
 
@@ -504,6 +509,68 @@ const char *ble_keyboard_get_connected_name(void) {
     return connected_name;
 }
 
+// --- Auto-reconnect persistence ---
+
+// Store format: "AA:BB:CC:DD:EE:FF,addr_type"
+#define BLE_DEVICE_KEY "ble/last_device"
+#define BLE_ADDR_STR_LEN 24
+
+void ble_keyboard_save_device(void) {
+    if (!connected_dev) return;
+    const uint8_t *bda = esp_hidh_dev_bda_get(connected_dev);
+    if (!bda) return;
+
+    // Find addr_type from scan results (fall back to 0 = public)
+    uint8_t addr_type = 0;
+    for (int i = 0; i < scan_count; i++) {
+        if (memcmp(scan_results[i].addr, bda, 6) == 0) {
+            addr_type = scan_results[i].addr_type;
+            break;
+        }
+    }
+
+    char addr_str[BLE_ADDR_STR_LEN];
+    snprintf(addr_str, sizeof(addr_str), "%02X:%02X:%02X:%02X:%02X:%02X,%d",
+             bda[0], bda[1], bda[2], bda[3], bda[4], bda[5], addr_type);
+    os_settings_set_string(BLE_DEVICE_KEY, addr_str);
+    ESP_LOGI(TAG, "Saved device for auto-reconnect: %s", addr_str);
+}
+
+static bool parse_addr_str(const char *str, esp_bd_addr_t out_bda, uint8_t *out_type) {
+    unsigned int b[6];
+    unsigned int type;
+    if (sscanf(str, "%X:%X:%X:%X:%X:%X,%u", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5], &type) != 7)
+        return false;
+    for (int i = 0; i < 6; i++) out_bda[i] = (uint8_t)b[i];
+    *out_type = (uint8_t)type;
+    return true;
+}
+
+void ble_keyboard_reconnect(void) {
+    if (!ble_initialized) return;
+
+    char addr_str[BLE_ADDR_STR_LEN];
+    size_t len = os_settings_get_string(BLE_DEVICE_KEY, "", addr_str, sizeof(addr_str));
+    if (len == 0 || addr_str[0] == '\0') {
+        ESP_LOGI(TAG, "No saved BLE device for reconnect");
+        return;
+    }
+
+    esp_bd_addr_t bda;
+    uint8_t addr_type;
+    if (!parse_addr_str(addr_str, bda, &addr_type)) {
+        ESP_LOGW(TAG, "Failed to parse saved BLE address: %s", addr_str);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Auto-reconnecting to %s ...", addr_str);
+    esp_hidh_dev_t *dev = esp_hidh_dev_open(bda, ESP_HID_TRANSPORT_BLE, addr_type);
+    if (dev == NULL) {
+        ESP_LOGW(TAG, "Auto-reconnect: esp_hidh_dev_open failed");
+    }
+    // OPEN_EVENT callback will set connected_dev on success.
+}
+
 static void ble_init_task(void *arg) {
     bool ok = ble_keyboard_init();
     ble_initializing = false;
@@ -545,5 +612,7 @@ bool ble_keyboard_connect(int scan_index) { (void)scan_index; return false; }
 void ble_keyboard_disconnect(void) {}
 bool ble_keyboard_is_connected(void) { return false; }
 const char *ble_keyboard_get_connected_name(void) { return ""; }
+void ble_keyboard_save_device(void) {}
+void ble_keyboard_reconnect(void) {}
 
 #endif // BOARD_HAS_BLE_KEYBOARD

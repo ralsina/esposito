@@ -51,6 +51,12 @@ bool ble_keyboard_is_connected(void);
 // Name of the connected device (or empty string).
 const char *ble_keyboard_get_connected_name(void);
 
+// Save the currently connected device address to settings (for auto-reconnect).
+void ble_keyboard_save_device(void);
+
+// Attempt to reconnect to the last saved device. Called after init.
+void ble_keyboard_reconnect(void);
+
 #ifdef __cplusplus
 }
 #endif
