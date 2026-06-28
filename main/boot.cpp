@@ -327,6 +327,7 @@ void boot_sequence(void) {
     boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting audio init");
     if (audio_init()) {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Audio ready");
+        audio_beep(880, 150);
     } else {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "Audio not available");
     }
