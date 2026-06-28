@@ -15,6 +15,7 @@
 static const char *TAG = "app_loader";
 
 static char s_cache_names[APP_LOADER_MAX_APPS][APP_LOADER_MAX_NAME_LEN];
+static char s_cache_display_names[APP_LOADER_MAX_APPS][APP_LOADER_MAX_NAME_LEN];
 static int s_cache_count = 0;
 static bool s_cache_valid = false;
 
@@ -48,12 +49,15 @@ static int scan_sd_card(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps
                 if (f) {
                     fclose(f);
                     // Skip apps that declare launcher=no in their manifest
-                    app_sd_manifest_t *manifest = malloc(sizeof(app_sd_manifest_t));
+                    app_sd_manifest_t manifest;
                     bool show = true;
-                    if (manifest) {
-                        app_manifest_read(entry->d_name, manifest);
-                        show = manifest->show_in_launcher;
-                        free(manifest);
+                    if (app_manifest_read(entry->d_name, &manifest)) {
+                        show = manifest.show_in_launcher;
+                        snprintf(s_cache_display_names[count], APP_LOADER_MAX_NAME_LEN,
+                                 "%s", manifest.display_name);
+                    } else {
+                        snprintf(s_cache_display_names[count], APP_LOADER_MAX_NAME_LEN,
+                                 "%s", entry->d_name);
                     }
                     if (!show) continue;
                     snprintf(app_names[count], APP_LOADER_MAX_NAME_LEN, "%s", entry->d_name);
@@ -71,6 +75,20 @@ int app_loader_scan(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps) {
     if (!s_cache_valid) {
         int64_t t0 = esp_timer_get_time();
         s_cache_count = scan_sd_card(s_cache_names, APP_LOADER_MAX_APPS);
+        // Sort cache alphabetically (parallel sort of names + display names)
+        for (int i = 0; i < s_cache_count - 1; i++) {
+            for (int j = i + 1; j < s_cache_count; j++) {
+                if (strcmp(s_cache_names[i], s_cache_names[j]) > 0) {
+                    char tmp[APP_LOADER_MAX_NAME_LEN];
+                    memcpy(tmp, s_cache_names[i], APP_LOADER_MAX_NAME_LEN);
+                    memcpy(s_cache_names[i], s_cache_names[j], APP_LOADER_MAX_NAME_LEN);
+                    memcpy(s_cache_names[j], tmp, APP_LOADER_MAX_NAME_LEN);
+                    memcpy(tmp, s_cache_display_names[i], APP_LOADER_MAX_NAME_LEN);
+                    memcpy(s_cache_display_names[i], s_cache_display_names[j], APP_LOADER_MAX_NAME_LEN);
+                    memcpy(s_cache_display_names[j], tmp, APP_LOADER_MAX_NAME_LEN);
+                }
+            }
+        }
         s_cache_valid = true;
         int64_t t1 = esp_timer_get_time();
         ESP_LOGI(TAG, "Scanned SD card: %d app(s) in %lld ms", s_cache_count, (t1 - t0) / 1000);
@@ -84,6 +102,11 @@ int app_loader_scan(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps) {
         snprintf(app_names[i], APP_LOADER_MAX_NAME_LEN, "%s", s_cache_names[i]);
     }
     return s_cache_count;
+}
+
+const char *app_loader_get_cached_display_name(int index) {
+    if (index < 0 || index >= s_cache_count) return "";
+    return s_cache_display_names[index];
 }
 
 bool app_loader_load(const char *app_name) {

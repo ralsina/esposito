@@ -163,9 +163,10 @@ void app_init(app_context_t *ctx) {
     text_mode_init();
 
     app_count = app_loader_scan(app_names, APP_LOADER_MAX_APPS);
-    sort_app_names();
     for (int i = 0; i < app_count; i++) {
-        app_manifest_get_display_name(app_names[i], app_display_names[i], 64);
+        const char *cached = app_loader_get_cached_display_name(i);
+        snprintf(app_display_names[i], sizeof(app_display_names[i]), "%s",
+                 (cached && cached[0]) ? cached : app_names[i]);
     }
 
     app_context_t *current = os_get_current_app();
