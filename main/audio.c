@@ -35,6 +35,16 @@ static inline int16_t apply_volume(int16_t sample) {
     return (int16_t)((int32_t)sample * audio_volume / 100);
 }
 
+// Enable the I2S channel (powers on the DAC). Called before playback.
+static esp_err_t audio_enable(void) {
+    return i2s_channel_enable(tx_handle);
+}
+
+// Disable the I2S channel (powers off the DAC). Called after playback ends.
+static void audio_disable(void) {
+    i2s_channel_disable(tx_handle);
+}
+
 // --- Public API ---
 
 bool audio_init(void) {
@@ -43,7 +53,7 @@ bool audio_init(void) {
     ESP_LOGI(TAG, "Initializing I2S audio (BCLK=%d LRCK=%d DOUT=%d)",
              BOARD_I2S_BCLK, BOARD_I2S_LRCK, BOARD_I2S_DOUT);
 
-    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(BOARD_I2S_NUM, I2S_ROLE_MASTER);
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = 6;
     chan_cfg.dma_frame_num = 240;
     chan_cfg.auto_clear = true;
@@ -61,8 +71,13 @@ bool audio_init(void) {
             .bclk = BOARD_I2S_BCLK,
             .ws   = BOARD_I2S_LRCK,
             .dout = BOARD_I2S_DOUT,
-            .din  = -1,
-            .mclk = -1,
+            .din  = I2S_GPIO_UNUSED,
+            .mclk = I2S_GPIO_UNUSED,
+            .invert_flags = {
+                .mclk_inv = false,
+                .bclk_inv = false,
+                .ws_inv   = false,
+            },
         },
     };
 
@@ -74,13 +89,8 @@ bool audio_init(void) {
         return false;
     }
 
-    ret = i2s_channel_enable(tx_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "i2s_channel_enable failed: %s", esp_err_to_name(ret));
-        i2s_del_channel(tx_handle);
-        tx_handle = NULL;
-        return false;
-    }
+    // Don't enable yet — enabling the channel powers on the DAC which causes
+    // an audible pop. We enable only during playback and disable after.
 
     if (!sine_table_ready) init_sine_table();
 
@@ -106,36 +116,59 @@ bool audio_is_available(void) {
 // --- Tone generation task ---
 
 static void beep_task(void *arg) {
-    int freq = (int)(intptr_t)arg;
-    int duration_ms = freq >> 16;
-    freq &= 0xFFFF;
+    int raw = (int)(intptr_t)arg;
+    int duration_ms = raw >> 16;
+    int freq = raw & 0xFFFF;
     if (freq < 1) freq = 440;
 
-    // Phase accumulator for sine table lookup
-    uint32_t phase = 0;
-    uint32_t phase_step = (uint32_t)(freq * 256ULL * 65536ULL / SAMPLE_RATE);
+    ESP_LOGI(TAG, "beep_task: freq=%d duration=%d playing=%d", freq, duration_ms, audio_playing);
 
-    // Write duration_ms worth of samples
+    audio_enable();
+
     int total_samples = SAMPLE_RATE * duration_ms / 1000;
-    int samples_written = 0;
+    // Short fade-in to avoid pop (10ms ramp from 0 to full volume)
+    int fade_samples = SAMPLE_RATE * 10 / 1000;
+    if (fade_samples > total_samples / 2) fade_samples = total_samples / 2;
 
-    // Buffer: 240 frames = 480 samples (16-bit stereo)
+    uint32_t phase = 0;
+    uint32_t phase_step = (uint32_t)((uint64_t)freq * 256ULL * 65536ULL / SAMPLE_RATE);
+
+    int samples_written = 0;
     int16_t buf[480];
     const int frames_per_write = 240;
 
     while (audio_playing && samples_written < total_samples) {
         for (int i = 0; i < frames_per_write; i++) {
             int16_t val = (int16_t)((int32_t)sine_table[phase >> 24] - 32768);
+            // Fade-in at start, fade-out at end
+            int remaining = total_samples - samples_written - i;
+            int envelope;
+            if (samples_written + i < fade_samples)
+                envelope = (samples_written + i) * 100 / fade_samples;
+            else if (remaining < fade_samples)
+                envelope = remaining * 100 / fade_samples;
+            else
+                envelope = 100;
+            val = (int16_t)((int32_t)val * envelope / 100);
             val = apply_volume(val);
-            buf[i * 2]     = val;  // Left
-            buf[i * 2 + 1] = val;  // Right
+            buf[i * 2]     = val;
+            buf[i * 2 + 1] = val;
             phase += phase_step;
         }
-        size_t bytes_written;
-        i2s_channel_write(tx_handle, buf, sizeof(buf), &bytes_written, portMAX_DELAY);
+        size_t bytes_written = 0;
+        esp_err_t wret = i2s_channel_write(tx_handle, buf, sizeof(buf), &bytes_written, 1000);
+        if (wret != ESP_OK) {
+            ESP_LOGE(TAG, "i2s_channel_write failed: %s", esp_err_to_name(wret));
+            break;
+        }
         samples_written += frames_per_write;
     }
 
+    // Drain the DMA buffer before disabling
+    vTaskDelay(pdMS_TO_TICKS(50));
+    audio_disable();
+
+    ESP_LOGI(TAG, "beep_task: done, wrote %d samples", samples_written);
     audio_playing = false;
     vTaskDelete(NULL);
 }
@@ -155,6 +188,8 @@ static const int16_t *play_buffer = NULL;
 static size_t play_count = 0;
 
 static void play_task(void *arg) {
+    audio_enable();
+
     size_t pos = 0;
     int16_t buf[480];
     const int frames_per_write = 240;
@@ -173,6 +208,9 @@ static void play_task(void *arg) {
         i2s_channel_write(tx_handle, buf, to_write * 4, &bytes_written, portMAX_DELAY);
         pos += to_write;
     }
+
+    vTaskDelay(pdMS_TO_TICKS(50));
+    audio_disable();
 
     audio_playing = false;
     vTaskDelete(NULL);
@@ -197,8 +235,8 @@ bool audio_play(const int16_t *samples, size_t sample_count) {
 
 void audio_stop(void) {
     audio_playing = false;
-    // Give the playback task time to see the flag and exit
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(60));
+    if (tx_handle) audio_disable();
 }
 
 bool audio_is_playing(void) {
