@@ -12,7 +12,7 @@ It loads after theme.css so you can override it.*/
             rgba(from var(--b16-base0D) r g b / 0.3),
             rgba(from var(--b16-base0D) r g b / 0.3)
         ),
-        url("/nicolino.jpg");
+        url("/reader2.png");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
