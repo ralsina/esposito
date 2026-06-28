@@ -13,6 +13,7 @@ static const char *TAG = "launcher";
 #define APP_LOADER_MAX_APPS 32
 
 extern int app_loader_scan(char (*app_names)[256], int max_apps);
+extern const char *app_loader_get_cached_display_name(int index);
 
 static int app_launcher_selected = 0;
 static int app_count = 0;
