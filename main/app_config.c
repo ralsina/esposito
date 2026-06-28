@@ -13,6 +13,8 @@
 
 static const char *TAG = "app_config";
 
+static char config_dirs_cached_app[64] = "";
+
 #define CONFIG_BASE_DIR "/sdcard/apps"
 #define CONFIG_MAX_PATH 512
 
@@ -74,6 +76,12 @@ bool config_bind_app(const char *app_name) {
     bound_app[sizeof(bound_app) - 1] = '\0';
     config_bound = true;
 
+    // Skip directory creation if we already verified it for this app.
+    // Directories are never deleted at runtime, so the cache is safe.
+    if (strcmp(bound_app, config_dirs_cached_app) == 0) {
+        return true;
+    }
+
     char app_dir[CONFIG_MAX_PATH];
     char cfg_dir[CONFIG_MAX_PATH];
 
@@ -92,6 +100,8 @@ bool config_bind_app(const char *app_name) {
         return false;
     }
 
+    strncpy(config_dirs_cached_app, bound_app, sizeof(config_dirs_cached_app) - 1);
+    config_dirs_cached_app[sizeof(config_dirs_cached_app) - 1] = '\0';
     return true;
 }
 
