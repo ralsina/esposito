@@ -48,8 +48,17 @@ static int scan_duration = 10;
 static esp_hidh_dev_t *connected_dev = NULL;
 static char connected_name[MAX_NAME_LEN] = "";
 
-// Semaphore to signal scan completion (for synchronous scan API).
-static SemaphoreHandle_t scan_done_sem = NULL;
+// Generation counter to signal scan completion (race-free).
+// scan_gen: incremented on each call to ble_keyboard_start_scan().
+// scan_started_gen: set when ESP_GAP_BLE_SCAN_START_COMPLETE_EVT fires
+//   (the generation that actually started scanning).
+// scan_done_gen: set by ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT to the
+//   scan_started_gen value, so delayed stop events from prior scans
+//   never falsely signal a newer scan generation.
+// Volatile because written from Bluetooth task, read from app task.
+static volatile int scan_gen = 0;
+static volatile int scan_started_gen = 0;
+static volatile int scan_done_gen = 0;
 
 // Previous keyboard report keys for detecting press/release transitions.
 // HID boot keyboard report: up to 6 simultaneous key codes.
@@ -246,7 +255,8 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
         case ESP_GAP_BLE_SCAN_START_COMPLETE_EVT: {
             if (param->scan_start_cmpl.status == ESP_OK) {
                 ble_scanning = true;
-                ESP_LOGI(TAG, "Scan started");
+                scan_started_gen = scan_gen; // Record the generation that started
+                ESP_LOGI(TAG, "Scan started (gen %d)", scan_started_gen);
             } else {
                 ESP_LOGE(TAG, "Scan start failed: %s", esp_err_to_name(param->scan_start_cmpl.status));
             }
@@ -333,10 +343,8 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
         }
         case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT: {
             ble_scanning = false;
-            ESP_LOGI(TAG, "Scan stopped (%d devices found)", scan_count);
-            if (scan_done_sem) {
-                xSemaphoreGive(scan_done_sem);
-            }
+            scan_done_gen = scan_started_gen; // Signal the generation that actually started
+            ESP_LOGI(TAG, "Scan stopped (gen %d, %d devices found)", scan_done_gen, scan_count);
             break;
         }
         default:
@@ -438,12 +446,29 @@ int ble_keyboard_start_scan(int duration_seconds) {
     scan_count = 0;
     scan_duration = duration_seconds > 0 ? duration_seconds : 10;
 
-    // Create semaphore if not already created
-    if (!scan_done_sem) {
-        scan_done_sem = xSemaphoreCreateBinary();
-    }
-    if (scan_done_sem) {
-        xSemaphoreTake(scan_done_sem, 0); // Clear any pending signal
+    // Bump generation so the eventual stop event is recognized as ours.
+    // IMPORTANT: reset scan_started_gen to our generation MINUS 1, so that
+    // a stale stop event from a previous scan (which carries the old
+    // scan_started_gen) does NOT match our my_gen.
+    int my_gen = ++scan_gen;
+    scan_started_gen = my_gen - 1; // Prevent stale stop events from matching
+
+    // If a scan from a prior call is still running, stop it first.
+    // This is critical because esp_ble_gap_set_scan_params fails if a scan
+    // is in progress, AND because a delayed stop event from a prior scan
+    // could corrupt scan_started_gen / scan_done_gen tracking.
+    if (ble_scanning) {
+        ESP_LOGW(TAG, "Stopping previous scan before starting new one...");
+        esp_ble_gap_stop_scanning();
+        TickType_t stop_deadline = xTaskGetTickCount() + pdMS_TO_TICKS(2000);
+        while (ble_scanning && xTaskGetTickCount() < stop_deadline) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (ble_scanning) {
+            ESP_LOGW(TAG, "Previous scan did not stop within 2s, proceeding anyway");
+        } else {
+            ESP_LOGI(TAG, "Previous scan stopped cleanly");
+        }
     }
 
     static esp_ble_scan_params_t scan_params = {
@@ -461,11 +486,22 @@ int ble_keyboard_start_scan(int duration_seconds) {
         return 0;
     }
 
-    // Wait for scan to complete (the scan duration is set in the GAP callback).
-    if (scan_done_sem) {
-        xSemaphoreTake(scan_done_sem, pdMS_TO_TICKS((duration_seconds + 2) * 1000));
+    // Wait for scan to complete (poll generation flag every 100ms).
+    // A stop event from a prior scan sets scan_done_gen to the old
+    // scan_started_gen (which is my_gen - 1), so it won't match.
+    // Only the stop event for THIS scan will set scan_done_gen to my_gen.
+    TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS((duration_seconds + 2) * 1000);
+    while (scan_done_gen < my_gen) {
+        if (xTaskGetTickCount() >= deadline) {
+            ESP_LOGW(TAG, "Scan timed out after %ds (gen %d, done %d)",
+                     duration_seconds + 2, my_gen, scan_done_gen);
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
+    ESP_LOGI(TAG, "ble_keyboard_start_scan returning %d (my_gen=%d, done_gen=%d)",
+             scan_count, my_gen, scan_done_gen);
     return scan_count;
 }
 

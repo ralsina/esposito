@@ -42,7 +42,9 @@ static int scan_selected = 0;
 static char scan_labels[20][48];
 static const char *scan_items[20];
 static ui2_list_t *scan_list;
+static ui2_layout_t *scan_toolbar;
 static bool is_ble_scan = false;
+static bool ble_scan_pending = false;
 
 static ui2_text_input_t *ssid_input;
 static ui2_text_input_t *password_input;
@@ -423,11 +425,65 @@ static void render(void);
 static void draw_main(void);
 static void build_tab_content(void);
 static void on_scan_activated(int item_index, void *user_data);
+static void on_scan_selection_changed(int item_index, void *user_data);
+static void draw_scan_results(void);
 
 static void on_exit_btn_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     os_exit();
+}
+
+static void on_scan_toolbar_up(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (scan_list) {
+        UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), 'w');
+        scan_selected = ui2_list_get_selection(scan_list);
+        render();
+    }
+}
+
+static void on_scan_toolbar_down(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (scan_list) {
+        UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), 's');
+        scan_selected = ui2_list_get_selection(scan_list);
+        render();
+    }
+}
+
+static void on_scan_toolbar_connect(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (scan_selected < 0 || scan_selected >= scan_count) return;
+
+    bool sel_is_connected = ble_keyboard_is_connected() &&
+                            ble_keyboard_get_connected_name()[0] != '\0' &&
+                            strcmp(ble_keyboard_get_scan_name(scan_selected),
+                                   ble_keyboard_get_connected_name()) == 0;
+    if (sel_is_connected) {
+        ble_keyboard_disconnect();
+        set_status("Disconnected");
+    } else {
+        set_status("Connecting...");
+        render();
+        text_mode_flush();
+        if (ble_keyboard_connect(scan_selected)) {
+            set_status("Connected");
+        } else {
+            set_status("Connection failed");
+        }
+    }
+    render();
+}
+
+static void on_scan_toolbar_back(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    state = STATE_MAIN;
+    render();
 }
 
 static void on_toolbar_up(ui2_button_t *button, void *user_data) {
@@ -666,37 +722,35 @@ static void execute_main_action(settings_action_t action) {
                 render();
                 break;
             }
-            set_status("Scanning for BLE keyboards...");
-            render();
-            text_mode_flush();
-            ble_keyboard_start_scan(10);
-            int ble_count = ble_keyboard_get_scan_count();
-            if (ble_count == 0) {
-                set_status("No BLE devices found");
-                render();
-                break;
-            }
-            scan_count = ble_count;
+
+            int cols = text_mode_get_cols();
+            int rows = text_mode_get_rows();
+
+            scan_count = 0;
             scan_selected = 0;
-            for (int i = 0; i < scan_count && i < 20; i++) {
-                const char *name = ble_keyboard_get_scan_name(i);
-                int rssi = ble_keyboard_get_scan_rssi(i);
-                snprintf(scan_labels[i], sizeof(scan_labels[i]), "%-24s %3ddBm", name, rssi);
-                scan_items[i] = scan_labels[i];
-            }
             if (scan_list) { UI2_WIDGET(scan_list)->vtable->destroy(UI2_WIDGET(scan_list)); scan_list = NULL; }
-            scan_list = ui2_list_create(1, 1, text_mode_get_cols() - 2, text_mode_get_rows() - 5);
+            scan_list = ui2_list_create(1, 1, cols - 2, rows - 6);
             ui2_list_set_title(scan_list, "BLE Keyboards");
             ui2_list_set_colors(scan_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
                                 TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
             ui2_list_set_border(scan_list, true);
             ui2_list_set_scrollbar_width(scan_list, 1);
-            ui2_list_set_callbacks(scan_list, NULL, on_scan_activated, NULL);
-            ui2_list_set_items(scan_list, scan_items, scan_count);
-            ui2_list_set_selection(scan_list, scan_selected);
+            ui2_list_set_callbacks(scan_list, on_scan_selection_changed, on_scan_activated, NULL);
+            ui2_list_set_items(scan_list, scan_items, 0);
+
+            if (scan_toolbar) { UI2_WIDGET(scan_toolbar)->vtable->destroy(UI2_WIDGET(scan_toolbar)); scan_toolbar = NULL; }
+            ui2_toolbar_item_t scan_tb_items[] = {
+                {ICON_ARROW_UP,   on_scan_toolbar_up,      NULL},
+                {ICON_ARROW_DOWN, on_scan_toolbar_down,    NULL},
+                {ICON_CHECK,      on_scan_toolbar_connect, NULL},
+                {ICON_X,          on_scan_toolbar_back,    NULL},
+            };
+            scan_toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, scan_tb_items, 4);
+
             state = STATE_SCAN_RESULTS;
             msg_timer = 0;
-            status_msg[0] = '\0';
+            snprintf(status_msg, sizeof(status_msg), "Scanning...");
+            ble_scan_pending = true;
             render();
             break;
         }
@@ -844,17 +898,32 @@ static void draw_main(void) {
 
 static void draw_scan_results(void) {
     text_mode_clear(TEXT_COLOR_BLACK);
-    if (scan_count <= 0) {
-        int cols = text_mode_get_cols();
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+
+    if (scan_count <= 0 && !is_ble_scan) {
         text_mode_print_at_attr_bg((cols - 19) / 2, 4, "No networks found",
                                    TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
-        text_mode_print_at_attr_bg((cols - 24) / 2, text_mode_get_rows() - 2, "Press any key to continue",
+        text_mode_print_at_attr_bg((cols - 24) / 2, rows - 2, "Press any key to continue",
                                    TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
-    } else if (scan_list) {
+        return;
+    }
+
+    if (scan_list)
         UI2_WIDGET(scan_list)->vtable->draw(UI2_WIDGET(scan_list));
-        int cols = text_mode_get_cols();
-        text_mode_print_at_attr_bg((cols - 22) / 2, text_mode_get_rows() - 2, "[ << Back ]",
+
+    if (is_ble_scan && scan_toolbar) {
+        UI2_WIDGET(scan_toolbar)->vtable->draw(UI2_WIDGET(scan_toolbar));
+    } else if (scan_count > 0) {
+        text_mode_print_at_attr_bg((cols - 22) / 2, rows - 2, "[ << Back ]",
                                    TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_BLUE, TEXT_ATTR_BOLD);
+    }
+
+    if (status_msg[0]) {
+        char status_buf[80];
+        truncate_text(status_msg, status_buf, sizeof(status_buf), cols - 1);
+        text_mode_print_at_attr_bg(0, rows - 1, status_buf,
+                                   TEXT_COLOR_BRIGHT_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
     }
 }
 
@@ -872,19 +941,17 @@ static void draw_message(void) {
                                TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 }
 
+static void on_scan_selection_changed(int item_index, void *user_data) {
+    (void)user_data;
+    scan_selected = item_index;
+}
+
 static void on_scan_activated(int item_index, void *user_data) {
     (void)user_data;
     if (item_index < 0 || item_index >= scan_count) return;
 
     if (is_ble_scan) {
-        set_status("Connecting...");
-        render();
-        text_mode_flush();
-        if (ble_keyboard_connect(item_index)) {
-            set_status("BLE keyboard connected");
-        } else {
-            set_status("BLE connection failed");
-        }
+        scan_selected = item_index;
         render();
         return;
     }
@@ -930,6 +997,13 @@ static void handle_text_input_confirm(void) {
 }
 
 static void handle_scan_key(char key) {
+    if (is_ble_scan) {
+        if (scan_list && UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), key)) {
+            scan_selected = ui2_list_get_selection(scan_list);
+            render();
+        }
+        return;
+    }
     if (scan_count <= 0) {
         state = STATE_MAIN;
         render();
@@ -1202,6 +1276,8 @@ void app_close(app_context_t *ctx) {
     destroy_list(&font_family_list);
     destroy_list(&font_size_list);
 
+    if (scan_toolbar) { UI2_WIDGET(scan_toolbar)->vtable->destroy(UI2_WIDGET(scan_toolbar)); scan_toolbar = NULL; }
+
     for (int s = 0; s < SECTION_COUNT; s++) {
         tab_content[s].list = NULL;
     }
@@ -1327,12 +1403,20 @@ void app_event(app_context_t *ctx, event_t *event) {
             }
             case STATE_SCAN_RESULTS: {
                 int rows = text_mode_get_rows();
-                if (scan_count <= 0 || y_col >= rows - 3) {
-                    // Bottom area or empty list = Back
-                    state = STATE_MAIN;
-                    render();
-                    break;
+
+                if (is_ble_scan && scan_toolbar) {
+                    if (UI2_WIDGET(scan_toolbar)->vtable->handle_touch(UI2_WIDGET(scan_toolbar), x_col, y_col, true)) {
+                        render();
+                        break;
+                    }
+                } else {
+                    if (scan_count <= 0 || y_col >= rows - 3) {
+                        state = STATE_MAIN;
+                        render();
+                        break;
+                    }
                 }
+
                 if (scan_list) {
                     app_state_t prev = state;
                     UI2_WIDGET(scan_list)->vtable->handle_touch(UI2_WIDGET(scan_list), x_col, y_col, true);
@@ -1405,6 +1489,29 @@ void app_event(app_context_t *ctx, event_t *event) {
                 break;
         }
     } else if (event->type == EVENT_TIMER) {
+        if (ble_scan_pending) {
+            ble_scan_pending = false;
+            ble_keyboard_start_scan(10);
+
+            msg_timer = 0;
+            int ble_count = ble_keyboard_get_scan_count();
+            scan_count = ble_count;
+            for (int i = 0; i < scan_count && i < 20; i++) {
+                const char *name = ble_keyboard_get_scan_name(i);
+                int rssi = ble_keyboard_get_scan_rssi(i);
+                snprintf(scan_labels[i], sizeof(scan_labels[i]), "%-24s %3ddBm", name, rssi);
+                scan_items[i] = scan_labels[i];
+            }
+            ui2_list_set_items(scan_list, scan_items, scan_count);
+            ui2_list_set_selection(scan_list, 0);
+
+            if (ble_count == 0) {
+                snprintf(status_msg, sizeof(status_msg), "No BLE devices found");
+            } else {
+                status_msg[0] = '\0';
+            }
+            render();
+        }
         if (msg_timer > 0) {
             msg_timer--;
             if (msg_timer == 0) {
