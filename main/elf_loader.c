@@ -8,6 +8,7 @@
 #include "esp_timer.h"
 #include "esp_partition.h"
 #include "esp_cache.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdio.h>
@@ -113,6 +114,63 @@ struct elf_handle {
     int section_count;
 };
 
+// --- ELF data source: PSRAM buffer (fast) or FILE (fallback) ---
+// When PSRAM is available, the entire ELF file is read into a buffer at
+// load time, eliminating hundreds of slow fseek+fread calls on the SD card.
+// On boards without PSRAM, falls back to file I/O.
+typedef struct {
+    uint8_t *data;   // PSRAM buffer, or NULL when using file I/O
+    size_t   size;
+    FILE    *fp;     // used when data == NULL
+} elf_reader_t;
+
+static bool elf_reader_read_at(elf_reader_t *r, long offset, void *buffer, size_t size) {
+    if (r->data) {
+        if ((size_t)offset + size > r->size) return false;
+        memcpy(buffer, r->data + offset, size);
+        return true;
+    }
+    if (fseek(r->fp, offset, SEEK_SET) != 0) return false;
+    return fread(buffer, 1, size, r->fp) == size;
+}
+
+// Create a reader that buffers the entire file in PSRAM if available.
+static elf_reader_t elf_reader_create(FILE *fp) {
+    elf_reader_t r = { .data = NULL, .size = 0, .fp = fp };
+    size_t psram_free = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+
+    fseek(fp, 0, SEEK_END);
+    long fsize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    ESP_LOGI(TAG, "ELF reader: psram_free=%u file_size=%ld", (unsigned)psram_free, fsize);
+
+    if (psram_free > 65536 && fsize > 0 && fsize < (long)psram_free) {
+        r.data = heap_caps_malloc(fsize, MALLOC_CAP_SPIRAM);
+        if (r.data) {
+            if (fread(r.data, 1, fsize, fp) == (size_t)fsize) {
+                r.size = fsize;
+                ESP_LOGI(TAG, "ELF buffered in PSRAM (%ld bytes)", fsize);
+            } else {
+                ESP_LOGW(TAG, "ELF PSRAM read failed, falling back to file I/O");
+                free(r.data);
+                r.data = NULL;
+                fseek(fp, 0, SEEK_SET);
+            }
+        } else {
+            ESP_LOGW(TAG, "ELF PSRAM malloc failed, falling back to file I/O");
+        }
+    }
+    return r;
+}
+
+static void elf_reader_destroy(elf_reader_t *r) {
+    if (r->data) {
+        free(r->data);
+        r->data = NULL;
+    }
+}
+
 static bool read_exact_at(FILE *fp, long offset, void *buffer, size_t size) {
     if (fseek(fp, offset, SEEK_SET) != 0) {
         return false;
@@ -141,7 +199,7 @@ static uint32_t elf_resolve_local_symbol(elf_handle_t *handle, const elf32_sym_t
 }
 
 static bool elf_alloc_data_bss(elf_handle_t *handle,
-                                FILE *fp,
+                                elf_reader_t *reader,
                                 const elf32_ehdr_t *ehdr,
                                 const elf32_shdr_t *shdrs) {
     handle->data_base = NULL;
@@ -182,7 +240,7 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
             if (!(sh->sh_flags & SHF_WRITE)) continue;
             if (sh->sh_type == SHT_NOBITS) continue;
 
-            if (!read_exact_at(fp, sh->sh_offset, (uint8_t *)handle->data_base + data_offset, sh->sh_size)) {
+            if (!elf_reader_read_at(reader, sh->sh_offset, (uint8_t *)handle->data_base + data_offset, sh->sh_size)) {
                 ESP_LOGE(TAG, "Failed to read .data section at offset 0x%lx", (unsigned long)sh->sh_offset);
                 return false;
             }
@@ -236,7 +294,7 @@ static bool elf_alloc_data_bss(elf_handle_t *handle,
 }
 
 static bool apply_relocations_for_target(elf_handle_t *handle,
-                                         FILE *fp,
+                                         elf_reader_t *reader,
                                          const elf32_ehdr_t *ehdr,
                                          const elf32_shdr_t *shdrs,
                                          const elf32_sym_t *symtab,
@@ -268,31 +326,32 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
 
         int num_rels = rel_sh->sh_size / rel_size;
 
+        // Batch-read the entire relocation section into memory.
+        // This eliminates num_rels individual fseek+fread calls on the SD card.
+        uint8_t *rel_buf = malloc(rel_sh->sh_size);
+        if (!rel_buf) {
+            ESP_LOGE(TAG, "Failed to allocate relocation buffer (%u bytes)", rel_sh->sh_size);
+            return false;
+        }
+        if (!elf_reader_read_at(reader, rel_sh->sh_offset, rel_buf, rel_sh->sh_size)) {
+            ESP_LOGE(TAG, "Failed to read relocation section at offset 0x%lx", (unsigned long)rel_sh->sh_offset);
+            free(rel_buf);
+            return false;
+        }
+
         for (int rel_index = 0; rel_index < num_rels; rel_index++) {
             uint32_t r_offset, r_info, r_sym, r_type;
             int32_t r_addend = 0;
 
             if (rel_sh->sh_type == SHT_RELA) {
-                elf32_rela_t rel;
-                long rel_off = (long)rel_sh->sh_offset + (long)rel_index * rel_size;
-                if (!read_exact_at(fp, rel_off, &rel, sizeof(rel))) {
-                    ESP_LOGE(TAG, "Failed to read RELA entry %d at offset 0x%lx",
-                             rel_index, (unsigned long)rel_off);
-                    return false;
-                }
-                r_offset = rel.r_offset;
-                r_info = rel.r_info;
-                r_addend = rel.r_addend;
+                elf32_rela_t *rel = (elf32_rela_t *)(rel_buf + (long)rel_index * rel_size);
+                r_offset = rel->r_offset;
+                r_info = rel->r_info;
+                r_addend = rel->r_addend;
             } else {
-                elf32_rel_t rel;
-                long rel_off = (long)rel_sh->sh_offset + (long)rel_index * rel_size;
-                if (!read_exact_at(fp, rel_off, &rel, sizeof(rel))) {
-                    ESP_LOGE(TAG, "Failed to read REL entry %d at offset 0x%lx",
-                             rel_index, (unsigned long)rel_off);
-                    return false;
-                }
-                r_offset = rel.r_offset;
-                r_info = rel.r_info;
+                elf32_rel_t *rel = (elf32_rel_t *)(rel_buf + (long)rel_index * rel_size);
+                r_offset = rel->r_offset;
+                r_info = rel->r_info;
             }
 
             r_sym = r_info >> 8;
@@ -332,6 +391,8 @@ static bool apply_relocations_for_target(elf_handle_t *handle,
             *patch_addr = new_val;
             (*patched_count)++;
         }
+
+        free(rel_buf);
     }
 
     return true;
@@ -405,6 +466,9 @@ elf_handle_t *elf_loader_load(const char *path) {
     int64_t t_fopen = esp_timer_get_time();
     ESP_LOGI(TAG, "  elf: fopen     %lld ms", (t_fopen - t_start) / 1000);
 
+    // Buffer the entire file in PSRAM if available (eliminates slow SD I/O).
+    elf_reader_t reader = elf_reader_create(fp);
+
     // All resources tracked here are freed either on the success path (returning handle)
     // or via the `fail:` label at the bottom. Initialize to NULL so cleanup is uniform.
     elf32_shdr_t *shdrs = NULL;
@@ -414,7 +478,7 @@ elf_handle_t *elf_loader_load(const char *path) {
     int sym_count = 0;
 
     elf32_ehdr_t ehdr_storage;
-    if (!read_exact_at(fp, 0, &ehdr_storage, sizeof(ehdr_storage))) {
+    if (!elf_reader_read_at(&reader, 0, &ehdr_storage, sizeof(ehdr_storage))) {
         ESP_LOGE(TAG, "Failed to read ELF header");
         goto fail;
     }
@@ -441,7 +505,7 @@ elf_handle_t *elf_loader_load(const char *path) {
         ESP_LOGE(TAG, "Failed to allocate section headers");
         goto fail;
     }
-    if (!read_exact_at(fp, ehdr->e_shoff, shdrs, sizeof(elf32_shdr_t) * ehdr->e_shnum)) {
+    if (!elf_reader_read_at(&reader, ehdr->e_shoff, shdrs, sizeof(elf32_shdr_t) * ehdr->e_shnum)) {
         ESP_LOGE(TAG, "Failed to read section headers");
         goto fail;
     }
@@ -480,8 +544,8 @@ elf_handle_t *elf_loader_load(const char *path) {
         ESP_LOGE(TAG, "Failed to allocate symbol/string tables");
         goto fail;
     }
-    if (!read_exact_at(fp, sym_sh->sh_offset, symtab, sym_sh->sh_size) ||
-        (str_sh && !read_exact_at(fp, str_sh->sh_offset, strtab, str_sh->sh_size))) {
+    if (!elf_reader_read_at(&reader, sym_sh->sh_offset, symtab, sym_sh->sh_size) ||
+        (str_sh && !elf_reader_read_at(&reader, str_sh->sh_offset, strtab, str_sh->sh_size))) {
         ESP_LOGE(TAG, "Failed to read symbol/string tables");
         goto fail;
     }
@@ -611,7 +675,7 @@ elf_handle_t *elf_loader_load(const char *path) {
 
 
     // Step 5: Allocate DRAM for data/bss NOW, so relocations can resolve their addresses
-    if (!elf_alloc_data_bss(handle, fp, ehdr, shdrs)) {
+    if (!elf_alloc_data_bss(handle, &reader, ehdr, shdrs)) {
         ESP_LOGE(TAG, "Failed to allocate data/bss");
         goto fail;
     }
@@ -641,14 +705,14 @@ elf_handle_t *elf_loader_load(const char *path) {
                 goto fail;
             }
 
-            if (!read_exact_at(fp, sh->sh_offset, section_buf, sh->sh_size)) {
+            if (!elf_reader_read_at(&reader, sh->sh_offset, section_buf, sh->sh_size)) {
                 ESP_LOGE(TAG, "Failed to read section data at offset 0x%lx", (unsigned long)sh->sh_offset);
                 app_free(section_buf);
                 goto fail;
             }
 
-            if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, sym_count, strtab,
-                                              section_index, section_buf, &total_patched)) {
+            if (!apply_relocations_for_target(handle, &reader, ehdr, shdrs, symtab, sym_count, strtab,
+                                               section_index, section_buf, &total_patched)) {
                 app_free(section_buf);
                 goto fail;
             }
@@ -685,7 +749,7 @@ elf_handle_t *elf_loader_load(const char *path) {
             continue;
         }
 
-        if (!apply_relocations_for_target(handle, fp, ehdr, shdrs, symtab, sym_count, strtab,
+        if (!apply_relocations_for_target(handle, &reader, ehdr, shdrs, symtab, sym_count, strtab,
                                           section_index, (void *)ls->load_addr, &total_patched)) {
             goto fail;
         }
@@ -715,6 +779,7 @@ elf_handle_t *elf_loader_load(const char *path) {
     app_free(symtab);
     app_free(shdrs);
     fclose(fp);
+    elf_reader_destroy(&reader);
     int64_t t_end = esp_timer_get_time();
     ESP_LOGI(TAG, "  elf: resolve+cleanup %lld ms", (t_end - t_reloc) / 1000);
     ESP_LOGI(TAG, "  elf: TOTAL %lld ms", (t_end - t_start) / 1000);
@@ -727,6 +792,7 @@ fail:
     app_free(shdrs);
     if (handle) elf_loader_unload(handle);
     fclose(fp);
+    elf_reader_destroy(&reader);
     return NULL;
 }
 
