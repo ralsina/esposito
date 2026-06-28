@@ -42,6 +42,7 @@ static int scan_count = 0;
 static bool ble_initialized = false;
 static bool ble_initializing = false;
 static bool ble_scanning = false;
+static bool reconnect_active = false;
 static int scan_duration = 10;
 
 static esp_hidh_dev_t *connected_dev = NULL;
@@ -53,6 +54,14 @@ static SemaphoreHandle_t scan_done_sem = NULL;
 // Previous keyboard report keys for detecting press/release transitions.
 // HID boot keyboard report: up to 6 simultaneous key codes.
 static uint8_t prev_keys[6] = {0};
+
+// Forward declarations
+static bool parse_addr_str(const char *str, esp_bd_addr_t out_bda, uint8_t *out_type);
+static void reconnect_task(void *arg);
+
+// Auto-reconnect settings keys
+#define BLE_DEVICE_KEY "ble/last_device"
+#define BLE_ADDR_STR_LEN 24
 
 // --- HID usage → keycode mapping ---
 
@@ -204,6 +213,19 @@ static void hidh_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
             }
             memset(prev_keys, 0, sizeof(prev_keys));
             connected_name[0] = '\0';
+            // Start auto-reconnect if we have a saved device and aren't already reconnecting
+            if (!reconnect_active && ble_initialized) {
+                char addr_str[BLE_ADDR_STR_LEN];
+                if (os_settings_get_string(BLE_DEVICE_KEY, "", addr_str, sizeof(addr_str)) > 0) {
+                    reconnect_active = true;
+#if CONFIG_FREERTOS_NUMBER_OF_CORES > 1
+                    xTaskCreatePinnedToCore(reconnect_task, "ble_reconn", 4096, NULL, 1, NULL, 1);
+#else
+                    xTaskCreatePinnedToCore(reconnect_task, "ble_reconn", 4096, NULL, 1, NULL, 0);
+#endif
+                    ESP_LOGI(TAG, "Auto-reconnect task started");
+                }
+            }
             break;
         }
         default:
@@ -511,9 +533,62 @@ const char *ble_keyboard_get_connected_name(void) {
 
 // --- Auto-reconnect persistence ---
 
+// Background task that retries connection to the saved keyboard every few
+// seconds. Stops when the keyboard connects or after ~5 minutes of trying.
+static void reconnect_task(void *arg) {
+    char addr_str[BLE_ADDR_STR_LEN];
+    size_t len = os_settings_get_string(BLE_DEVICE_KEY, "", addr_str, sizeof(addr_str));
+    if (len == 0 || addr_str[0] == '\0') {
+        ESP_LOGI(TAG, "Reconnect: no saved device");
+        reconnect_active = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    esp_bd_addr_t bda;
+    uint8_t addr_type;
+    if (!parse_addr_str(addr_str, bda, &addr_type)) {
+        ESP_LOGW(TAG, "Reconnect: failed to parse address %s", addr_str);
+        reconnect_active = false;
+        vTaskDelete(NULL);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Reconnect: watching for %s", addr_str);
+
+    // Try for ~5 minutes (60 attempts * 5s interval)
+    for (int attempt = 0; attempt < 60; attempt++) {
+        // Wait before each attempt (gives user time to power on keyboard)
+        vTaskDelay(pdMS_TO_TICKS(5000));
+
+        // Already connected? (e.g., user paired via settings)
+        if (connected_dev) {
+            ESP_LOGI(TAG, "Reconnect: already connected, stopping");
+            reconnect_active = false;
+            vTaskDelete(NULL);
+            return;
+        }
+
+        ESP_LOGI(TAG, "Reconnect attempt %d/60", attempt + 1);
+        esp_hidh_dev_t *dev = esp_hidh_dev_open(bda, ESP_HID_TRANSPORT_BLE, addr_type);
+        if (dev) {
+            // Wait for OPEN_EVENT to resolve
+            vTaskDelay(pdMS_TO_TICKS(3000));
+            if (connected_dev) {
+                ESP_LOGI(TAG, "Reconnect: success after %d attempts", attempt + 1);
+                reconnect_active = false;
+                vTaskDelete(NULL);
+                return;
+            }
+        }
+    }
+
+    ESP_LOGW(TAG, "Reconnect: gave up after 60 attempts");
+    reconnect_active = false;
+    vTaskDelete(NULL);
+}
+
 // Store format: "AA:BB:CC:DD:EE:FF,addr_type"
-#define BLE_DEVICE_KEY "ble/last_device"
-#define BLE_ADDR_STR_LEN 24
 
 void ble_keyboard_save_device(void) {
     if (!connected_dev) return;
