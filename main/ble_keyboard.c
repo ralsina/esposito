@@ -61,7 +61,7 @@ static uint8_t hid_usage_to_keycode(uint8_t usage) {
     if (usage >= 0x1E && usage <= 0x26) return '1' + (usage - 0x1E);
     if (usage == 0x27) return '0';
     if (usage == 0x28) return '\n';
-    if (usage == 0x29) return BT2I2C_KEY_ESC;
+    if (usage == 0x29) return 0x1b;  // Escape (ASCII ESC, matches BBQ20 behavior)
     if (usage == 0x2A) return 0x08;
     if (usage == 0x2B) return '\t';
     if (usage == 0x2C) return ' ';
