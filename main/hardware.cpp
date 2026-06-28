@@ -1,6 +1,7 @@
 #include "hardware.h"
 #include "hardware_config.h"
 #include "lovgfx_config.h"
+#include "ble_keyboard.h"
 #if BOARD_HAS_BBQ20_KEYBOARD
 #include "bbq20_keyboard.h"
 #endif
@@ -936,7 +937,7 @@ bool keyboard_init(void) {
 }
 
 bool keyboard_is_available(void) {
-    return keyboard_initialized;
+    return keyboard_initialized || ble_keyboard_is_connected();
 }
 
 void keyboard_deinit(void) {
