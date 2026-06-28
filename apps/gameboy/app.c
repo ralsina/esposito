@@ -1,13 +1,15 @@
-#define ENABLE_SOUND 0
+#define ENABLE_SOUND 1
 #define ENABLE_LCD 1
 
 #include <stdint.h>
 #include <stddef.h>
 
+#include "gb_apu.h"
 #include "walnut_cgb.h"
 
 #include "os_core.h"
 #include "hardware.h"
+#include "audio.h"
 #include "text_mode.h"
 #include "ui2.h"
 #include "ui2_toolbar.h"
@@ -57,6 +59,11 @@ static volatile int rendered_frame_count = 0;  // Frame counter incremented by d
 static volatile int total_frame_count = 0;     // Total frames attempted by emulator
 static volatile int skipped_frame_count = 0;    // Frames skipped by frame skip mechanism
 static uint8_t joypad_state = 0xFF;
+
+// Audio: double-buffered, 735 samples per frame (44100/60)
+#define AUDIO_SAMPLES_PER_FRAME (44100 / 60)
+static int16_t audio_buf[2][AUDIO_SAMPLES_PER_FRAME];
+static int audio_buf_idx = 0;
 
 #define GB_FPS 60
 #define GB_FRAME_US (1000000 / GB_FPS)
@@ -315,6 +322,8 @@ static bool load_state(void) {
 
 static void cleanup_emulator(void) {
     display_task_running = false;
+
+    audio_stop();
 
     if (display_task_handle) {
         os_task_delete(display_task_handle);
@@ -705,6 +714,9 @@ static bool start_emulator(const char *path) {
 
     gb_init_lcd(gb, gb_lcd_draw_line_cb);
 
+    gb_apu_reset();
+    audio_buf_idx = 0;
+
     // Enable frame skipping to maintain correct game speed at lower rendering FPS
     // This allows the game logic to run at 60 FPS even if we can only render 30-37 FPS
     gb->direct.frame_skip = true;
@@ -777,6 +789,14 @@ void app_event(app_context_t *ctx, event_t *event) {
             uint32_t c0 = get_ccount();
             for (int i = 0; i < frames_to_run; i++) {
                 gb_run_frame_dualfetch(gb);
+                // Generate audio samples for this frame
+                for (int s = 0; s < AUDIO_SAMPLES_PER_FRAME; s++) {
+                    audio_buf[audio_buf_idx][s] = gb_apu_step();
+                }
+                if (!audio_is_playing()) {
+                    audio_play(audio_buf[audio_buf_idx], AUDIO_SAMPLES_PER_FRAME);
+                }
+                audio_buf_idx ^= 1;
             }
             uint32_t c1 = get_ccount();
 
