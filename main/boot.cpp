@@ -21,6 +21,7 @@ extern "C" {
     #include "wifi.h"
     #include "ota_update.h"
     #include "ble_keyboard.h"
+    #include "audio.h"
 }
 
 extern "C" bool font_cache_init(void);
@@ -320,6 +321,14 @@ void boot_sequence(void) {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Touchscreen ready");
     } else {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "Touchscreen not available");
+    }
+
+    // Stage 4.9: Audio
+    boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting audio init");
+    if (audio_init()) {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Audio ready");
+    } else {
+        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "Audio not available");
     }
 
     // Stage 5: App loader

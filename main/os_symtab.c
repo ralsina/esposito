@@ -16,6 +16,7 @@
 #include "wifi.h"
 #include "ota_update.h"
 #include "ble_keyboard.h"
+#include "audio.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -112,6 +113,14 @@ static const os_symtab_entry_t symtab[] = {
     {"ble_keyboard_get_connected_name", ble_keyboard_get_connected_name},
     {"ble_keyboard_save_device",     ble_keyboard_save_device},
     {"ble_keyboard_reconnect",       ble_keyboard_reconnect},
+    // Audio
+    {"audio_is_available",      audio_is_available},
+    {"audio_beep",              audio_beep},
+    {"audio_play",              audio_play},
+    {"audio_stop",              audio_stop},
+    {"audio_is_playing",        audio_is_playing},
+    {"audio_set_volume",        audio_set_volume},
+    {"audio_get_volume",        audio_get_volume},
     {"appcfg_get_int",          appcfg_get_int},
     {"appcfg_get_string",       appcfg_get_string},
     {"config_delete",           config_delete},
