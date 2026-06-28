@@ -267,7 +267,15 @@ void os_set_current_app(app_context_t *app) {
 
 void os_unload_app(void) {
     if (current_app) {
-        // Clean up spawned tasks first!
+        // Let the app clean up its own resources (including tasks it created).
+        // This must happen BEFORE orphan cleanup and before ELF unload, so the
+        // app's close handler can still execute its code and properly shut down
+        // background tasks via os_task_delete().
+        if (current_app->close) {
+            current_app->close(current_app);
+        }
+
+        // Clean up any tasks the app forgot to delete.
         ESP_LOGI(TAG, "Cleaning up app tasks...");
         TaskHandle_t tasks_to_delete[MAX_TRACKED_TASKS];
         int num_tasks_to_delete = 0;
@@ -288,9 +296,6 @@ void os_unload_app(void) {
 
         os_log_global_heap_stats("before unload");
         app_heap_log_stats("before unload");
-        if (current_app->close) {
-            current_app->close(current_app);
-        }
         if (current_app->handle) {
             elf_loader_unload((elf_handle_t *)current_app->handle);
         }
