@@ -14,12 +14,24 @@
 
 static const char *TAG = "app_loader";
 
+static char s_cache_names[APP_LOADER_MAX_APPS][APP_LOADER_MAX_NAME_LEN];
+static int s_cache_count = 0;
+static bool s_cache_valid = false;
+
 bool app_loader_init(void) {
+    s_cache_valid = false;
+    s_cache_count = 0;
     ESP_LOGI(TAG, "App loader initialized");
     return true;
 }
 
-int app_loader_scan(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps) {
+void app_loader_invalidate_cache(void) {
+    s_cache_valid = false;
+    s_cache_count = 0;
+    ESP_LOGI(TAG, "App list cache invalidated");
+}
+
+static int scan_sd_card(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps) {
     int count = 0;
 
     if (sd_card_is_mounted()) {
@@ -52,8 +64,26 @@ int app_loader_scan(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps) {
         }
     }
 
-    ESP_LOGI(TAG, "Found %d app(s) on SD card", count);
     return count;
+}
+
+int app_loader_scan(char (*app_names)[APP_LOADER_MAX_NAME_LEN], int max_apps) {
+    if (!s_cache_valid) {
+        int64_t t0 = esp_timer_get_time();
+        s_cache_count = scan_sd_card(s_cache_names, APP_LOADER_MAX_APPS);
+        s_cache_valid = true;
+        int64_t t1 = esp_timer_get_time();
+        ESP_LOGI(TAG, "Scanned SD card: %d app(s) in %lld ms", s_cache_count, (t1 - t0) / 1000);
+    } else {
+        ESP_LOGI(TAG, "Using cached app list: %d app(s)", s_cache_count);
+    }
+
+    int copy_count = s_cache_count;
+    if (copy_count > max_apps) copy_count = max_apps;
+    for (int i = 0; i < copy_count; i++) {
+        snprintf(app_names[i], APP_LOADER_MAX_NAME_LEN, "%s", s_cache_names[i]);
+    }
+    return s_cache_count;
 }
 
 bool app_loader_load(const char *app_name) {

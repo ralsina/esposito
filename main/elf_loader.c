@@ -560,7 +560,7 @@ elf_handle_t *elf_loader_load(const char *path) {
     const char *name = strrchr(path, '/');
     strncpy(handle->name, name ? name + 1 : path, sizeof(handle->name) - 1);
 
-    // Step 1: Find and erase the app partition
+    // Step 1: Find the app partition
     handle->flash_part = esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
                                                    ESP_PARTITION_SUBTYPE_DATA_UNDEFINED,
                                                    APP_PARTITION_LABEL);
@@ -569,13 +569,7 @@ elf_handle_t *elf_loader_load(const char *path) {
         goto fail;
     }
 
-    esp_err_t ret = esp_partition_erase_range(handle->flash_part, 0, handle->flash_part->size);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to erase app partition: %s", esp_err_to_name(ret));
-        goto fail;
-    }
-
-    // Step 2: Calculate code/rodata sizes
+    // Step 2: Calculate code/rodata sizes (needed before erase)
     size_t code_size = 0, rodata_size = 0;
     for (int i = 0; i < ehdr->e_shnum; i++) {
         const elf32_shdr_t *sh = &shdrs[i];
@@ -587,6 +581,25 @@ elf_handle_t *elf_loader_load(const char *path) {
         } else {
             rodata_size += (sh->sh_size + 3) & ~3;
         }
+    }
+
+    // Erase only the flash region we'll actually write.
+    // On S3 (ELF_RODATA_IN_DRAM), only code goes to flash.
+    // On CYD, code + rodata both go to flash.
+    size_t flash_write_size = code_size;
+#if !ELF_RODATA_IN_DRAM
+    flash_write_size += rodata_size;
+#endif
+    // Round up to 4KB sector boundary
+    size_t erase_size = (flash_write_size + 0xFFF) & ~0xFFF;
+
+    int64_t t_erase0 = esp_timer_get_time();
+    esp_err_t ret = esp_partition_erase_range(handle->flash_part, 0, erase_size);
+    int64_t t_erase1 = esp_timer_get_time();
+    ESP_LOGI(TAG, "  elf: erase %d bytes %lld ms", (int)erase_size, (t_erase1 - t_erase0) / 1000);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to erase app partition: %s", esp_err_to_name(ret));
+        goto fail;
     }
 
     // Step 3: map code into IROM (instruction cache) for execution.

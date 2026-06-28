@@ -23,6 +23,8 @@
 
 #define INSTALLING_KEY "os/installing_id"
 
+extern void app_loader_invalidate_cache(void);
+
 typedef struct {
     char id[48];
     char name[64];
@@ -366,6 +368,7 @@ static void show_pending_install_result(void) {
                     fwrite(line, 1, n, f);
                     fclose(f);
                     printf("[appstore] Manifest written for %s\n", installing_id);
+                    app_loader_invalidate_cache();
                     config_delete("os/download_result");
                     ui2_screen_toast_show(screen, "Installed!", TEXT_COLOR_BLACK, TEXT_COLOR_GREEN, 6);
                     free(app);
@@ -488,6 +491,7 @@ static void do_uninstall(int index) {
     snprintf(app_path, sizeof(app_path), "%s/%s", SD_APPS_DIR, app_ids[index]);
     delete_dir_contents(app_path);
     remove(app_path);
+    app_loader_invalidate_cache();
 }
 
 static void go_back_to_catalog(void) {
