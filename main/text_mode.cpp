@@ -1223,3 +1223,7 @@ void text_mode_cell_to_pixel(int cell_x, int cell_y, int *pixel_x, int *pixel_y)
     *pixel_x = cell_x * font_width;
     *pixel_y = cell_y * font_height;
 }
+
+uint16_t text_mode_get_palette_color(uint8_t index) {
+    return color_palette[index & 0x0F];
+}

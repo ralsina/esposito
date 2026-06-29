@@ -187,6 +187,9 @@ void text_mode_pixel_to_cell(int pixel_x, int pixel_y, int *cell_x, int *cell_y)
 // Convert character grid coordinates to pixel coordinates
 void text_mode_cell_to_pixel(int cell_x, int cell_y, int *pixel_x, int *pixel_y);
 
+// Convert palette index to RGB565 color
+uint16_t text_mode_get_palette_color(uint8_t index);
+
 #ifdef __cplusplus
 }
 #endif

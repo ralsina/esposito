@@ -235,28 +235,31 @@ void display_clear(uint16_t color) {
 
 void display_draw_text(int x, int y, const char *text, uint16_t color) {
     if (!display_initialized) return;
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextColor(color, TFT_BLACK);
-    tft.drawString(text, x, y);
+    LovyanGFX *target = display_target();
+    target->setTextDatum(TL_DATUM);
+    target->setTextColor(color, TFT_BLACK);
+    target->drawString(text, x, y);
 }
 
 void display_draw_text_transparent(int x, int y, const char *text, uint16_t color) {
     if (!display_initialized) return;
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextColor(color);
-    tft.drawString(text, x, y);
+    LovyanGFX *target = display_target();
+    target->setTextDatum(TL_DATUM);
+    target->setTextColor(color);
+    target->drawString(text, x, y);
 }
 
 void display_draw_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg) {
     if (!display_initialized) return;
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextColor(fg, bg);
-    tft.drawString(text, x, y);
+    LovyanGFX *target = display_target();
+    target->setTextDatum(TL_DATUM);
+    target->setTextColor(fg, bg);
+    target->drawString(text, x, y);
 }
 
 void display_draw_pixel(int x, int y, uint16_t color) {
     if (!display_initialized) return;
-    tft.drawPixel(x, y, color);
+    display_target()->drawPixel(x, y, color);
 }
 
 void display_fill_rect(int x, int y, int width, int height, uint16_t color) {
@@ -504,11 +507,21 @@ void display_measure_scaled_text(const char *text, int scale, int *width, int *h
 void display_draw_scaled_text_bg(int x, int y, const char *text, uint16_t fg, uint16_t bg, int scale) {
     if (!display_initialized || !text || scale <= 0) return;
 
-    tft.setTextSize(scale);
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextColor(fg, bg);
-    tft.drawString(text, x, y);
-    tft.setTextSize(1);
+    LovyanGFX *target = display_target();
+    target->setTextSize(scale);
+    target->setTextDatum(TL_DATUM);
+    target->setTextColor(fg, bg);
+    target->drawString(text, x, y);
+    target->setTextSize(1);
+}
+
+void display_draw_text_centered(int cx, int cy, const char *text, uint16_t fg, uint16_t bg) {
+    if (!display_initialized || !text) return;
+    LovyanGFX *target = display_target();
+    target->setTextSize(1);
+    target->setTextDatum(CC_DATUM);
+    target->setTextColor(fg, bg);
+    target->drawString(text, cx, cy);
 }
 
 void display_draw_char_at(int x, int y, char ch, uint16_t fg_color, uint16_t bg_color) {

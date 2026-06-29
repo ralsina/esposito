@@ -1,4 +1,6 @@
 #include "ui2_progressbar.h"
+#include "ui2_graphical.h"
+#include "hardware.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -6,6 +8,46 @@
 static void ui2_progressbar_draw(ui2_widget_t *widget) {
     ui2_progressbar_t *bar = (ui2_progressbar_t *)widget;
     if (!widget->visible) return;
+
+    if (ui2_is_graphical()) {
+        int px = ui2_graphical_px(widget->x);
+        int pw = ui2_graphical_pw(widget->width);
+        int ch = text_mode_get_char_height();
+        int py = ui2_graphical_py(widget->y);
+
+        int filled = 0;
+        if (bar->max_value > 0)
+            filled = (bar->value * pw) / bar->max_value;
+        if (filled < 0) filled = 0;
+        if (filled > pw) filled = pw;
+
+        int bar_h = ch / 2;
+        int bar_y = py + (ch - bar_h) / 2;
+        uint16_t bg = ui2_graphical_color(bar->bg_color);
+        uint16_t fg = ui2_graphical_color(bar->fg_color);
+        uint16_t border = ui2_graphical_color(bar->border_color);
+
+        display_fill_rect(px, bar_y, pw, bar_h, bg);
+        if (filled > 0)
+            display_fill_rect(px, bar_y, filled, bar_h, fg);
+        display_draw_pixel(px, bar_y, border);
+        display_draw_pixel(px, bar_y + bar_h - 1, border);
+        display_draw_pixel(px + pw - 1, bar_y, border);
+        display_draw_pixel(px + pw - 1, bar_y + bar_h - 1, border);
+
+        if (bar->show_percent && bar->max_value > 0) {
+            int pct = (bar->value * 100) / bar->max_value;
+            char pct_str[8];
+            snprintf(pct_str, sizeof(pct_str), "%d%%", pct);
+            int tw = 0, th = 0;
+            display_measure_scaled_text(pct_str, 1, &tw, &th);
+            int text_px = px + (pw - tw) / 2;
+            int text_py = py + (ch - th) / 2;
+            if (text_px < px) text_px = px + 2;
+            display_draw_text_bg(text_px, text_py, pct_str, border, 0x0000);
+        }
+        return;
+    }
 
     int filled = 0;
     if (bar->max_value > 0)

@@ -1,6 +1,9 @@
 #include "ui2_list.h"
+#include "ui2_graphical.h"
+#include "hardware.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 static void adjust_scroll(ui2_list_t *list) {
     if (list->count <= 0) {
@@ -29,6 +32,120 @@ static uint8_t border_attr_for_cell(int local_x, int local_y, int width, int hei
 static void ui2_list_draw(ui2_widget_t *widget) {
     ui2_list_t *list = (ui2_list_t *)widget;
     if (!widget->visible) return;
+
+    if (ui2_is_graphical()) {
+        int px = ui2_graphical_px(widget->x);
+        int py = ui2_graphical_py(widget->y);
+        int pw = ui2_graphical_pw(widget->width);
+        int ph = ui2_graphical_ph(widget->height);
+        int cw = text_mode_get_char_width();
+        int ch = text_mode_get_char_height();
+        uint16_t normal_bg = ui2_graphical_color(list->normal_bg);
+        uint16_t normal_fg = ui2_graphical_color(list->normal_fg);
+        uint16_t sel_bg = ui2_graphical_color(list->selected_bg);
+        uint16_t sel_fg = ui2_graphical_color(list->selected_fg);
+        uint16_t border_col = ui2_graphical_color(list->border_fg);
+
+        int scrollbar_width = (list->count > list->visible_rows) ? list->scrollbar_width : 0;
+
+        if (list->border) {
+            display_fill_rect(px, py, pw, ph, normal_bg);
+            for (int dx = 0; dx < pw; dx++) {
+                display_draw_pixel(px + dx, py, border_col);
+                display_draw_pixel(px + dx, py + ph - 1, border_col);
+            }
+            for (int dy = 0; dy < ph; dy++) {
+                display_draw_pixel(px, py + dy, border_col);
+                if (scrollbar_width == 0)
+                    display_draw_pixel(px + pw - 1, py + dy, border_col);
+            }
+        } else {
+            display_fill_rect(px, py, pw, ph, normal_bg);
+        }
+
+        int content_py = py;
+        int content_pw = pw - scrollbar_width * cw;
+
+        if (list->title) {
+            int title_len = strlen(list->title);
+            int title_px = px + (content_pw - title_len * cw) / 2;
+            if (title_px < px) title_px = px;
+            display_draw_text(title_px, content_py, list->title, 0xFFFF);
+            content_py += ch;
+        }
+
+        int last_content_py = py + ph - (list->border ? ch : 0);
+        int drawn_rows = 0;
+
+        if (list->items && list->count > 0) {
+            for (int i = 0; i < list->visible_rows && (list->scroll_offset + i) < list->count; i++) {
+                int index = list->scroll_offset + i;
+                int row_py = content_py + i * ch;
+                drawn_rows++;
+
+                if (row_py >= py + ph) break;
+
+                bool is_selected = (index == list->selected);
+                uint16_t row_bg = is_selected ? sel_bg : normal_bg;
+                uint16_t row_fg = is_selected ? sel_fg : normal_fg;
+
+                if (list->border) {
+                    display_fill_rect(px + 1, row_py, content_pw - 1, ch, row_bg);
+                } else {
+                    display_fill_rect(px, row_py, content_pw, ch, row_bg);
+                }
+
+                if (list->items[index]) {
+                    char truncated[64];
+                    strncpy(truncated, list->items[index], sizeof(truncated) - 1);
+                    truncated[sizeof(truncated) - 1] = '\0';
+
+                    int max_text = content_pw / cw - 3;
+                    if (max_text < 0) max_text = 0;
+                    if ((int)strlen(truncated) > max_text)
+                        truncated[max_text] = '\0';
+
+                    char buf[72];
+                    snprintf(buf, sizeof(buf), "%c %s", is_selected ? '>' : ' ', truncated);
+                    int text_px = px + (list->border ? 1 : 0);
+                    display_draw_text(text_px, row_py, buf, row_fg);
+                }
+            }
+        }
+
+        // Clear remaining rows
+        for (int y = content_py + drawn_rows * ch; y < last_content_py; y += ch) {
+            display_fill_rect(px + (list->border ? 1 : 0), y,
+                              content_pw, ch, normal_bg);
+        }
+
+        // Scrollbar
+        if (scrollbar_width > 0) {
+            int sb_px = px + pw - cw;
+            int sb_rows = list->visible_rows;
+            int thumb_size = (sb_rows * sb_rows) / list->count;
+            if (thumb_size < 1) thumb_size = 1;
+            if (thumb_size > sb_rows) thumb_size = sb_rows;
+
+            int max_offset = list->count - list->visible_rows;
+            int thumb_start = 0;
+            if (max_offset > 0)
+                thumb_start = (list->scroll_offset * (sb_rows - thumb_size)) / max_offset;
+            if (thumb_start > sb_rows - thumb_size)
+                thumb_start = sb_rows - thumb_size;
+
+            for (int i = 0; i < sb_rows; i++) {
+                int sb_py = content_py + i * ch;
+                if (i >= thumb_start && i < thumb_start + thumb_size) {
+                    display_fill_rect(sb_px, sb_py, cw, ch, sel_bg);
+                } else {
+                    display_fill_rect(sb_px, sb_py, cw, ch, normal_bg);
+                    display_draw_pixel(sb_px, sb_py, border_col);
+                }
+            }
+        }
+        return;
+    }
 
     int scrollbar_width = (list->count > list->visible_rows) ? list->scrollbar_width : 0;
 

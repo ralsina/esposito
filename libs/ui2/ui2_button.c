@@ -1,4 +1,6 @@
 #include "ui2_button.h"
+#include "ui2_graphical.h"
+#include "hardware.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +8,27 @@
 static void ui2_button_draw(ui2_widget_t *widget) {
     ui2_button_t *btn = (ui2_button_t *)widget;
     if (!widget->visible) return;
+
+    if (ui2_is_graphical()) {
+        int px = ui2_graphical_px(widget->x);
+        int py = ui2_graphical_py(widget->y);
+        int pw = ui2_graphical_pw(widget->width);
+        int ph = ui2_graphical_ph(widget->height);
+        uint16_t bg = ui2_graphical_color(btn->bg_color);
+        uint16_t fg = ui2_graphical_color(btn->fg_color);
+
+        int r = 2;
+        if (pw < 6 || ph < 6) r = 1;
+        uint16_t border = ui2_lighten_color(bg);
+        ui2_draw_rounded_rect(px, py, pw, ph, r, bg, border);
+
+        if (btn->text) {
+            int cx = px + pw / 2;
+            int cy = py + ph / 2;
+            display_draw_text_centered(cx, cy, btn->text, fg, bg);
+        }
+        return;
+    }
 
     for (int dy = 0; dy < widget->height; dy++) {
         for (int dx = 0; dx < widget->width; dx++) {

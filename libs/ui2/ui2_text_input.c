@@ -1,4 +1,6 @@
 #include "ui2_text_input.h"
+#include "ui2_graphical.h"
+#include "hardware.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,6 +11,65 @@
 static void ui2_text_input_draw(ui2_widget_t *widget) {
     ui2_text_input_t *input = (ui2_text_input_t *)widget;
     if (!widget->visible || !input->buffer) return;
+
+    if (ui2_is_graphical()) {
+        int px = ui2_graphical_px(widget->x);
+        int py = ui2_graphical_py(widget->y);
+        int pw = ui2_graphical_pw(widget->width);
+        int ph = ui2_graphical_ph(widget->height);
+        int ch = text_mode_get_char_height();
+        uint16_t label_fg = ui2_graphical_color(input->label_fg);
+        uint16_t label_bg = ui2_graphical_color(input->label_bg);
+        uint16_t title_fg = ui2_graphical_color(input->title_fg);
+        uint16_t text_fg = ui2_graphical_color(input->text_fg);
+        uint16_t hint_fg = ui2_graphical_color(input->hint_fg);
+
+        display_fill_rect(px, py, pw, ph, label_bg);
+
+        int current_py = py;
+
+        if (input->title) {
+            int tlen = strlen(input->title);
+            int tx = px + (pw - tlen * text_mode_get_char_width()) / 2;
+            if (tx < px) tx = px;
+            display_draw_text(tx, current_py, input->title, title_fg);
+            current_py += ch;
+        }
+
+        if (input->label) {
+            display_draw_text(px, current_py, input->label, label_fg);
+            int label_px = px + strlen(input->label) * text_mode_get_char_width() + 2;
+
+            char shown[72];
+            const char *source = input->buffer;
+            size_t src_len = strlen(source);
+            size_t copy_len = src_len;
+            if (copy_len > sizeof(shown) - 3) copy_len = sizeof(shown) - 3;
+
+            if (input->mask_input) {
+                for (size_t i = 0; i < copy_len; i++) shown[i] = '*';
+            } else {
+                memcpy(shown, source, copy_len);
+            }
+            shown[copy_len] = '_';
+            shown[copy_len + 1] = '\0';
+
+            display_draw_text(label_px, current_py, shown, text_fg);
+            current_py += ch;
+        }
+
+        const char *hint_left = input->hint_left ? input->hint_left : "Enter to confirm";
+        const char *hint_right = input->hint_right ? input->hint_right : "ESC cancel";
+
+        display_draw_text(px, current_py, hint_left, hint_fg);
+        if (hint_right && hint_right[0]) {
+            int rlen = strlen(hint_right);
+            int rx = px + pw - rlen * text_mode_get_char_width() - 2;
+            if (rx > px)
+                display_draw_text(rx, current_py, hint_right, hint_fg);
+        }
+        return;
+    }
 
     int x = widget->x, y = widget->y, width = widget->width, height = widget->height;
 

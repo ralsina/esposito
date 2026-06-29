@@ -1,4 +1,6 @@
 #include "ui2_label.h"
+#include "ui2_graphical.h"
+#include "hardware.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,11 +8,19 @@
 static void ui2_label_draw(ui2_widget_t *widget) {
     ui2_label_t *label = (ui2_label_t *)widget;
     if (!widget->visible || !label->text) return;
-    
+
+    if (ui2_is_graphical()) {
+        int px = ui2_graphical_px(widget->x);
+        int py = ui2_graphical_py(widget->y);
+        uint16_t fg = ui2_graphical_color(label->color);
+        display_draw_text(px, py, label->text, fg);
+        return;
+    }
+
     for (int cx = 0; cx < widget->width; cx++) {
         text_mode_print_at_attr_bg(widget->x + cx, widget->y, " ", TEXT_COLOR_BLACK, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
     }
-    
+
     text_mode_print_at_attr_bg(widget->x, widget->y, label->text, label->color, TEXT_COLOR_BLACK, label->attr);
 }
 

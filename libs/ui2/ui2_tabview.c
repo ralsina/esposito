@@ -1,4 +1,6 @@
 #include "ui2_tabview.h"
+#include "ui2_graphical.h"
+#include "hardware.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,6 +23,64 @@ static void ui2_tabview_position_content(ui2_tabview_t *tv) {
 static void ui2_tabview_draw(ui2_widget_t *widget) {
     ui2_tabview_t *tv = (ui2_tabview_t *)widget;
     if (!widget->visible) return;
+
+    if (ui2_is_graphical()) {
+        int px = ui2_graphical_px(widget->x);
+        int py = ui2_graphical_py(widget->y);
+        int pw = ui2_graphical_pw(widget->width);
+        int ph = ui2_graphical_ph(widget->height);
+        int ch = text_mode_get_char_height();
+        int cw = text_mode_get_char_width();
+        int lw = tv->left_width * cw;
+
+        display_fill_rect(px, py, pw, ph, 0x0000);
+
+        for (int row = 0; row < widget->height && row < tv->tab_count; row++) {
+            int row_py = py + row * ch;
+            bool is_sel = (row == tv->selected_index);
+
+            uint16_t fg, bg;
+            if (is_sel && tv->focus_on_tabs) {
+                fg = 0x0000; bg = 0x07E0;
+            } else if (is_sel) {
+                fg = 0x0000; bg = 0x0400;
+            } else {
+                fg = 0xFFFF; bg = 0x0000;
+            }
+
+            display_fill_rect(px, row_py, lw, ch, bg);
+
+            if (tv->tab_titles[row]) {
+                char label[UI2_TAB_MAX_TITLE];
+                strncpy(label, tv->tab_titles[row], UI2_TAB_MAX_TITLE - 1);
+                label[UI2_TAB_MAX_TITLE - 1] = '\0';
+                int max_cw = tv->left_width - 2;
+                if (max_cw < 0) max_cw = 0;
+                if ((int)strlen(label) > max_cw)
+                    label[max_cw] = '\0';
+                display_draw_text(px + cw, row_py, label, fg);
+            }
+        }
+
+        // Divider line between tab strip and content
+        for (int row = 0; row < widget->height; row++) {
+            int row_py = py + row * ch;
+            display_draw_pixel(px + lw, row_py, 0x8410);
+        }
+
+        // Draw tab content children
+        for (int i = 0; i < widget->child_count; i++) {
+            if (widget->children[i]->visible)
+                widget->children[i]->vtable->draw(widget->children[i]);
+        }
+
+        // Bottom border
+        int bottom_py = py + ph - 1;
+        for (int col_px = 0; col_px < pw; col_px++) {
+            display_draw_pixel(px + col_px, bottom_py, 0x8410);
+        }
+        return;
+    }
 
     int x0 = widget->x, y0 = widget->y;
 

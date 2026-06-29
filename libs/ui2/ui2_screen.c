@@ -1,5 +1,7 @@
 #include "ui2_screen.h"
+#include "ui2_graphical.h"
 #include "text_mode.h"
+#include "hardware.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -243,22 +245,43 @@ bool ui2_screen_toast_active(ui2_screen_t *screen) {
 
 void ui2_screen_render(ui2_screen_t *screen) {
     if (!screen || !screen->root) return;
-    if (screen->dirty) {
+
+    if (ui2_is_graphical()) {
+        int w = display_get_width();
+        int h = display_get_height();
+        display_fill_rect(0, 0, w, h, 0x0000);
+    } else if (screen->dirty) {
         text_mode_clear(TEXT_COLOR_BLACK);
         screen->dirty = false;
     }
+
     ui2_widget_t *root_w = UI2_WIDGET(screen->root);
     root_w->vtable->draw(root_w);
 
     if (screen->toast_ticks > 0 && screen->toast_msg[0]) {
-        int cols = text_mode_get_cols();
-        int msglen = strlen(screen->toast_msg);
-        int x = (cols - msglen) / 2;
-        if (x < 0) x = 0;
-        for (int cx = 0; cx < cols; cx++) {
-            text_mode_print_at_attr_bg(cx, 0, " ", screen->toast_fg, screen->toast_bg, TEXT_ATTR_NORMAL);
+        if (ui2_is_graphical()) {
+            int w = display_get_width();
+            int h = display_get_height();
+            int cw = text_mode_get_char_width();
+            int ch = text_mode_get_char_height();
+            int msglen = strlen(screen->toast_msg);
+            int pw = msglen * cw;
+            int px = (w - pw) / 2;
+            if (px < 0) px = 0;
+            uint16_t bg = ui2_graphical_color(screen->toast_bg);
+            uint16_t fg = ui2_graphical_color(screen->toast_fg);
+            display_fill_rect(0, 0, w, ch, bg);
+            display_draw_text(px, 0, screen->toast_msg, fg);
+        } else {
+            int cols = text_mode_get_cols();
+            int msglen = strlen(screen->toast_msg);
+            int x = (cols - msglen) / 2;
+            if (x < 0) x = 0;
+            for (int cx = 0; cx < cols; cx++) {
+                text_mode_print_at_attr_bg(cx, 0, " ", screen->toast_fg, screen->toast_bg, TEXT_ATTR_NORMAL);
+            }
+            text_mode_print_at_attr_bg(x, 0, screen->toast_msg, screen->toast_fg, screen->toast_bg, TEXT_ATTR_BOLD);
         }
-        text_mode_print_at_attr_bg(x, 0, screen->toast_msg, screen->toast_fg, screen->toast_bg, TEXT_ATTR_BOLD);
     }
 
     text_mode_flush();
