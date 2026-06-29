@@ -103,6 +103,7 @@ extern "C" {
 // Event processing
 void os_post_event(event_t *event);
 void os_process_one_event_iteration(void);
+int os_start_task(void (*task_fn)(void), const char *name, int stack_depth, int priority);
 
 void os_log(const char *tag, const char *fmt, ...);
 void os_log_global_heap_stats(const char *label);

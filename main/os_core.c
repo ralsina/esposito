@@ -1006,6 +1006,17 @@ void os_post_event(event_t *event) {
     event_queue_push(event);
 }
 
+static void os_task_trampoline(void *arg) {
+    void (*task_fn)(void) = (void (*)(void))arg;
+    task_fn();
+    vTaskDelete(NULL);
+}
+
+int os_start_task(void (*task_fn)(void), const char *name, int stack_depth, int priority) {
+    TaskHandle_t handle = NULL;
+    return (xTaskCreate(os_task_trampoline, name, (uint16_t)stack_depth, (void *)task_fn, (UBaseType_t)priority, &handle) == pdPASS) ? 1 : 0;
+}
+
 // Process one iteration of event sources (timer, keyboard, etc.)
 // and dispatch one queued event if available.
 // Called by delay() to allow event processing during tight loops.

@@ -38,6 +38,21 @@ bool audio_is_playing(void);
 void audio_set_volume(int volume);
 int audio_get_volume(void);
 
+// --- Streaming API for continuous playback (e.g., file decoding) ---
+// These bypass the one-shot audio_play() and give direct I2S access.
+
+// Enable I2S DAC for streaming. Returns false if busy or unavailable.
+bool audio_stream_start(void);
+
+// Write interleaved stereo 16-bit frames at 44100 Hz to the DAC.
+// Blocks until the DMA buffer accepts the data.
+// frame_count: number of stereo frames (each = 2 x int16_t)
+// Returns false if stream was stopped.
+bool audio_stream_write(const int16_t *stereo_frames, size_t frame_count);
+
+// Drain remaining DMA data and disable I2S DAC.
+void audio_stream_stop(void);
+
 #ifdef __cplusplus
 }
 #endif

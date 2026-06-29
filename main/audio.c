@@ -253,6 +253,46 @@ int audio_get_volume(void) {
     return audio_volume;
 }
 
+// --- Streaming API ---
+
+bool audio_stream_start(void) {
+    if (!audio_initialized || audio_playing) return false;
+    audio_playing = true;
+    audio_enable();
+    return true;
+}
+
+bool audio_stream_write(const int16_t *stereo_frames, size_t frame_count) {
+    if (!audio_initialized || !audio_playing) return false;
+
+    int16_t buf[512];
+    const size_t max_frames = sizeof(buf) / 4;
+    size_t pos = 0;
+
+    while (pos < frame_count && audio_playing) {
+        size_t chunk = frame_count - pos;
+        if (chunk > max_frames) chunk = max_frames;
+
+        for (size_t i = 0; i < chunk; i++) {
+            buf[i * 2]     = apply_volume(stereo_frames[(pos + i) * 2]);
+            buf[i * 2 + 1] = apply_volume(stereo_frames[(pos + i) * 2 + 1]);
+        }
+
+        size_t bytes_written;
+        esp_err_t ret = i2s_channel_write(tx_handle, buf, chunk * 4, &bytes_written, portMAX_DELAY);
+        if (ret != ESP_OK) return false;
+        pos += chunk;
+    }
+    return true;
+}
+
+void audio_stream_stop(void) {
+    if (!audio_initialized) return;
+    vTaskDelay(pdMS_TO_TICKS(50));
+    audio_disable();
+    audio_playing = false;
+}
+
 #else
 
 // Stubs for boards without audio hardware.
@@ -265,5 +305,9 @@ void audio_stop(void) {}
 bool audio_is_playing(void) { return false; }
 void audio_set_volume(int volume) { (void)volume; }
 int audio_get_volume(void) { return 0; }
+
+bool audio_stream_start(void) { return false; }
+bool audio_stream_write(const int16_t *stereo_frames, size_t frame_count) { (void)stereo_frames; (void)frame_count; return false; }
+void audio_stream_stop(void) {}
 
 #endif // BOARD_HAS_AUDIO
