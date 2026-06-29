@@ -253,7 +253,6 @@ def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
     lucide_face = None
     if LUCIDE_FONT.exists():
         lucide_face = freetype.Face(str(LUCIDE_FONT))
-        lucide_face.set_pixel_sizes(0, pixel_size)
 
     glyphs = []
 
@@ -265,6 +264,33 @@ def generate_vlw(ttf_path: str, pixel_size: int) -> bytes:
     # Compute modal advance for synthetic glyphs
     face.load_char("0", freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_LIGHT)
     modal_advance = face.glyph.advance.x >> 6
+
+    # Find best lucide size: largest where all icon glyphs fit within modal_advance
+    if lucide_face:
+        best_lucide = pixel_size
+        while best_lucide >= 4:
+            lucide_face.set_pixel_sizes(0, best_lucide)
+            max_gw = 0
+            fits = True
+            for cp in LUCIDE_CODEPOINTS:
+                if lucide_face.get_char_index(cp) == 0:
+                    continue
+                lucide_face.load_char(chr(cp), freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_LIGHT | freetype.FT_LOAD_FORCE_AUTOHINT)
+                gw = lucide_face.glyph.bitmap.width
+                if gw > max_gw:
+                    max_gw = gw
+                if gw > modal_advance:
+                    fits = False
+                    break
+            if fits:
+                print(f"  Lucide at {best_lucide}px (max width {max_gw}, cell {modal_advance})")
+                break
+            best_lucide -= 1
+        if best_lucide < 4:
+            best_lucide = 4
+            lucide_face.set_pixel_sizes(0, best_lucide)
+            print(f"  Lucide at 4px (still too wide, will scale)")
+        lucide_face.set_pixel_sizes(0, best_lucide)
 
     for codepoint in CHARSET:
         glyph = render_codepoint(face, codepoint)
