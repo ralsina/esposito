@@ -173,8 +173,8 @@ static void draw_status_bar(terminal_mode_impl_t *impl) {
     impl->status_last[sizeof(impl->status_last) - 1] = '\0';
     impl->status_dirty = 0;
 
-    // Draw status bar on the last visible row.
-    int row = impl->vt.rows - 1;
+    // Draw status bar on the last grid row (below VT100 content area)
+    int row = text_mode_get_rows() - 1;
     int cols = impl->vt.cols;
 
     char padded[TERM_MAX_COLS + 1];

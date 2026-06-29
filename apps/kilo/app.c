@@ -826,6 +826,7 @@ static void editorRefresh(editor_t *editor, terminal_mode_t *term) {
     terminal_mode_set_status(term, status);
     
     terminal_mode_render(term);
+    text_mode_flush();
 }
 
 /* ======================== Input Handling ======================== */

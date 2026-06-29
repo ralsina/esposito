@@ -124,9 +124,36 @@ static uint8_t hid_modifiers_to_os(uint8_t hid_mods) {
     return mods;
 }
 
+// Apply Shift modifier to get the proper ASCII character
+static uint8_t apply_shift(uint8_t key_code, uint8_t modifiers) {
+    if (!(modifiers & MODIFIER_SHIFT)) return key_code;
+
+    if (key_code >= 'a' && key_code <= 'z')
+        return key_code - 32;
+    if (key_code >= '1' && key_code <= '9')
+        return "!@#$%^&*("[key_code - '1'];
+    switch (key_code) {
+        case '0':  return ')';
+        case '-':  return '_';
+        case '=':  return '+';
+        case '[':  return '{';
+        case ']':  return '}';
+        case '\\': return '|';
+        case ';':  return ':';
+        case '\'': return '"';
+        case '`':  return '~';
+        case ',':  return '<';
+        case '.':  return '>';
+        case '/':  return '?';
+        default:   return key_code;
+    }
+}
+
 static void send_key_event(uint8_t hid_usage, bool pressed, uint8_t modifiers) {
     uint8_t key_code = hid_usage_to_keycode(hid_usage);
     if (key_code == 0) return;
+
+    key_code = apply_shift(key_code, modifiers);
 
     event_t event;
     memset(&event, 0, sizeof(event));

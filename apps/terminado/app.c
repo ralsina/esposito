@@ -2,6 +2,7 @@
 #include "hardware.h"
 #include "app_config.h"
 #include "terminal_mode.h"
+#include "text_mode.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -298,5 +299,6 @@ void app_event(app_context_t *ctx, event_t *event) {
 
     if (!menu_active && event->type == EVENT_TIMER) {
         terminal_mode_render(term);
+        text_mode_flush();
     }
 }

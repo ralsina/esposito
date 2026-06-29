@@ -18,6 +18,10 @@ void *app_calloc(size_t count, size_t size);
 void *app_realloc(void *ptr, size_t size);
 void app_free(void *ptr);
 
+size_t app_heap_get_free_size(void);
+size_t app_heap_get_total_size(void);
+size_t app_heap_get_min_free_size(void);
+
 #ifdef __cplusplus
 }
 #endif

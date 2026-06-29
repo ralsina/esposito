@@ -155,3 +155,25 @@ void app_free(void *ptr) {
 
     multi_heap_free(app_heap, ptr);
 }
+
+size_t app_heap_get_free_size(void) {
+    if (!app_heap_ensure_ready()) return 0;
+    multi_heap_info_t info;
+    multi_heap_get_info(app_heap, &info);
+    return info.total_free_bytes;
+}
+
+size_t app_heap_get_total_size(void) {
+    if (!app_heap_storage) {
+        size_t psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+        return (psram > 0) ? APP_HEAP_SIZE_PSRAM : APP_HEAP_SIZE;
+    }
+    return app_heap_size;
+}
+
+size_t app_heap_get_min_free_size(void) {
+    if (!app_heap_ensure_ready()) return 0;
+    multi_heap_info_t info;
+    multi_heap_get_info(app_heap, &info);
+    return info.minimum_free_bytes;
+}

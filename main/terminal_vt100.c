@@ -213,6 +213,8 @@ void vt100_set_geometry(vt100_t *vt, int cols, int rows) {
     vt->cols = VT100_CONSTRAIN(cols, 1, TERM_MAX_COLS);
     vt->rows = VT100_CONSTRAIN(rows, 1, TERM_MAX_ROWS);
     vt->buffer_size = vt->cols * vt->rows;
+    vt->scroll_top = 0;
+    vt->scroll_bottom = vt->rows - 1;
     vt100_clear_screen(vt);
     if (vt->write_callback) {
         char buf[32];

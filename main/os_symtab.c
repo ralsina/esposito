@@ -27,6 +27,7 @@
 #include <math.h>
 #include <ctype.h>
 #include <setjmp.h>
+#include <sys/statvfs.h>
 #include "esp_timer.h"
 
 // strdup reimplementation that uses app_malloc so it matches app_free
@@ -198,6 +199,9 @@ static const os_symtab_entry_t symtab[] = {
     {"calloc",                  app_calloc},
     {"realloc",                 app_realloc},
     {"free",                    app_free},
+    {"app_heap_get_free_size",      app_heap_get_free_size},
+    {"app_heap_get_total_size",     app_heap_get_total_size},
+    {"app_heap_get_min_free_size",  app_heap_get_min_free_size},
     {"atoi",                    atoi},
     {"atol",                    atol},
     {"atof",                    atof},
@@ -207,6 +211,7 @@ static const os_symtab_entry_t symtab[] = {
     {"readdir",                 readdir},
     {"closedir",                closedir},
     {"stat",                    stat},
+    {"statvfs",                 statvfs},
     {"mkdir",                   mkdir},
     {"os_log",                  os_log},
     {"terminal_mode_struct_size", terminal_mode_struct_size},
@@ -248,6 +253,8 @@ static const os_symtab_entry_t symtab[] = {
     {"fseek",                   fseek},
     {"ftell",                   ftell},
     {"fgets",                   fgets},
+    {"fgetc",                   fgetc},
+    {"rewind",                  rewind},
     {"fflush",                  fflush},
     {"rename",                  rename},
     {"remove",                  remove},
@@ -273,6 +280,7 @@ static const os_symtab_entry_t symtab[] = {
     {"esp_timer_get_time",           esp_timer_get_time},
     {"os_start_task",                os_start_task},
     {"time",                    time},
+    {"localtime",               localtime},
     {"app_manifest_read",              app_manifest_read},
     {"app_manifest_get_display_name",  app_manifest_get_display_name},
     {"app_manifest_find_apps_for_ext", app_manifest_find_apps_for_ext},
