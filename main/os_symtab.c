@@ -126,6 +126,11 @@ static const os_symtab_entry_t symtab[] = {
     {"audio_stream_start",      audio_stream_start},
     {"audio_stream_write",      audio_stream_write},
     {"audio_stream_stop",       audio_stream_stop},
+    // Microphone
+    {"mic_init",                mic_init},
+    {"mic_deinit",              mic_deinit},
+    {"mic_is_available",        mic_is_available},
+    {"mic_read",                mic_read},
     {"appcfg_get_int",          appcfg_get_int},
     {"appcfg_get_string",       appcfg_get_string},
     {"config_delete",           config_delete},

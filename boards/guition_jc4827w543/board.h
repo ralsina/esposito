@@ -65,10 +65,12 @@
 #define BOARD_HAS_BLE_KEYBOARD 1
 
 // Audio: built-in I2S DAC + amplifier, SH 1.0mm 2-pin speaker connector.
+// SPH0645 digital microphone on DIN (GPIO 15, assignable).
 #define BOARD_HAS_AUDIO 1
 #define BOARD_I2S_NUM     0
 #define BOARD_I2S_BCLK    42
 #define BOARD_I2S_LRCK    2
 #define BOARD_I2S_DOUT    41
+#define BOARD_I2S_DIN     15
 
 #endif // BOARD_GUITION_JC4827W543_H

@@ -53,6 +53,26 @@ bool audio_stream_write(const int16_t *stereo_frames, size_t frame_count);
 // Drain remaining DMA data and disable I2S DAC.
 void audio_stream_stop(void);
 
+// --- Microphone recording API (SPH0645 I2S digital mic) ---
+
+// Initialize the microphone (enables I2S RX channel).
+// Requires BOARD_I2S_DIN configured in board header.
+// Returns false if no mic hardware is available.
+bool mic_init(void);
+
+// Deinitialize the microphone (disables I2S RX channel).
+void mic_deinit(void);
+
+// Whether the microphone is initialized and ready.
+bool mic_is_available(void);
+
+// Read mono 16-bit signed PCM samples from the microphone.
+// The mic samples at the same rate as audio output (44100 Hz).
+// Buffer must have room for samples * 2 int16_t (used internally for
+// stereo DMA; the function compacts the result to mono in-place).
+// Returns the number of mono samples actually read, or -1 on error.
+int mic_read(int16_t *buffer, size_t samples);
+
 #ifdef __cplusplus
 }
 #endif

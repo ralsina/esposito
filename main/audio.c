@@ -14,7 +14,9 @@
 static const char *TAG = "audio";
 
 static i2s_chan_handle_t tx_handle = NULL;
+static i2s_chan_handle_t rx_handle = NULL;
 static bool audio_initialized = false;
+static bool mic_initialized = false;
 static bool audio_playing = false;
 static int audio_volume = 70;
 
@@ -50,15 +52,21 @@ static void audio_disable(void) {
 bool audio_init(void) {
     if (audio_initialized) return true;
 
-    ESP_LOGI(TAG, "Initializing I2S audio (BCLK=%d LRCK=%d DOUT=%d)",
-             BOARD_I2S_BCLK, BOARD_I2S_LRCK, BOARD_I2S_DOUT);
+    ESP_LOGI(TAG, "Initializing I2S audio (BCLK=%d LRCK=%d DOUT=%d DIN=%d)",
+             BOARD_I2S_BCLK, BOARD_I2S_LRCK, BOARD_I2S_DOUT,
+#ifdef BOARD_I2S_DIN
+             BOARD_I2S_DIN
+#else
+             -1
+#endif
+    );
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = 6;
     chan_cfg.dma_frame_num = 240;
     chan_cfg.auto_clear = true;
 
-    esp_err_t ret = i2s_new_channel(&chan_cfg, &tx_handle, NULL);
+    esp_err_t ret = i2s_new_channel(&chan_cfg, &tx_handle, &rx_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "i2s_new_channel failed: %s", esp_err_to_name(ret));
         return false;
@@ -71,7 +79,11 @@ bool audio_init(void) {
             .bclk = BOARD_I2S_BCLK,
             .ws   = BOARD_I2S_LRCK,
             .dout = BOARD_I2S_DOUT,
+#ifdef BOARD_I2S_DIN
+            .din  = BOARD_I2S_DIN,
+#else
             .din  = I2S_GPIO_UNUSED,
+#endif
             .mclk = I2S_GPIO_UNUSED,
             .invert_flags = {
                 .mclk_inv = false,
@@ -83,10 +95,19 @@ bool audio_init(void) {
 
     ret = i2s_channel_init_std_mode(tx_handle, &std_cfg);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "i2s_channel_init_std_mode failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "i2s_channel_init_std_mode (tx) failed: %s", esp_err_to_name(ret));
         i2s_del_channel(tx_handle);
         tx_handle = NULL;
         return false;
+    }
+
+    if (rx_handle) {
+        ret = i2s_channel_init_std_mode(rx_handle, &std_cfg);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "i2s_channel_init_std_mode (rx) failed, no mic: %s", esp_err_to_name(ret));
+            i2s_del_channel(rx_handle);
+            rx_handle = NULL;
+        }
     }
 
     // Don't enable yet — enabling the channel powers on the DAC which causes
@@ -101,12 +122,18 @@ bool audio_init(void) {
 
 void audio_deinit(void) {
     audio_stop();
+    if (rx_handle) {
+        i2s_channel_disable(rx_handle);
+        i2s_del_channel(rx_handle);
+        rx_handle = NULL;
+    }
     if (tx_handle) {
         i2s_channel_disable(tx_handle);
         i2s_del_channel(tx_handle);
         tx_handle = NULL;
     }
     audio_initialized = false;
+    mic_initialized = false;
 }
 
 bool audio_is_available(void) {
@@ -293,6 +320,53 @@ void audio_stream_stop(void) {
     audio_playing = false;
 }
 
+// --- Microphone recording API (SPH0645 I2S digital mic) ---
+
+bool mic_init(void) {
+    if (!audio_initialized || !rx_handle) return false;
+
+    esp_err_t ret = i2s_channel_enable(rx_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "mic: i2s_channel_enable failed: %s", esp_err_to_name(ret));
+        return false;
+    }
+
+    mic_initialized = true;
+    ESP_LOGI(TAG, "Microphone ready (DIN=%d)", BOARD_I2S_DIN);
+    return true;
+}
+
+void mic_deinit(void) {
+    if (rx_handle && mic_initialized) {
+        i2s_channel_disable(rx_handle);
+    }
+    mic_initialized = false;
+}
+
+bool mic_is_available(void) {
+    return mic_initialized;
+}
+
+int mic_read(int16_t *buffer, size_t samples) {
+    if (!mic_initialized || !rx_handle || !buffer || samples == 0) return -1;
+
+    // Read stereo interleaved frames (mic data on the left channel,
+    // right channel may be floating). Buffer must hold samples*2 int16_t.
+    size_t bytes_to_read = samples * sizeof(int16_t) * 2;
+    size_t bytes_read = 0;
+
+    esp_err_t ret = i2s_channel_read(rx_handle, buffer, bytes_to_read, &bytes_read, portMAX_DELAY);
+    if (ret != ESP_OK) return -1;
+
+    // Compact stereo -> mono in-place (keep left channel only)
+    int frames = (int)(bytes_read / 4);
+    for (int i = 0; i < frames; i++) {
+        buffer[i] = buffer[i * 2];
+    }
+
+    return frames;
+}
+
 #else
 
 // Stubs for boards without audio hardware.
@@ -309,5 +383,10 @@ int audio_get_volume(void) { return 0; }
 bool audio_stream_start(void) { return false; }
 bool audio_stream_write(const int16_t *stereo_frames, size_t frame_count) { (void)stereo_frames; (void)frame_count; return false; }
 void audio_stream_stop(void) {}
+
+bool mic_init(void) { return false; }
+void mic_deinit(void) {}
+bool mic_is_available(void) { return false; }
+int mic_read(int16_t *buffer, size_t samples) { (void)buffer; (void)samples; return -1; }
 
 #endif // BOARD_HAS_AUDIO
