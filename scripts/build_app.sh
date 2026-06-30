@@ -47,6 +47,12 @@ if [[ "$APP_NAME" == "gameboy" ]]; then
     echo "  Enabling jump table optimizations for gameboy"
 fi
 
+# Spectrum emulator needs config.h via HAVE_CONFIG_H mechanism
+if [[ "$APP_NAME" == "spectrum" ]]; then
+    EXTRA_CFLAGS="$EXTRA_CFLAGS -DHAVE_CONFIG_H -O1 -fno-strict-aliasing -fno-tree-vectorize"
+    echo "  Enabling Spectrum emulator flags"
+fi
+
 # --- Target detection -------------------------------------------------------
 # Derive toolchain / chip include paths / board dir from the main firmware's
 # configured target (sdkconfig). Override with -t <target>, IDF_TARGET=...,
