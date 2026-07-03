@@ -83,6 +83,8 @@ static const os_symtab_entry_t symtab[] = {
     {"os_get_board_info",            os_get_board_info},
     {"os_load_app",                  os_load_app},
     {"os_exit",                      os_exit},
+    {"os_power_off",                 os_power_off},
+    {"os_reboot",                    os_reboot},
     {"os_process_one_event_iteration", os_process_one_event_iteration},
     {"os_open_app_with_file",   os_open_app_with_file},
     {"os_consume_startup_file", os_consume_startup_file},

@@ -14,4 +14,11 @@
 #define COLOR_BLUE 0x001F
 #define COLOR_YELLOW 0xFFE0
 
+// Touch interrupt GPIO used for light sleep wakeup (name varies by board)
+#if defined(BOARD_TOUCH_IRQ)
+#define BOARD_TOUCH_WAKE_GPIO BOARD_TOUCH_IRQ
+#elif defined(BOARD_TOUCH_INT)
+#define BOARD_TOUCH_WAKE_GPIO BOARD_TOUCH_INT
+#endif
+
 #endif // HARDWARE_CONFIG_H

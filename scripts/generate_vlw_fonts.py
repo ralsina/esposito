@@ -45,7 +45,9 @@ LUCIDE_CODEPOINTS = set([
     0xE09E, 0xE18E, 0xE12F,          # copy, trash-2, edit-2
     0xE06C, 0xE1B2,                  # check, x
     0xE115, 0xE154, 0xE14D, 0xE18D, 0xE19E, # menu, settings, save, trash, upload
-    0xE455,                           # arrow-down-to-line
+     0xE455,                           # arrow-down-to-line
+     0xE059,                           # power
+     0xE064,                           # refresh-cw (reboot)
 ])
 
 # Character set: printable ASCII + Latin-1 + typographic chars

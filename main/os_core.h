@@ -131,6 +131,8 @@ bool os_settings_set_int(const char *key_path, int value);
 bool os_settings_get_bool(const char *key_path, bool default_value);
 bool os_settings_set_bool(const char *key_path, bool value);
 void os_unload_app(void);
+void os_power_off(void);
+void os_reboot(void);
 app_context_t *os_get_current_app(void);
 void os_set_current_app(app_context_t *app);
 

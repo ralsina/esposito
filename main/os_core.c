@@ -22,6 +22,8 @@
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "esp_pm.h"
+#include "esp_sleep.h"
+#include "esp_system.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -327,6 +329,44 @@ void os_exit(void) {
     }
 
     os_load_app_internal("launcher", false);
+}
+
+void os_power_off(void) {
+    screensaver_restore_brightness = (uint8_t)os_settings_get_int("display/backlight", 255);
+    display_set_backlight(0);
+    screensaver_restore_kbd_backlight = keyboard_get_backlight();
+    keyboard_set_backlight(0);
+
+    ESP_LOGI(TAG, "Power off: waiting for touch release...");
+
+    int wait = 0;
+    while (gpio_get_level(BOARD_TOUCH_WAKE_GPIO) == 0 && wait < 50) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+        wait++;
+    }
+
+    if (gpio_get_level(BOARD_TOUCH_WAKE_GPIO) == 0) {
+        ESP_LOGW(TAG, "Touch still pressed after 1s, skipping sleep");
+        display_set_backlight(screensaver_restore_brightness);
+        keyboard_set_backlight(screensaver_restore_kbd_backlight);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Power off: entering light sleep. Touch screen to wake.");
+
+    gpio_wakeup_enable(BOARD_TOUCH_WAKE_GPIO, GPIO_INTR_LOW_LEVEL);
+    esp_sleep_enable_gpio_wakeup();
+    esp_light_sleep_start();
+
+    display_set_backlight(screensaver_restore_brightness);
+    keyboard_set_backlight(screensaver_restore_kbd_backlight);
+
+    ESP_LOGI(TAG, "Woke from power-off light sleep");
+}
+
+void os_reboot(void) {
+    ESP_LOGI(TAG, "System reboot requested");
+    esp_restart();
 }
 
 static bool os_load_app_internal(const char *app_name, bool push_current) {
@@ -1191,28 +1231,6 @@ void os_event_loop(void) {
                 screensaver_last_activity = esp_timer_get_time();
             }
 
-            // Screensaver: wake on first keyboard or touch event
-            if (screensaver_active) {
-                if (event.type == EVENT_KEYBOARD || event.type == EVENT_TOUCH) {
-                    display_set_backlight(screensaver_restore_brightness);
-                    keyboard_set_backlight(screensaver_restore_kbd_backlight);
-
-                    // Restore saved CPU frequency
-                    int restored_cpu_mhz = 160;
-                    if (current_app && current_app->requested_cpu_freq_mhz > 0) {
-                        restored_cpu_mhz = current_app->requested_cpu_freq_mhz;
-                        os_set_cpu_freq_mhz(restored_cpu_mhz);
-                    }
-
-                    screensaver_active = false;
-                    ESP_LOGI(TAG, "Screensaver deactivated (display=%d%%, keyboard backlight=%d%%, CPU=%d MHz)",
-                             screensaver_restore_brightness * 100 / 255,
-                             screensaver_restore_kbd_backlight * 100 / 255,
-                             restored_cpu_mhz);
-                    continue;
-                }
-            }
-
             // Check for app launcher trigger (Ctrl+ESC)
             if (event.type == EVENT_KEYBOARD && event.keyboard.pressed &&
                 event.keyboard.key == 27 &&  // ESC key
@@ -1265,7 +1283,7 @@ void os_event_loop(void) {
             }
         }
 
-        // Screensaver: check idle timeout
+        // Screensaver: check idle timeout -> light sleep
         {
             static int ss_timeout_min = -1;
             if (ss_timeout_min < 0) {
@@ -1281,11 +1299,19 @@ void os_event_loop(void) {
                     screensaver_restore_kbd_backlight = keyboard_get_backlight();
                     keyboard_set_backlight(0);
 
-                    // Reduce CPU frequency to minimum
-                    os_set_cpu_freq_mhz(40);
-
                     screensaver_active = true;
-                    ESP_LOGI(TAG, "Screensaver activated after %d min idle (display=0%%, keyboard backlight=0%%, CPU=40 MHz)", ss_timeout_min);
+                    ESP_LOGI(TAG, "Screensaver: entering light sleep after %d min idle", ss_timeout_min);
+
+                    gpio_wakeup_enable(BOARD_TOUCH_WAKE_GPIO, GPIO_INTR_LOW_LEVEL);
+                    esp_sleep_enable_gpio_wakeup();
+                    esp_light_sleep_start();
+
+                    display_set_backlight(screensaver_restore_brightness);
+                    keyboard_set_backlight(screensaver_restore_kbd_backlight);
+
+                    screensaver_active = false;
+                    screensaver_last_activity = esp_timer_get_time();
+                    ESP_LOGI(TAG, "Screensaver: woke from light sleep");
                 }
             }
         }
