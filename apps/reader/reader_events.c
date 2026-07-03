@@ -12,6 +12,7 @@
 #include "serial_rx.h"
 #include "ui2_osk.h"
 
+#include "wifi.h"
 #include <string.h>
 #include <sys/stat.h>
 
@@ -175,7 +176,12 @@ void on_file_list_exit_click(ui2_button_t *button, void *user_data) {
 
 void on_file_list_shop_click(ui2_button_t *button, void *user_data) {
     (void)button;
-    (void)user_data;
+    reader_state_t *state = (reader_state_t *)user_data;
+    if (!wifi_is_connected()) {
+        ui2_screen_toast_show(state->screen, "WiFi not connected!", TEXT_COLOR_BLACK, TEXT_COLOR_RED, 6);
+        ui2_screen_render(state->screen);
+        return;
+    }
     os_load_app("bookshop");
 }
 

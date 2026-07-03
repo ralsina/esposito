@@ -27,16 +27,14 @@ typedef enum {
     STATE_ENTER_LOCATION,
     STATE_FONT_SELECTION,
     STATE_FONT_SIZE_SELECTION,
-    STATE_MESSAGE,
 } app_state_t;
 
 static app_state_t state = STATE_MAIN;
-static char input_ssid[WIFI_MAX_SSID] = {0};
-static char input_password[WIFI_MAX_PASSWORD] = {0};
+static ui2_screen_t *screen;
+static char input_ssid[64] = {0};
+static char input_password[64] = {0};
 static char input_timezone[48] = {0};
 static char input_location[64] = {0};
-static char status_msg[128] = {0};
-static int msg_timer = 0;
 static int scan_count = 0;
 static int scan_selected = 0;
 static char scan_labels[20][48];
@@ -46,14 +44,8 @@ static ui2_layout_t *scan_toolbar;
 static bool is_ble_scan = false;
 static bool ble_scan_pending = false;
 
-static ui2_text_input_t *ssid_input;
-static ui2_text_input_t *password_input;
-static ui2_text_input_t *timezone_input;
-static ui2_text_input_t *location_input;
-
 static ui2_list_t *font_family_list;
 static ui2_list_t *font_size_list;
-static ui2_layout_t *toolbar;
 static int font_family_selected = 0;
 static int font_size_selected = 0;
 static char selected_family[24];
@@ -65,7 +57,6 @@ static int font_family_count = 0;
 static char font_size_labels[MAX_FONTS][48];
 static const char *font_size_items[MAX_FONTS];
 static int font_size_count = 0;
-static bool layout_needs_rebuild = false;
 
 typedef enum {
     SECTION_WIFI,
@@ -155,6 +146,7 @@ static struct {
 } tab_content[SECTION_COUNT];
 
 static ui2_tabview_t *tv;
+static ui2_layout_t *toolbar;
 
 #define PALETTE_COUNT 4
 
@@ -303,12 +295,6 @@ static int resolve_location(const char *location, char *resolved_out, size_t res
     return 1;
 }
 
-static void set_status(const char *msg) {
-    strncpy(status_msg, msg, sizeof(status_msg) - 1);
-    status_msg[sizeof(status_msg) - 1] = '\0';
-    msg_timer = 150;
-}
-
 static void truncate_text(const char *text, char *out, size_t out_size, int max_chars) {
     if (!text || !out || out_size == 0) return;
     if (max_chars <= 0) { out[0] = '\0'; return; }
@@ -365,7 +351,7 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
             snprintf(out, out_size, "%s", ble_keyboard_is_connected() ? ble_keyboard_get_connected_name() : "none");
             break;
         case ACTION_BLE_DISCONNECT:
-            snprintf(out, out_size, "%s", ble_keyboard_is_connected() ? "connected" : "—");
+            snprintf(out, out_size, "%s", ble_keyboard_is_connected() ? "connected" : "\xe2\x80\x94");
             break;
         case ACTION_SET_TIMEZONE:
             snprintf(out, out_size, "%s", input_timezone[0] ? input_timezone : "UTC");
@@ -421,17 +407,47 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
 }
 
 static void build_font_size_items(const char *family);
-static void render(void);
-static void draw_main(void);
-static void build_tab_content(void);
+static void setup_and_render(void);
 static void on_scan_activated(int item_index, void *user_data);
 static void on_scan_selection_changed(int item_index, void *user_data);
-static void draw_scan_results(void);
+
+static void force_render(void) {
+    text_mode_clear(TEXT_COLOR_BLACK);
+    ui2_screen_render(screen);
+}
 
 static void on_exit_btn_click(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     os_exit();
+}
+
+static void on_toolbar_up(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 'w');
+    setup_and_render();
+}
+
+static void on_toolbar_down(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 's');
+    setup_and_render();
+}
+
+static void on_toolbar_activate(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), '\n');
+    setup_and_render();
+}
+
+static void on_toolbar_back(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 'a');
+    setup_and_render();
 }
 
 static void on_scan_toolbar_up(ui2_button_t *button, void *user_data) {
@@ -440,7 +456,7 @@ static void on_scan_toolbar_up(ui2_button_t *button, void *user_data) {
     if (scan_list) {
         UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), 'w');
         scan_selected = ui2_list_get_selection(scan_list);
-        render();
+        force_render();
     }
 }
 
@@ -450,7 +466,7 @@ static void on_scan_toolbar_down(ui2_button_t *button, void *user_data) {
     if (scan_list) {
         UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), 's');
         scan_selected = ui2_list_get_selection(scan_list);
-        render();
+        force_render();
     }
 }
 
@@ -465,61 +481,25 @@ static void on_scan_toolbar_connect(ui2_button_t *button, void *user_data) {
                                    ble_keyboard_get_connected_name()) == 0;
     if (sel_is_connected) {
         ble_keyboard_disconnect();
-        set_status("Disconnected");
+        ui2_screen_toast_show(screen, "Disconnected", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
     } else {
-        set_status("Connecting...");
-        render();
+        ui2_screen_toast_show(screen, "Connecting...", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
+        force_render();
         text_mode_flush();
         if (ble_keyboard_connect(scan_selected)) {
-            set_status("Connected");
+            ui2_screen_toast_show(screen, "Connected", TEXT_COLOR_BLACK, TEXT_COLOR_GREEN, 6);
         } else {
-            set_status("Connection failed");
+            ui2_screen_toast_show(screen, "Connection failed", TEXT_COLOR_BLACK, TEXT_COLOR_RED, 6);
         }
     }
-    render();
+    force_render();
 }
 
 static void on_scan_toolbar_back(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     state = STATE_MAIN;
-    render();
-}
-
-static void on_toolbar_up(ui2_button_t *button, void *user_data) {
-    (void)button;
-    (void)user_data;
-    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 'w');
-    build_tab_content();
-    draw_main();
-    text_mode_flush();
-}
-
-static void on_toolbar_down(ui2_button_t *button, void *user_data) {
-    (void)button;
-    (void)user_data;
-    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 's');
-    build_tab_content();
-    draw_main();
-    text_mode_flush();
-}
-
-static void on_toolbar_activate(ui2_button_t *button, void *user_data) {
-    (void)button;
-    (void)user_data;
-    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), '\n');
-    build_tab_content();
-    draw_main();
-    text_mode_flush();
-}
-
-static void on_toolbar_back(ui2_button_t *button, void *user_data) {
-    (void)button;
-    (void)user_data;
-    UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 'a');
-    build_tab_content();
-    draw_main();
-    text_mode_flush();
+    setup_and_render();
 }
 
 static void execute_main_action(settings_action_t action) {
@@ -539,7 +519,6 @@ static void execute_main_action(settings_action_t action) {
                 snprintf(scan_labels[i], sizeof(scan_labels[i]), "%-24s %3ddBm [%s]", ssid, rssi, ql);
                 scan_items[i] = scan_labels[i];
             }
-            if (scan_list) { UI2_WIDGET(scan_list)->vtable->destroy(UI2_WIDGET(scan_list)); scan_list = NULL; }
             scan_list = ui2_list_create(1, 1, text_mode_get_cols() - 2, text_mode_get_rows() - 5);
             ui2_list_set_title(scan_list, "Available Networks");
             ui2_list_set_colors(scan_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
@@ -552,9 +531,7 @@ static void execute_main_action(settings_action_t action) {
                 ui2_list_set_selection(scan_list, scan_selected);
             }
             state = STATE_SCAN_RESULTS;
-            msg_timer = 0;
-            status_msg[0] = '\0';
-            render();
+            setup_and_render();
             break;
         }
         case ACTION_ENTER_SSID:
@@ -562,43 +539,46 @@ static void execute_main_action(settings_action_t action) {
             input_ssid[0] = '\0';
             if (!keyboard_is_available())
                 ui2_osk_input_text("Enter SSID", input_ssid, sizeof(input_ssid), NULL, false);
-            render();
+            setup_and_render();
             break;
         case ACTION_ENTER_PASSWORD:
             state = STATE_ENTER_PASSWORD;
             input_password[0] = '\0';
             if (!keyboard_is_available())
                 ui2_osk_input_text("Enter Password", input_password, sizeof(input_password), NULL, true);
-            render();
+            setup_and_render();
             break;
         case ACTION_SAVE_CONNECT:
-            if (input_ssid[0] == '\0') { set_status("Enter SSID first"); render(); return; }
-            set_status("Connecting...");
-            render();
+            if (input_ssid[0] == '\0') {
+                ui2_screen_toast_show(screen, "Enter SSID first", TEXT_COLOR_BLACK, TEXT_COLOR_RED, 6);
+                setup_and_render();
+                return;
+            }
+            ui2_screen_toast_show(screen, "Connecting...", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
+            force_render();
             wifi_save_config(input_ssid, input_password);
             wifi_connect(input_ssid, input_password);
-            msg_timer = 80;
             break;
         case ACTION_DISCONNECT:
             wifi_disconnect();
-            set_status("Disconnected");
-            render();
+            ui2_screen_toast_show(screen, "Disconnected", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
+            setup_and_render();
             break;
         case ACTION_SET_TIMEZONE:
             state = STATE_ENTER_TIMEZONE;
             if (!keyboard_is_available())
                 ui2_osk_input_text("Set Timezone", input_timezone, sizeof(input_timezone), input_timezone, false);
-            render();
+            setup_and_render();
             break;
         case ACTION_SET_LOCATION:
             state = STATE_ENTER_LOCATION;
             if (!keyboard_is_available())
                 ui2_osk_input_text("Set Location", input_location, sizeof(input_location), input_location, false);
-            render();
+            setup_and_render();
             break;
         case ACTION_SET_FONT_FAMILY:
             state = STATE_FONT_SELECTION;
-            render();
+            setup_and_render();
             break;
         case ACTION_SET_FONT_SIZE: {
             build_font_size_items(selected_family);
@@ -621,7 +601,7 @@ static void execute_main_action(settings_action_t action) {
                 ui2_list_set_selection(font_size_list, font_size_selected);
             }
             state = STATE_FONT_SIZE_SELECTION;
-            render();
+            setup_and_render();
             break;
         }
         case ACTION_SET_ROTATION: {
@@ -630,9 +610,10 @@ static void execute_main_action(settings_action_t action) {
             os_settings_set_int(SETTINGS_KEY_SCREEN_ROTATION, new_rotation);
             display_set_rotation(new_rotation);
             const char *rot_names[] = {"0\xc2\xb0 (Portrait)", "90\xc2\xb0 (Landscape)", "180\xc2\xb0 (Inverted Portrait)", "270\xc2\xb0 (Inverted Landscape)"};
-            snprintf(status_msg, sizeof(status_msg), "Rotation: %s", rot_names[new_rotation]);
-            set_status(status_msg);
-            render();
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Rotation: %s", rot_names[new_rotation]);
+            ui2_screen_toast_show(screen, msg, TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
+            setup_and_render();
             break;
         }
         case ACTION_SET_BRIGHTNESS: {
@@ -644,9 +625,10 @@ static void execute_main_action(settings_action_t action) {
             }
             os_settings_set_int("display/backlight", next);
             display_set_backlight((uint8_t)next);
-            snprintf(status_msg, sizeof(status_msg), "Brightness: %d%%", next * 100 / 255);
-            set_status(status_msg);
-            render();
+            char msg[48];
+            snprintf(msg, sizeof(msg), "Brightness: %d%%", next * 100 / 255);
+            ui2_screen_toast_show(screen, msg, TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
+            setup_and_render();
             break;
         }
         case ACTION_SET_SCREENSAVER_TIMEOUT: {
@@ -657,12 +639,13 @@ static void execute_main_action(settings_action_t action) {
                 if (levels[i] == current) { next = levels[i + 1]; break; }
             }
             os_settings_set_int("system/screensaver_timeout", next);
+            char msg[48];
             if (next > 0)
-                snprintf(status_msg, sizeof(status_msg), "Screensaver: %d min", next);
+                snprintf(msg, sizeof(msg), "Screensaver: %d min", next);
             else
-                snprintf(status_msg, sizeof(status_msg), "Screensaver: off");
-            set_status(status_msg);
-            render();
+                snprintf(msg, sizeof(msg), "Screensaver: off");
+            ui2_screen_toast_show(screen, msg, TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
+            setup_and_render();
             break;
         }
         case ACTION_SET_PALETTE: {
@@ -670,44 +653,44 @@ static void execute_main_action(settings_action_t action) {
             int next = (current + 1) % PALETTE_COUNT;
             os_settings_set_int("display/palette", next);
             text_mode_set_palette(palette_data[next]);
-            snprintf(status_msg, sizeof(status_msg), "Palette: %s", palette_names[next]);
-            set_status(status_msg);
-            render();
+            char msg[48];
+            snprintf(msg, sizeof(msg), "Palette: %s", palette_names[next]);
+            ui2_screen_toast_show(screen, msg, TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
+            setup_and_render();
             break;
         }
         case ACTION_TOGGLE_SERIAL: {
             bool enabled = !serial_log_output_is_enabled();
             serial_log_output_set_enabled(enabled);
             os_settings_set_bool(SETTINGS_KEY_SERIAL_LOG, enabled);
-            set_status(enabled ? "Serial log output enabled" : "Serial log output disabled");
-            render();
+            ui2_screen_toast_show(screen, enabled ? "Serial log output enabled" : "Serial log output disabled",
+                                  TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
+            setup_and_render();
             break;
         }
         case ACTION_CHECK_UPDATE: {
-            set_status("Checking for update...");
-            render();
+            ui2_screen_toast_show(screen, "Checking for update...", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 150);
+            force_render();
             char latest[64];
             bool has_update = ota_check_for_update(latest, sizeof(latest));
-            set_status(has_update ? "Update available" : "Already up to date");
-            render();
+            ui2_screen_toast_show(screen, has_update ? "Update available" : "Already up to date",
+                                  TEXT_COLOR_BLACK, has_update ? TEXT_COLOR_GREEN : TEXT_COLOR_YELLOW, 6);
+            setup_and_render();
             break;
         }
         case ACTION_APPLY_UPDATE: {
             if (!wifi_is_connected()) {
-                state = STATE_MESSAGE;
-                set_status("WiFi not connected!");
-                render();
+                ui2_screen_toast_show(screen, "WiFi not connected!", TEXT_COLOR_BLACK, TEXT_COLOR_RED, 6);
+                setup_and_render();
                 break;
             }
-            state = STATE_MESSAGE;
-            set_status("Downloading and flashing...");
-            render();
+            ui2_screen_toast_show(screen, "Downloading and flashing...", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 150);
+            force_render();
             text_mode_flush();
             const char *err = ota_apply_update();
             if (err) {
-                state = STATE_MESSAGE;
-                set_status(err);
-                render();
+                ui2_screen_toast_show(screen, err, TEXT_COLOR_BLACK, TEXT_COLOR_RED, 6);
+                setup_and_render();
             }
             break;
         }
@@ -715,11 +698,11 @@ static void execute_main_action(settings_action_t action) {
             is_ble_scan = true;
             if (!ble_keyboard_is_available()) {
                 if (ble_keyboard_is_initializing()) {
-                    set_status("BLE still initializing, try again...");
+                    ui2_screen_toast_show(screen, "BLE still initializing, try again...", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
                 } else {
-                    set_status("BLE not available on this device");
+                    ui2_screen_toast_show(screen, "BLE not available on this device", TEXT_COLOR_BLACK, TEXT_COLOR_RED, 6);
                 }
-                render();
+                setup_and_render();
                 break;
             }
 
@@ -728,7 +711,6 @@ static void execute_main_action(settings_action_t action) {
 
             scan_count = 0;
             scan_selected = 0;
-            if (scan_list) { UI2_WIDGET(scan_list)->vtable->destroy(UI2_WIDGET(scan_list)); scan_list = NULL; }
             scan_list = ui2_list_create(1, 1, cols - 2, rows - 6);
             ui2_list_set_title(scan_list, "BLE Keyboards");
             ui2_list_set_colors(scan_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
@@ -738,7 +720,6 @@ static void execute_main_action(settings_action_t action) {
             ui2_list_set_callbacks(scan_list, on_scan_selection_changed, on_scan_activated, NULL);
             ui2_list_set_items(scan_list, scan_items, 0);
 
-            if (scan_toolbar) { UI2_WIDGET(scan_toolbar)->vtable->destroy(UI2_WIDGET(scan_toolbar)); scan_toolbar = NULL; }
             ui2_toolbar_item_t scan_tb_items[] = {
                 {ICON_ARROW_UP,   on_scan_toolbar_up,      NULL},
                 {ICON_ARROW_DOWN, on_scan_toolbar_down,    NULL},
@@ -748,16 +729,14 @@ static void execute_main_action(settings_action_t action) {
             scan_toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, scan_tb_items, 4);
 
             state = STATE_SCAN_RESULTS;
-            msg_timer = 0;
-            snprintf(status_msg, sizeof(status_msg), "Scanning...");
             ble_scan_pending = true;
-            render();
+            setup_and_render();
             break;
         }
         case ACTION_BLE_DISCONNECT:
             ble_keyboard_disconnect();
-            set_status("BLE keyboard disconnected");
-            render();
+            ui2_screen_toast_show(screen, "BLE keyboard disconnected", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
+            setup_and_render();
             break;
     }
 }
@@ -821,7 +800,7 @@ static void build_tab_content(void) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
     int content_width = cols - 10 - 1;
-    int list_height = rows - 2;
+    int list_height = rows - 5;
 
     for (settings_section_t s = 0; s < SECTION_COUNT; s++) {
         int count;
@@ -855,92 +834,6 @@ static void build_tab_content(void) {
     }
 }
 
-static void draw_main(void) {
-    text_mode_clear(TEXT_COLOR_BLACK);
-
-    int cols = text_mode_get_cols();
-
-    char title[32];
-    snprintf(title, sizeof(title), " Settings ");
-    int tx = (cols - (int)strlen(title)) / 2;
-    text_mode_print_at_attr_bg(tx, 0, title, TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK,
-                               TEXT_ATTR_BOLD | TEXT_ATTR_UNDERLINE);
-
-    build_tab_content();
-
-    UI2_WIDGET(tv)->vtable->draw(UI2_WIDGET(tv));
-
-    if (toolbar) {
-        UI2_WIDGET(toolbar)->vtable->draw(UI2_WIDGET(toolbar));
-    }
-
-    int rows = text_mode_get_rows();
-    int right_x = 10 + 1;
-    int content_width = cols - right_x;
-
-    const char *hints = keyboard_is_available()
-        ? "W/S nav  Enter select  A/Esc back to tabs  Q exit"
-        : "";
-    if (hints[0]) {
-        char hint_buf[64];
-        truncate_text(hints, hint_buf, sizeof(hint_buf), content_width);
-        text_mode_print_at_attr_bg(right_x, rows - 1, hint_buf,
-                                   TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
-    }
-
-    if (status_msg[0]) {
-        char status_buf[80];
-        truncate_text(status_msg, status_buf, sizeof(status_buf), cols - 1);
-        text_mode_print_at_attr_bg(0, rows - 1, status_buf,
-                                   TEXT_COLOR_BRIGHT_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
-    }
-}
-
-static void draw_scan_results(void) {
-    text_mode_clear(TEXT_COLOR_BLACK);
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
-
-    if (scan_count <= 0 && !is_ble_scan) {
-        text_mode_print_at_attr_bg((cols - 19) / 2, 4, "No networks found",
-                                   TEXT_COLOR_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
-        text_mode_print_at_attr_bg((cols - 24) / 2, rows - 2, "Press any key to continue",
-                                   TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
-        return;
-    }
-
-    if (scan_list)
-        UI2_WIDGET(scan_list)->vtable->draw(UI2_WIDGET(scan_list));
-
-    if (is_ble_scan && scan_toolbar) {
-        UI2_WIDGET(scan_toolbar)->vtable->draw(UI2_WIDGET(scan_toolbar));
-    } else if (scan_count > 0) {
-        text_mode_print_at_attr_bg((cols - 22) / 2, rows - 2, "[ << Back ]",
-                                   TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_BLUE, TEXT_ATTR_BOLD);
-    }
-
-    if (status_msg[0]) {
-        char status_buf[80];
-        truncate_text(status_msg, status_buf, sizeof(status_buf), cols - 1);
-        text_mode_print_at_attr_bg(0, rows - 1, status_buf,
-                                   TEXT_COLOR_BRIGHT_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
-    }
-}
-
-static void draw_message(void) {
-    text_mode_clear(TEXT_COLOR_BLACK);
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
-    int y = 0;
-    text_mode_print_at_attr_bg((cols - 10) / 2, y++, "  Message  ",
-                               TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
-    y += 2;
-    text_mode_print_at_attr_bg(3, y, status_msg,
-                               TEXT_COLOR_BRIGHT_YELLOW, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
-    text_mode_print_at_attr_bg((cols - 18) / 2, rows - 2, "Press any key to continue",
-                               TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
-}
-
 static void on_scan_selection_changed(int item_index, void *user_data) {
     (void)user_data;
     scan_selected = item_index;
@@ -952,7 +845,7 @@ static void on_scan_activated(int item_index, void *user_data) {
 
     if (is_ble_scan) {
         scan_selected = item_index;
-        render();
+        force_render();
         return;
     }
 
@@ -963,183 +856,271 @@ static void on_scan_activated(int item_index, void *user_data) {
         input_password[0] = '\0';
         if (!keyboard_is_available())
             ui2_osk_input_text("Enter Password", input_password, sizeof(input_password), NULL, true);
-        render();
+        setup_and_render();
     }
 }
 
 static ui2_text_input_t *get_text_input_for_state(void) {
+    int rows = text_mode_get_rows();
+    int cols = text_mode_get_cols();
     switch (state) {
-        case STATE_ENTER_SSID: return ssid_input;
-        case STATE_ENTER_PASSWORD: return password_input;
-        case STATE_ENTER_TIMEZONE: return timezone_input;
-        case STATE_ENTER_LOCATION: return location_input;
-        default: return NULL;
+        case STATE_ENTER_SSID: {
+            ui2_text_input_t *input = ui2_text_input_create(0, rows - 4, cols, 4);
+            ui2_text_input_set_title(input, "Enter SSID");
+            ui2_text_input_set_label(input, "SSID:");
+            ui2_text_input_set_hints(input, "Type to enter  Enter Confirm", "ESC Cancel");
+            ui2_text_input_set_buffer(input, input_ssid, sizeof(input_ssid));
+            return input;
+        }
+        case STATE_ENTER_PASSWORD: {
+            ui2_text_input_t *input = ui2_text_input_create(0, rows - 4, cols, 4);
+            ui2_text_input_set_title(input, "Enter Password");
+            ui2_text_input_set_label(input, "Password:");
+            ui2_text_input_set_mask(input, true);
+            ui2_text_input_set_hints(input, "Type to enter  Enter Confirm", "ESC Cancel");
+            ui2_text_input_set_buffer(input, input_password, sizeof(input_password));
+            return input;
+        }
+        case STATE_ENTER_TIMEZONE: {
+            ui2_text_input_t *input = ui2_text_input_create(0, rows - 4, cols, 4);
+            ui2_text_input_set_title(input, "Set Timezone");
+            ui2_text_input_set_label(input, "Timezone:");
+            ui2_text_input_set_hints(input, "Ex: UTC or Europe/Madrid", "ESC Cancel");
+            for (int c = 0; input_timezone[c]; c++) {
+                if (input_timezone[c] == '/') {
+                    ui2_text_input_set_buffer(input, input_timezone, sizeof(input_timezone));
+                    return input;
+                }
+            }
+            ui2_text_input_set_buffer(input, input_timezone, sizeof(input_timezone));
+            return input;
+        }
+        case STATE_ENTER_LOCATION: {
+            ui2_text_input_t *input = ui2_text_input_create(0, rows - 4, cols, 4);
+            ui2_text_input_set_title(input, "Set Location");
+            ui2_text_input_set_label(input, "Location:");
+            ui2_text_input_set_hints(input, "City or lat,lon", "ESC Cancel");
+            ui2_text_input_set_buffer(input, input_location, sizeof(input_location));
+            return input;
+        }
+        default:
+            return NULL;
     }
 }
 
 static void handle_text_input_confirm(void) {
     if (state == STATE_ENTER_TIMEZONE) {
         os_settings_set_string(SETTINGS_KEY_TIMEZONE, input_timezone);
-        set_status("Timezone saved");
+        ui2_screen_toast_show(screen, "Timezone saved", TEXT_COLOR_BLACK, TEXT_COLOR_GREEN, 6);
     } else if (state == STATE_ENTER_LOCATION) {
         trim_spaces(input_location);
         char resolved_location[64];
         if (!resolve_location(input_location, resolved_location, sizeof(resolved_location))) {
-            state = STATE_MESSAGE;
-            set_status("Location lookup failed");
+            ui2_screen_toast_show(screen, "Location lookup failed", TEXT_COLOR_BLACK, TEXT_COLOR_RED, 6);
+            state = STATE_MAIN;
+            setup_and_render();
             return;
         }
         snprintf(input_location, sizeof(input_location), "%s", resolved_location);
         os_settings_set_string(SETTINGS_KEY_LOCATION, input_location);
-        set_status("Location saved as lat,lon");
+        ui2_screen_toast_show(screen, "Location saved", TEXT_COLOR_BLACK, TEXT_COLOR_GREEN, 6);
     }
     state = STATE_MAIN;
 }
 
-static void handle_scan_key(char key) {
-    if (is_ble_scan) {
-        if (scan_list && UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), key)) {
-            scan_selected = ui2_list_get_selection(scan_list);
-            render();
-        }
-        return;
+static void setup_main_view(void) {
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+
+    tv = (ui2_tabview_t *)ui2_tabview_create(0, 1, cols, rows - 5, 10);
+    UI2_WIDGET(tv)->focusable = true;
+
+    for (int s = 0; s < SECTION_COUNT; s++) {
+        ui2_tabview_add_tab(tv, section_labels[s], UI2_LAYOUT_VERTICAL);
+        tab_content[s].list = NULL;
+        tab_content[s].count = 0;
     }
-    if (scan_count <= 0) {
-        state = STATE_MAIN;
-        render();
-        return;
+
+    build_tab_content();
+
+    {
+        ui2_toolbar_item_t tb_items[] = {
+            {ICON_ARROW_UP,   on_toolbar_up,       NULL},
+            {ICON_ARROW_DOWN, on_toolbar_down,     NULL},
+            {ICON_CHECK,      on_toolbar_activate, NULL},
+            {ICON_ARROW_LEFT, on_toolbar_back,     NULL},
+            {ICON_X,          on_exit_btn_click,   NULL},
+        };
+        toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, tb_items, 5);
     }
-    if (key == 27) {
-        state = STATE_MAIN;
-        render();
-        return;
-    }
-    app_state_t prev = state;
-    if (scan_list && UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), key))
-        if (state == prev) render();
+
+    ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
+    ui2_layout_add(root, UI2_WIDGET(tv));
+    ui2_layout_add(root, UI2_WIDGET(toolbar));
+
+    ui2_screen_set_root(screen, root);
+    ui2_screen_focus_set(screen, UI2_WIDGET(tv));
 }
 
-static void handle_font_selection_key(char key) {
-    if (key == 27) {
-        state = STATE_MAIN;
-        render();
-        return;
+static void setup_scan_view(void) {
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+
+    ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
+
+    if (scan_list) {
+        ui2_layout_add(root, UI2_WIDGET(scan_list));
     }
-    if (key == '\n' || key == '\r') {
-        int sel = font_family_list ? ui2_list_get_selection(font_family_list) : -1;
-        if (sel >= 0 && sel < font_family_count) {
-            const char *new_family = font_family_items[sel];
-            strncpy(selected_family, new_family, sizeof(selected_family) - 1);
-            selected_family[sizeof(selected_family) - 1] = '\0';
-            char current_font[32];
-            os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
-            font_id_t current_id = font_lookup_by_name(current_font);
-            int current_size = current_id >= 0 ? font_table[current_id].size : 8;
-            build_font_size_items(selected_family);
-            int best_size = 0;
-            font_size_selected = 0;
-            for (int i = 0; i < font_size_count; i++) {
-                int size = 0;
-                sscanf(font_size_items[i], "%d", &size);
-                if (best_size == 0 || abs(size - current_size) < abs(best_size - current_size)) {
-                    best_size = size;
-                    font_size_selected = i;
-                }
-            }
-            if (font_size_count > 0) {
-                int size = 0;
-                sscanf(font_size_items[font_size_selected], "%d", &size);
-                font_id_t font_id = find_font_by_family_size(selected_family, size);
-                if (font_id >= 0 && font_id < font_count) {
-                    os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
-                    extern bool text_mode_set_font(font_id_t font);
-                    text_mode_set_font(font_id);
-                    layout_needs_rebuild = true;
-                    set_status("Font changed and saved");
-                }
-            }
-            state = STATE_MAIN;
-            render();
-        }
-        return;
+
+    if (is_ble_scan && scan_toolbar) {
+        ui2_layout_add(root, UI2_WIDGET(scan_toolbar));
     }
-    if (font_family_list && UI2_WIDGET(font_family_list)->vtable->handle_key(UI2_WIDGET(font_family_list), key))
-        render();
+
+    if (scan_count <= 0 && !is_ble_scan) {
+        ui2_layout_t *msg_layout = ui2_layout_create(0, 0, cols, 7, UI2_LAYOUT_VERTICAL);
+        ui2_label_t *msg = ui2_label_create(0, 0, "No networks found",
+                                             TEXT_COLOR_YELLOW, TEXT_ATTR_NORMAL);
+        ui2_label_t *hint = ui2_label_create(0, 0, "Press ESC to continue",
+                                              TEXT_COLOR_WHITE, TEXT_ATTR_NORMAL);
+        ui2_layout_add(msg_layout, UI2_WIDGET(msg));
+        ui2_layout_add(msg_layout, UI2_WIDGET(hint));
+        ui2_layout_add(root, UI2_WIDGET(msg_layout));
+    }
+
+    ui2_screen_set_root(screen, root);
+    if (scan_list) {
+        ui2_screen_focus_set(screen, UI2_WIDGET(scan_list));
+    }
 }
 
-static void handle_font_size_key(char key) {
-    if (key == 27) {
-        state = STATE_MAIN;
-        render();
-        return;
-    }
-    if (key == '\n' || key == '\r') {
-        int sel = font_size_list ? ui2_list_get_selection(font_size_list) : -1;
-        if (sel >= 0 && sel < font_size_count) {
-            int size = 0;
-            sscanf(font_size_items[sel], "%d", &size);
-            font_id_t font_id = find_font_by_family_size(selected_family, size);
-            if (font_id >= 0 && font_id < font_count) {
-                os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
-                extern bool text_mode_set_font(font_id_t font);
-                text_mode_set_font(font_id);
-                layout_needs_rebuild = true;
-                set_status("Font changed and saved");
-            }
-            state = STATE_MAIN;
-            render();
-        }
-        return;
-    }
-    if (font_size_list && UI2_WIDGET(font_size_list)->vtable->handle_key(UI2_WIDGET(font_size_list), key))
-        render();
+static void setup_text_input_view(void) {
+    int cols = text_mode_get_cols();
+    int rows = text_mode_get_rows();
+
+    ui2_text_input_t *input = get_text_input_for_state();
+    if (!input) return;
+
+    ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
+    ui2_layout_add(root, UI2_WIDGET(input));
+
+    ui2_screen_set_root(screen, root);
+    ui2_screen_focus_set(screen, UI2_WIDGET(input));
 }
 
-static void handle_message_key(char key) {
-    (void)key;
+static void setup_font_family_view(void) {
+    int cols = text_mode_get_cols();
+
+    font_family_list = ui2_list_create(2, 2, cols - 4, text_mode_get_rows() - 5);
+    ui2_list_set_title(font_family_list, "Select Font Family");
+    ui2_list_set_border(font_family_list, true);
+    ui2_list_set_scrollbar_width(font_family_list, 1);
+    ui2_list_set_items(font_family_list, font_family_items, font_family_count);
+    ui2_list_set_selection(font_family_list, font_family_selected);
+
+    ui2_layout_t *root = ui2_layout_create(0, 0, cols, text_mode_get_rows(), UI2_LAYOUT_ABSOLUTE);
+    ui2_layout_add(root, UI2_WIDGET(font_family_list));
+
+    ui2_screen_set_root(screen, root);
+    ui2_screen_focus_set(screen, UI2_WIDGET(font_family_list));
+}
+
+static void setup_font_size_view(void) {
+    int cols = text_mode_get_cols();
+
+    font_size_list = ui2_list_create(2, 2, cols - 4, text_mode_get_rows() - 5);
+    ui2_list_set_title(font_size_list, "Select Font Size");
+    ui2_list_set_border(font_size_list, true);
+    ui2_list_set_scrollbar_width(font_size_list, 1);
+    ui2_list_set_items(font_size_list, font_size_items, font_size_count);
+    ui2_list_set_selection(font_size_list, font_size_selected);
+
+    ui2_layout_t *root = ui2_layout_create(0, 0, cols, text_mode_get_rows(), UI2_LAYOUT_ABSOLUTE);
+    ui2_layout_add(root, UI2_WIDGET(font_size_list));
+
+    ui2_screen_set_root(screen, root);
+    ui2_screen_focus_set(screen, UI2_WIDGET(font_size_list));
+}
+
+static void handle_font_family_activated(int item_index, void *user_data) {
+    (void)user_data;
+    if (item_index < 0 || item_index >= font_family_count) return;
+
+    const char *new_family = font_family_items[item_index];
+    strncpy(selected_family, new_family, sizeof(selected_family) - 1);
+    selected_family[sizeof(selected_family) - 1] = '\0';
+    char current_font[32];
+    os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
+    font_id_t current_id = font_lookup_by_name(current_font);
+    int current_size = current_id >= 0 ? font_table[current_id].size : 8;
+
+    build_font_size_items(selected_family);
+    int best_size = 0;
+    font_size_selected = 0;
+    for (int i = 0; i < font_size_count; i++) {
+        int size = 0;
+        sscanf(font_size_items[i], "%d", &size);
+        if (best_size == 0 || abs(size - current_size) < abs(best_size - current_size)) {
+            best_size = size;
+            font_size_selected = i;
+        }
+    }
+    if (font_size_count > 0) {
+        int size = 0;
+        sscanf(font_size_items[font_size_selected], "%d", &size);
+        font_id_t font_id = find_font_by_family_size(selected_family, size);
+        if (font_id >= 0 && font_id < font_count) {
+            os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
+            extern bool text_mode_set_font(font_id_t font);
+            text_mode_set_font(font_id);
+            ui2_screen_toast_show(screen, "Font changed and saved", TEXT_COLOR_BLACK, TEXT_COLOR_GREEN, 6);
+        }
+    }
     state = STATE_MAIN;
-    render();
+    setup_and_render();
 }
 
-void render(void) {
-    if (layout_needs_rebuild) {
-        layout_needs_rebuild = false;
-    }
+static void handle_font_size_activated(int item_index, void *user_data) {
+    (void)user_data;
+    if (item_index < 0 || item_index >= font_size_count) return;
 
+    int size = 0;
+    sscanf(font_size_items[item_index], "%d", &size);
+    font_id_t font_id = find_font_by_family_size(selected_family, size);
+    if (font_id >= 0 && font_id < font_count) {
+        os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
+        extern bool text_mode_set_font(font_id_t font);
+        text_mode_set_font(font_id);
+        ui2_screen_toast_show(screen, "Font changed and saved", TEXT_COLOR_BLACK, TEXT_COLOR_GREEN, 6);
+    }
+    state = STATE_MAIN;
+    setup_and_render();
+}
+
+static void setup_and_render(void) {
     switch (state) {
         case STATE_MAIN:
-            draw_main();
+            setup_main_view();
             break;
         case STATE_SCAN_RESULTS:
-            draw_scan_results();
+            setup_scan_view();
             break;
         case STATE_ENTER_SSID:
         case STATE_ENTER_PASSWORD:
         case STATE_ENTER_TIMEZONE:
         case STATE_ENTER_LOCATION: {
             if (!ui2_osk_is_active()) {
-                ui2_text_input_t *input = get_text_input_for_state();
-                if (input) {
-                    UI2_WIDGET(input)->vtable->draw(UI2_WIDGET(input));
-                }
+                setup_text_input_view();
             }
             break;
         }
         case STATE_FONT_SELECTION:
-            text_mode_clear(TEXT_COLOR_BLACK);
-            if (font_family_list)
-                UI2_WIDGET(font_family_list)->vtable->draw(UI2_WIDGET(font_family_list));
+            setup_font_family_view();
             break;
         case STATE_FONT_SIZE_SELECTION:
-            text_mode_clear(TEXT_COLOR_BLACK);
-            if (font_size_list)
-                UI2_WIDGET(font_size_list)->vtable->draw(UI2_WIDGET(font_size_list));
-            break;
-        case STATE_MESSAGE:
-            draw_message();
+            setup_font_size_view();
             break;
     }
-    text_mode_flush();
+    ui2_screen_render(screen);
 }
 
 void app_init(app_context_t *ctx) {
@@ -1154,8 +1135,6 @@ void app_init(app_context_t *ctx) {
     ctx->timer_interval_ms = 100;
 
     state = STATE_MAIN;
-    status_msg[0] = '\0';
-    msg_timer = 0;
     input_ssid[0] = '\0';
     input_password[0] = '\0';
     scan_selected = 0;
@@ -1191,309 +1170,48 @@ void app_init(app_context_t *ctx) {
         }
     }
 
-    int cols = text_mode_get_cols();
-    int rows = text_mode_get_rows();
+    screen = ui2_screen_create();
 
-    tv = (ui2_tabview_t *)ui2_tabview_create(0, 1, cols, rows - 5, 10);
-    UI2_WIDGET(tv)->focusable = true;
+    font_family_list = NULL;
+    font_size_list = NULL;
 
-    for (int s = 0; s < SECTION_COUNT; s++) {
-        ui2_tabview_add_tab(tv, section_labels[s], UI2_LAYOUT_VERTICAL);
-        tab_content[s].list = NULL;
-        tab_content[s].count = 0;
-    }
-
-    font_family_list = ui2_list_create(2, 2, cols - 4, rows - 5);
-    ui2_list_set_title(font_family_list, "Select Font Family");
-    ui2_list_set_border(font_family_list, true);
-    ui2_list_set_scrollbar_width(font_family_list, true);
-    ui2_list_set_items(font_family_list, font_family_items, font_family_count);
-    ui2_list_set_selection(font_family_list, font_family_selected);
-
-    font_size_list = ui2_list_create(2, 2, cols - 4, rows - 5);
-    ui2_list_set_title(font_size_list, "Select Font Size");
-    ui2_list_set_border(font_size_list, true);
-    ui2_list_set_scrollbar_width(font_size_list, true);
-    ui2_list_set_items(font_size_list, font_size_items, font_size_count);
-    ui2_list_set_selection(font_size_list, font_size_selected);
-
-    ssid_input = ui2_text_input_create(0, rows - 4, cols, 4);
-    ui2_text_input_set_title(ssid_input, "Enter SSID");
-    ui2_text_input_set_label(ssid_input, "SSID:");
-    ui2_text_input_set_hints(ssid_input, "Type to enter  Enter Confirm", "ESC Cancel");
-    ui2_text_input_set_buffer(ssid_input, input_ssid, sizeof(input_ssid));
-
-    password_input = ui2_text_input_create(0, rows - 4, cols, 4);
-    ui2_text_input_set_title(password_input, "Enter Password");
-    ui2_text_input_set_label(password_input, "Password:");
-    ui2_text_input_set_mask(password_input, true);
-    ui2_text_input_set_hints(password_input, "Type to enter  Enter Confirm", "ESC Cancel");
-    ui2_text_input_set_buffer(password_input, input_password, sizeof(input_password));
-
-    timezone_input = ui2_text_input_create(0, rows - 4, cols, 4);
-    ui2_text_input_set_title(timezone_input, "Set Timezone");
-    ui2_text_input_set_label(timezone_input, "Timezone:");
-    ui2_text_input_set_hints(timezone_input, "Ex: UTC or Europe/Madrid", "ESC Cancel");
-    ui2_text_input_set_buffer(timezone_input, input_timezone, sizeof(input_timezone));
-
-    location_input = ui2_text_input_create(0, rows - 4, cols, 4);
-    ui2_text_input_set_title(location_input, "Set Location");
-    ui2_text_input_set_label(location_input, "Location:");
-    ui2_text_input_set_hints(location_input, "City or lat,lon", "ESC Cancel");
-    ui2_text_input_set_buffer(location_input, input_location, sizeof(input_location));
-
-    build_tab_content();
-
-    {
-        ui2_toolbar_item_t tb_items[] = {
-            {ICON_ARROW_UP,   on_toolbar_up,       NULL},
-            {ICON_ARROW_DOWN, on_toolbar_down,     NULL},
-            {ICON_CHECK,      on_toolbar_activate, NULL},
-            {ICON_ARROW_LEFT, on_toolbar_back,     NULL},
-            {ICON_X,          on_exit_btn_click,   NULL},
-        };
-        toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, tb_items, 5);
-    }
-
-    render();
+    setup_and_render();
     os_log(TAG, "Settings app initialized");
 }
 
 void app_checkpoint(app_context_t *ctx) {
-}
-
-static void destroy_list(ui2_list_t **list) {
-    if (*list) {
-        UI2_WIDGET(*list)->vtable->destroy(UI2_WIDGET(*list));
-        *list = NULL;
-    }
+    (void)ctx;
 }
 
 void app_close(app_context_t *ctx) {
+    (void)ctx;
     os_log(TAG, "Settings app cleanup");
 
-    destroy_list(&scan_list);
-    destroy_list(&font_family_list);
-    destroy_list(&font_size_list);
-
-    if (scan_toolbar) { UI2_WIDGET(scan_toolbar)->vtable->destroy(UI2_WIDGET(scan_toolbar)); scan_toolbar = NULL; }
-
+    if (screen) {
+        ui2_screen_destroy(screen);
+        screen = NULL;
+    }
+    tv = NULL;
+    toolbar = NULL;
+    scan_list = NULL;
+    scan_toolbar = NULL;
+    font_family_list = NULL;
+    font_size_list = NULL;
     for (int s = 0; s < SECTION_COUNT; s++) {
         tab_content[s].list = NULL;
     }
-
-    if (ssid_input) { UI2_WIDGET(ssid_input)->vtable->destroy(UI2_WIDGET(ssid_input)); ssid_input = NULL; }
-    if (password_input) { UI2_WIDGET(password_input)->vtable->destroy(UI2_WIDGET(password_input)); password_input = NULL; }
-    if (timezone_input) { UI2_WIDGET(timezone_input)->vtable->destroy(UI2_WIDGET(timezone_input)); timezone_input = NULL; }
-    if (location_input) { UI2_WIDGET(location_input)->vtable->destroy(UI2_WIDGET(location_input)); location_input = NULL; }
-    if (toolbar) { UI2_WIDGET(toolbar)->vtable->destroy(UI2_WIDGET(toolbar)); toolbar = NULL; }
-    if (tv) { UI2_WIDGET(tv)->vtable->destroy(UI2_WIDGET(tv)); tv = NULL; }
 
     text_mode_clear(TEXT_COLOR_BLACK);
 }
 
 void app_event(app_context_t *ctx, event_t *event) {
-    if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
-        char key = event->keyboard.key;
+    (void)ctx;
 
-        if (event->keyboard.modifiers & MODIFIER_CTRL)
-            return;
-
-        if (ui2_osk_is_active()) {
-            ui2_osk_handle_event(NULL, (event_t*)event);
-            if (!ui2_osk_is_active()) {
-                ui2_osk_result_t result = ui2_osk_get_result();
-                if (result == UI2_OSK_RESULT_CONFIRMED) {
-                    handle_text_input_confirm();
-                }
-                if (state != STATE_MESSAGE) {
-                    state = STATE_MAIN;
-                }
-                render();
-            }
-            return;
-        }
-
-        switch (state) {
-            case STATE_MAIN: {
-                if (key == 'q' || key == 'Q') {
-                    os_exit();
-                    return;
-                }
-                bool handled = UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), key);
-                if (handled && state == STATE_MAIN) {
-                    build_tab_content();
-                    draw_main();
-                    text_mode_flush();
-                }
-                break;
-            }
-            case STATE_SCAN_RESULTS:
-                handle_scan_key(key);
-                break;
-            case STATE_ENTER_SSID:
-            case STATE_ENTER_PASSWORD:
-            case STATE_ENTER_TIMEZONE:
-            case STATE_ENTER_LOCATION: {
-                if (key == '\n' || key == '\r') {
-                    handle_text_input_confirm();
-                    if (state == STATE_MESSAGE) {
-                        render();
-                    } else {
-                        render();
-                    }
-                    return;
-                }
-                if (key == 27) {
-                    state = STATE_MAIN;
-                    render();
-                    return;
-                }
-                ui2_text_input_t *input = get_text_input_for_state();
-                if (input) {
-                    bool handled = UI2_WIDGET(input)->vtable->handle_key(UI2_WIDGET(input), key);
-                    if (handled) {
-                        UI2_WIDGET(input)->vtable->draw(UI2_WIDGET(input));
-                        text_mode_flush();
-                    }
-                }
-                break;
-            }
-            case STATE_FONT_SELECTION:
-                handle_font_selection_key(key);
-                break;
-            case STATE_FONT_SIZE_SELECTION:
-                handle_font_size_key(key);
-                break;
-            case STATE_MESSAGE:
-                handle_message_key(key);
-                break;
-        }
-    } else if (event->type == EVENT_TOUCH && event->touch.pressed) {
-        if (ui2_osk_is_active()) {
-            ui2_osk_handle_event(NULL, (event_t*)event);
-            if (!ui2_osk_is_active()) {
-                ui2_osk_result_t result = ui2_osk_get_result();
-                if (result == UI2_OSK_RESULT_CONFIRMED) {
-                    handle_text_input_confirm();
-                }
-                state = STATE_MAIN;
-                render();
-            }
-            return;
-        }
-
-        int cw = text_mode_get_char_width();
-        int ch = text_mode_get_char_height();
-        int x_col = event->touch.x / cw;
-        int y_col = event->touch.y / ch;
-
-        switch (state) {
-            case STATE_MAIN: {
-                if (toolbar && UI2_WIDGET(toolbar)->vtable->handle_touch(UI2_WIDGET(toolbar), x_col, y_col, true)) {
-                    break;
-                }
-                UI2_WIDGET(tv)->vtable->handle_touch(UI2_WIDGET(tv), x_col, y_col, true);
-                if (state == STATE_MAIN) {
-                    build_tab_content();
-                    draw_main();
-                    text_mode_flush();
-                }
-                break;
-            }
-            case STATE_SCAN_RESULTS: {
-                int rows = text_mode_get_rows();
-
-                if (is_ble_scan && scan_toolbar) {
-                    if (UI2_WIDGET(scan_toolbar)->vtable->handle_touch(UI2_WIDGET(scan_toolbar), x_col, y_col, true)) {
-                        render();
-                        break;
-                    }
-                } else {
-                    if (scan_count <= 0 || y_col >= rows - 3) {
-                        state = STATE_MAIN;
-                        render();
-                        break;
-                    }
-                }
-
-                if (scan_list) {
-                    app_state_t prev = state;
-                    UI2_WIDGET(scan_list)->vtable->handle_touch(UI2_WIDGET(scan_list), x_col, y_col, true);
-                    if (state == prev) render();
-                }
-                break;
-            }
-            case STATE_FONT_SELECTION:
-                if (font_family_list) {
-                    UI2_WIDGET(font_family_list)->vtable->handle_touch(UI2_WIDGET(font_family_list), x_col, y_col, true);
-                    int sel = ui2_list_get_selection(font_family_list);
-                    if (sel >= 0 && sel < font_family_count) {
-                        strncpy(selected_family, font_family_items[sel], sizeof(selected_family) - 1);
-                        selected_family[sizeof(selected_family) - 1] = '\0';
-                        char current_font[32];
-                        os_settings_get_string(SETTINGS_KEY_DEFAULT_FONT, "hack 8", current_font, sizeof(current_font));
-                        font_id_t current_id = font_lookup_by_name(current_font);
-                        int current_size = current_id >= 0 ? font_table[current_id].size : 8;
-                        build_font_size_items(selected_family);
-                        int best_size = 0;
-                        font_size_selected = 0;
-                        for (int i = 0; i < font_size_count; i++) {
-                            int size = 0;
-                            sscanf(font_size_items[i], "%d", &size);
-                            if (best_size == 0 || abs(size - current_size) < abs(best_size - current_size)) {
-                                best_size = size;
-                                font_size_selected = i;
-                            }
-                        }
-                        if (font_size_count > 0) {
-                            int size = 0;
-                            sscanf(font_size_items[font_size_selected], "%d", &size);
-                            font_id_t font_id = find_font_by_family_size(selected_family, size);
-                            if (font_id >= 0 && font_id < font_count) {
-                                os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
-                                extern bool text_mode_set_font(font_id_t font);
-                                text_mode_set_font(font_id);
-                                layout_needs_rebuild = true;
-                                set_status("Font changed and saved");
-                            }
-                        }
-                    }
-                    state = STATE_MAIN;
-                    render();
-                }
-                break;
-            case STATE_FONT_SIZE_SELECTION:
-                if (font_size_list) {
-                    UI2_WIDGET(font_size_list)->vtable->handle_touch(UI2_WIDGET(font_size_list), x_col, y_col, true);
-                    int sel = ui2_list_get_selection(font_size_list);
-                    if (sel >= 0 && sel < font_size_count) {
-                        int size = 0;
-                        sscanf(font_size_items[sel], "%d", &size);
-                        font_id_t font_id = find_font_by_family_size(selected_family, size);
-                        if (font_id >= 0 && font_id < font_count) {
-                            os_settings_set_string(SETTINGS_KEY_DEFAULT_FONT, font_table[font_id].name);
-                            extern bool text_mode_set_font(font_id_t font);
-                            text_mode_set_font(font_id);
-                            layout_needs_rebuild = true;
-                            set_status("Font changed and saved");
-                        }
-                    }
-                    state = STATE_MAIN;
-                    render();
-                }
-                break;
-            case STATE_MESSAGE:
-                state = STATE_MAIN;
-                render();
-                break;
-        }
-    } else if (event->type == EVENT_TIMER) {
+    if (event->type == EVENT_TIMER) {
         if (ble_scan_pending) {
             ble_scan_pending = false;
             ble_keyboard_start_scan(10);
 
-            msg_timer = 0;
             int ble_count = ble_keyboard_get_scan_count();
             scan_count = ble_count;
             for (int i = 0; i < scan_count && i < 20; i++) {
@@ -1502,26 +1220,74 @@ void app_event(app_context_t *ctx, event_t *event) {
                 snprintf(scan_labels[i], sizeof(scan_labels[i]), "%-24s %3ddBm", name, rssi);
                 scan_items[i] = scan_labels[i];
             }
-            ui2_list_set_items(scan_list, scan_items, scan_count);
-            ui2_list_set_selection(scan_list, 0);
+            if (scan_list) {
+                ui2_list_set_items(scan_list, scan_items, scan_count);
+                ui2_list_set_selection(scan_list, 0);
+            }
 
             if (ble_count == 0) {
-                snprintf(status_msg, sizeof(status_msg), "No BLE devices found");
-            } else {
-                status_msg[0] = '\0';
+                ui2_screen_toast_show(screen, "No BLE devices found", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
             }
-            render();
+            force_render();
         }
-        if (msg_timer > 0) {
-            msg_timer--;
-            if (msg_timer == 0) {
-                status_msg[0] = '\0';
-                if (state == STATE_MAIN) {
-                    build_tab_content();
-                    draw_main();
-                    text_mode_flush();
+        if (ui2_screen_toast_active(screen)) {
+            ui2_screen_toast_tick(screen);
+            if (!ui2_screen_toast_active(screen)) {
+                force_render();
+            }
+        }
+        return;
+    }
+
+    if (event->type != EVENT_KEYBOARD && event->type != EVENT_TOUCH) return;
+
+    if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
+        char key = event->keyboard.key;
+
+        if (ui2_osk_is_active()) {
+            ui2_osk_handle_event(NULL, event);
+            if (!ui2_osk_is_active()) {
+                ui2_osk_result_t result = ui2_osk_get_result();
+                if (result == UI2_OSK_RESULT_CONFIRMED) {
+                    handle_text_input_confirm();
                 }
+                state = STATE_MAIN;
+                setup_and_render();
             }
+            return;
         }
+
+        if (key == 'q' || key == 'Q') {
+            os_exit();
+            return;
+        }
+
+        if (key == 27 && state != STATE_MAIN) {
+            state = STATE_MAIN;
+            setup_and_render();
+            return;
+        }
+    }
+
+    if (ui2_osk_is_active()) {
+        ui2_osk_handle_event(NULL, event);
+        if (!ui2_osk_is_active()) {
+            ui2_osk_result_t result = ui2_osk_get_result();
+            if (result == UI2_OSK_RESULT_CONFIRMED) {
+                handle_text_input_confirm();
+            }
+            state = STATE_MAIN;
+            setup_and_render();
+        }
+        return;
+    }
+
+    app_state_t prev_state = state;
+    bool handled = ui2_screen_handle_event(screen, event);
+
+    if (state != prev_state) {
+        setup_and_render();
+    } else if (handled) {
+        force_render();
     }
 }
