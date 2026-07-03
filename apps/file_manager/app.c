@@ -1024,7 +1024,6 @@ void app_checkpoint(app_context_t *ctx) {
 
 void app_close(app_context_t *ctx) {
     (void)ctx;
-    save_state();
 
     if (state.screen) {
         ui2_screen_destroy(state.screen);
