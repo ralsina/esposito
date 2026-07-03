@@ -337,31 +337,29 @@ void os_power_off(void) {
     screensaver_restore_kbd_backlight = keyboard_get_backlight();
     keyboard_set_backlight(0);
 
-    ESP_LOGI(TAG, "Power off: waiting for touch release...");
+    // Drain any pending touch events from the button press
+    uint16_t tx, ty;
+    bool pressed = false;
+    do {
+        touchscreen_get_position(&tx, &ty, &pressed);
+        vTaskDelay(pdMS_TO_TICKS(50));
+    } while (pressed);
 
-    int wait = 0;
-    while (gpio_get_level(BOARD_TOUCH_WAKE_GPIO) == 0 && wait < 50) {
-        vTaskDelay(pdMS_TO_TICKS(20));
-        wait++;
-    }
+    ESP_LOGI(TAG, "Power off: entering timer-poll light sleep");
 
-    if (gpio_get_level(BOARD_TOUCH_WAKE_GPIO) == 0) {
-        ESP_LOGW(TAG, "Touch still pressed after 1s, skipping sleep");
-        display_set_backlight(screensaver_restore_brightness);
-        keyboard_set_backlight(screensaver_restore_kbd_backlight);
-        return;
-    }
+    // The GT911 INT pin stays low regardless of touch state, so GPIO wakeup
+    // doesn't work. Instead, wake every 500ms via timer and poll the
+    // touchscreen via I2C.
+    do {
+        esp_sleep_enable_timer_wakeup(1500 * 1000);
+        esp_light_sleep_start();
+        touchscreen_get_position(&tx, &ty, &pressed);
+    } while (!pressed);
 
-    ESP_LOGI(TAG, "Power off: entering light sleep. Touch screen to wake.");
-
-    gpio_wakeup_enable(BOARD_TOUCH_WAKE_GPIO, GPIO_INTR_LOW_LEVEL);
-    esp_sleep_enable_gpio_wakeup();
-    esp_light_sleep_start();
+    ESP_LOGI(TAG, "Power off: touch detected, waking");
 
     display_set_backlight(screensaver_restore_brightness);
     keyboard_set_backlight(screensaver_restore_kbd_backlight);
-
-    ESP_LOGI(TAG, "Woke from power-off light sleep");
 }
 
 void os_reboot(void) {
@@ -1300,11 +1298,16 @@ void os_event_loop(void) {
                     keyboard_set_backlight(0);
 
                     screensaver_active = true;
-                    ESP_LOGI(TAG, "Screensaver: entering light sleep after %d min idle", ss_timeout_min);
+                    ESP_LOGI(TAG, "Screensaver: entering timer-poll light sleep after %d min idle", ss_timeout_min);
 
-                    gpio_wakeup_enable(BOARD_TOUCH_WAKE_GPIO, GPIO_INTR_LOW_LEVEL);
-                    esp_sleep_enable_gpio_wakeup();
-                    esp_light_sleep_start();
+                    // GT911 INT pin can't be used for GPIO wakeup, so poll via timer
+                    uint16_t tx, ty;
+                    bool touched = false;
+                    do {
+                        esp_sleep_enable_timer_wakeup(1500 * 1000);
+                        esp_light_sleep_start();
+                        touchscreen_get_position(&tx, &ty, &touched);
+                    } while (!touched);
 
                     display_set_backlight(screensaver_restore_brightness);
                     keyboard_set_backlight(screensaver_restore_kbd_backlight);
