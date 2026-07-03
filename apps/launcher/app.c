@@ -117,6 +117,18 @@ static void on_down_click(ui2_button_t *button, void *user_data) {
     }
 }
 
+static void on_power_click(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    os_power_off();
+}
+
+static void on_reboot_click(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    os_reboot();
+}
+
 static void build_launcher_screen(void) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
@@ -149,11 +161,13 @@ static void build_launcher_screen(void) {
 
     int btn_row = rows - 4;
     ui2_toolbar_item_t tb_items[] = {
-        {ICON_ARROW_BIG_UP,   on_up_click,   NULL},
-        {ICON_CHECK,          on_open_click, NULL},
-        {ICON_ARROW_BIG_DOWN, on_down_click, NULL},
+        {ICON_ARROW_BIG_UP,   on_up_click,     NULL},
+        {ICON_CHECK,          on_open_click,   NULL},
+        {ICON_ARROW_BIG_DOWN, on_down_click,   NULL},
+        {ICON_POWER,          on_power_click,  NULL},
+        {ICON_REFRESH_CW,     on_reboot_click, NULL},
     };
-    ui2_layout_t *bar = ui2_toolbar_create(1, btn_row, cols - 2, 3, tb_items, 3);
+    ui2_layout_t *bar = ui2_toolbar_create(1, btn_row, cols - 2, 3, tb_items, 5);
     ui2_layout_add(root, UI2_WIDGET(bar));
 }
 
