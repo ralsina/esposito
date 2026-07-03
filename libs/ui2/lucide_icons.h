@@ -54,5 +54,7 @@
 
 // System
 #define ICON_SETTINGS "\xee\x85\x94"
+#define ICON_POWER "\xee\x81\x99"
+#define ICON_REFRESH_CW "\xee\x81\xa4"
 
 #endif // LUCIDE_ICONS_H
