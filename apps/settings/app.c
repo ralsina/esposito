@@ -75,6 +75,7 @@ typedef enum {
 
 typedef enum {
     ACTION_CHOOSE_NETWORK,
+    ACTION_IP_INFO,
     ACTION_DISCONNECT,
     ACTION_SET_TIMEZONE,
     ACTION_SET_LOCATION,
@@ -102,6 +103,7 @@ static const char *section_labels[SECTION_COUNT] = {
 };
 
 static const section_option_t wifi_connected_opts[] = {
+    {"IP", ACTION_IP_INFO},
     {"Disconnect", ACTION_DISCONNECT},
 };
 static const section_option_t wifi_disconnected_opts[] = {
@@ -336,6 +338,14 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
         case ACTION_CHOOSE_NETWORK:
             out[0] = '\0';
             break;
+        case ACTION_IP_INFO: {
+            const char *ip = wifi_get_ip();
+            if (ip && ip[0])
+                snprintf(out, out_size, "%s", ip);
+            else
+                snprintf(out, out_size, "%s", "\xe2\x80\x94");
+            break;
+        }
         case ACTION_DISCONNECT: {
             char ssid[64];
             os_settings_get_string("wifi/last_ssid", "", ssid, sizeof(ssid));

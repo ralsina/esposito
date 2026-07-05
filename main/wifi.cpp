@@ -303,6 +303,8 @@ int wifi_scan_get_rssi(int index) {
 bool wifi_connect(const char *ssid, const char *password) {
     if (!wifi_initialized) return false;
 
+    esp_timer_stop(wifi_reconnect_timer);
+
     wifi_config_t wifi_config;
     memset(&wifi_config, 0, sizeof(wifi_config));
     strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
@@ -331,6 +333,7 @@ bool wifi_connect(const char *ssid, const char *password) {
 
 void wifi_disconnect(void) {
     if (!wifi_initialized) return;
+    esp_timer_stop(wifi_reconnect_timer);
     esp_wifi_disconnect();
     wifi_connected = false;
     wifi_ip[0] = '\0';
