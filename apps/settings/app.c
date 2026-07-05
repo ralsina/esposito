@@ -17,12 +17,13 @@ static const char *TAG = "settings";
 extern const char *ota_firmware_version(void);
 extern bool ota_check_for_update(char *latest_version, size_t max_len);
 extern const char *ota_apply_update(void);
+extern int64_t esp_timer_get_time(void);
 
 typedef enum {
     STATE_MAIN,
     STATE_SCAN_RESULTS,
-    STATE_ENTER_SSID,
     STATE_ENTER_PASSWORD,
+    STATE_WIFI_CONNECTING,
     STATE_ENTER_TIMEZONE,
     STATE_ENTER_LOCATION,
     STATE_FONT_SELECTION,
@@ -43,6 +44,10 @@ static ui2_list_t *scan_list;
 static ui2_layout_t *scan_toolbar;
 static bool is_ble_scan = false;
 static bool ble_scan_pending = false;
+
+static int64_t wifi_connect_start = 0;
+static char wifi_connecting_ssid[64] = {0};
+static bool wifi_used_stored_password = false;
 
 static ui2_list_t *font_family_list;
 static ui2_list_t *font_size_list;
@@ -69,10 +74,7 @@ typedef enum {
 } settings_section_t;
 
 typedef enum {
-    ACTION_SCAN,
-    ACTION_ENTER_SSID,
-    ACTION_ENTER_PASSWORD,
-    ACTION_SAVE_CONNECT,
+    ACTION_CHOOSE_NETWORK,
     ACTION_DISCONNECT,
     ACTION_SET_TIMEZONE,
     ACTION_SET_LOCATION,
@@ -99,12 +101,11 @@ static const char *section_labels[SECTION_COUNT] = {
     "WiFi", "BT", "Time", "Display", "Debug", "System",
 };
 
-static const section_option_t wifi_options[] = {
-    {"Scan", ACTION_SCAN},
-    {"SSID", ACTION_ENTER_SSID},
-    {"Pass", ACTION_ENTER_PASSWORD},
-    {"Save+Conn", ACTION_SAVE_CONNECT},
+static const section_option_t wifi_connected_opts[] = {
     {"Disconnect", ACTION_DISCONNECT},
+};
+static const section_option_t wifi_disconnected_opts[] = {
+    {"Choose Network", ACTION_CHOOSE_NETWORK},
 };
 
 static const section_option_t ble_options[] = {
@@ -311,7 +312,14 @@ static void truncate_text(const char *text, char *out, size_t out_size, int max_
 static const section_option_t *section_options(settings_section_t section, int *count_out) {
     if (count_out) *count_out = 0;
     switch (section) {
-        case SECTION_WIFI: if (count_out) *count_out = (int)(sizeof(wifi_options) / sizeof(wifi_options[0])); return wifi_options;
+        case SECTION_WIFI:
+            if (wifi_is_connected()) {
+                if (count_out) *count_out = (int)(sizeof(wifi_connected_opts) / sizeof(wifi_connected_opts[0]));
+                return wifi_connected_opts;
+            } else {
+                if (count_out) *count_out = (int)(sizeof(wifi_disconnected_opts) / sizeof(wifi_disconnected_opts[0]));
+                return wifi_disconnected_opts;
+            }
         case SECTION_BLUETOOTH: if (count_out) *count_out = (int)(sizeof(ble_options) / sizeof(ble_options[0])); return ble_options;
         case SECTION_TIME: if (count_out) *count_out = (int)(sizeof(time_options) / sizeof(time_options[0])); return time_options;
         case SECTION_DISPLAY: if (count_out) *count_out = (int)(sizeof(display_options) / sizeof(display_options[0])); return display_options;
@@ -325,21 +333,18 @@ static void format_action_value(settings_action_t action, char *out, size_t out_
     if (!out || out_size == 0) return;
     out[0] = '\0';
     switch (action) {
-        case ACTION_SCAN:
-            snprintf(out, out_size, "%s", wifi_is_connected() ? "online" : "offline");
+        case ACTION_CHOOSE_NETWORK:
+            out[0] = '\0';
             break;
-        case ACTION_ENTER_SSID:
-            snprintf(out, out_size, "%s", input_ssid[0] ? input_ssid : "(unset)");
+        case ACTION_DISCONNECT: {
+            char ssid[64];
+            os_settings_get_string("wifi/last_ssid", "", ssid, sizeof(ssid));
+            if (ssid[0])
+                snprintf(out, out_size, "%s", ssid);
+            else
+                snprintf(out, out_size, "%s", "connected");
             break;
-        case ACTION_ENTER_PASSWORD:
-            snprintf(out, out_size, "%s", input_password[0] ? "********" : "(empty)");
-            break;
-        case ACTION_SAVE_CONNECT:
-            snprintf(out, out_size, "%s", "apply");
-            break;
-        case ACTION_DISCONNECT:
-            snprintf(out, out_size, "%s", "now");
-            break;
+        }
         case ACTION_BLE_SCAN:
             if (ble_keyboard_is_initializing()) {
                 snprintf(out, out_size, "%s", "init...");
@@ -412,6 +417,7 @@ static void on_scan_activated(int item_index, void *user_data);
 static void on_scan_selection_changed(int item_index, void *user_data);
 
 static void force_render(void) {
+    if (ui2_osk_is_active()) return;
     text_mode_clear(TEXT_COLOR_BLACK);
     ui2_screen_render(screen);
 }
@@ -426,28 +432,28 @@ static void on_toolbar_up(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 'w');
-    setup_and_render();
+    force_render();
 }
 
 static void on_toolbar_down(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 's');
-    setup_and_render();
+    force_render();
 }
 
 static void on_toolbar_activate(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), '\n');
-    setup_and_render();
+    force_render();
 }
 
 static void on_toolbar_back(ui2_button_t *button, void *user_data) {
     (void)button;
     (void)user_data;
     UI2_WIDGET(tv)->vtable->handle_key(UI2_WIDGET(tv), 'a');
-    setup_and_render();
+    force_render();
 }
 
 static void on_scan_toolbar_up(ui2_button_t *button, void *user_data) {
@@ -467,6 +473,14 @@ static void on_scan_toolbar_down(ui2_button_t *button, void *user_data) {
         UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), 's');
         scan_selected = ui2_list_get_selection(scan_list);
         force_render();
+    }
+}
+
+static void on_scan_toolbar_sel(ui2_button_t *button, void *user_data) {
+    (void)button;
+    (void)user_data;
+    if (scan_list && scan_count > 0) {
+        on_scan_activated(scan_selected, NULL);
     }
 }
 
@@ -502,11 +516,56 @@ static void on_scan_toolbar_back(ui2_button_t *button, void *user_data) {
     setup_and_render();
 }
 
+static void wifi_make_pass_key(char *out, size_t out_size, const char *ssid) {
+    char sanitized[64] = {0};
+    size_t j = 0;
+    for (size_t i = 0; ssid[i] && j < sizeof(sanitized) - 1; i++) {
+        char c = ssid[i];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') || c == '_' || c == '-') {
+            sanitized[j++] = c;
+        } else {
+            sanitized[j++] = '_';
+        }
+    }
+    snprintf(out, out_size, "wifi/pass_%s", sanitized);
+}
+
+static bool wifi_get_stored_password(const char *ssid, char *out, size_t out_size) {
+    char key[80];
+    wifi_make_pass_key(key, sizeof(key), ssid);
+    size_t len = os_settings_get_string(key, "", out, out_size);
+    return len > 0 && out[0];
+}
+
+static void wifi_store_password(const char *ssid, const char *password) {
+    char key[80];
+    wifi_make_pass_key(key, sizeof(key), ssid);
+    os_settings_set_string(key, password);
+}
+
+static void start_wifi_connect(const char *ssid, const char *password, bool from_storage) {
+    snprintf(wifi_connecting_ssid, sizeof(wifi_connecting_ssid), "%s", ssid);
+    wifi_used_stored_password = from_storage;
+    wifi_connect_start = esp_timer_get_time();
+
+    wifi_save_config(ssid, password);
+    wifi_connect(ssid, password);
+    os_settings_set_string("wifi/last_ssid", ssid);
+    wifi_store_password(ssid, password);
+
+    ui2_screen_toast_show(screen, "Connecting...", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 150);
+    state = STATE_WIFI_CONNECTING;
+}
+
 static void execute_main_action(settings_action_t action) {
     switch (action) {
-        case ACTION_SCAN: {
+        case ACTION_CHOOSE_NETWORK: {
             is_ble_scan = false;
             wifi_init();
+            ui2_screen_toast_show(screen, "Scanning...", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 150);
+            force_render();
+            text_mode_flush();
             scan_count = wifi_scan();
             scan_selected = 0;
             for (int i = 0; i < scan_count && i < 20; i++) {
@@ -519,46 +578,9 @@ static void execute_main_action(settings_action_t action) {
                 snprintf(scan_labels[i], sizeof(scan_labels[i]), "%-24s %3ddBm [%s]", ssid, rssi, ql);
                 scan_items[i] = scan_labels[i];
             }
-            scan_list = ui2_list_create(1, 1, text_mode_get_cols() - 2, text_mode_get_rows() - 5);
-            ui2_list_set_title(scan_list, "Available Networks");
-            ui2_list_set_colors(scan_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
-                                TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
-            ui2_list_set_border(scan_list, true);
-            ui2_list_set_scrollbar_width(scan_list, 1);
-            ui2_list_set_callbacks(scan_list, NULL, on_scan_activated, NULL);
-            if (scan_count > 0) {
-                ui2_list_set_items(scan_list, scan_items, scan_count);
-                ui2_list_set_selection(scan_list, scan_selected);
-            }
             state = STATE_SCAN_RESULTS;
-            setup_and_render();
             break;
         }
-        case ACTION_ENTER_SSID:
-            state = STATE_ENTER_SSID;
-            input_ssid[0] = '\0';
-            if (!keyboard_is_available())
-                ui2_osk_input_text("Enter SSID", input_ssid, sizeof(input_ssid), NULL, false);
-            setup_and_render();
-            break;
-        case ACTION_ENTER_PASSWORD:
-            state = STATE_ENTER_PASSWORD;
-            input_password[0] = '\0';
-            if (!keyboard_is_available())
-                ui2_osk_input_text("Enter Password", input_password, sizeof(input_password), NULL, true);
-            setup_and_render();
-            break;
-        case ACTION_SAVE_CONNECT:
-            if (input_ssid[0] == '\0') {
-                ui2_screen_toast_show(screen, "Enter SSID first", TEXT_COLOR_BLACK, TEXT_COLOR_RED, 6);
-                setup_and_render();
-                return;
-            }
-            ui2_screen_toast_show(screen, "Connecting...", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
-            force_render();
-            wifi_save_config(input_ssid, input_password);
-            wifi_connect(input_ssid, input_password);
-            break;
         case ACTION_DISCONNECT:
             wifi_disconnect();
             ui2_screen_toast_show(screen, "Disconnected", TEXT_COLOR_BLACK, TEXT_COLOR_YELLOW, 6);
@@ -706,31 +728,11 @@ static void execute_main_action(settings_action_t action) {
                 break;
             }
 
-            int cols = text_mode_get_cols();
-            int rows = text_mode_get_rows();
-
             scan_count = 0;
             scan_selected = 0;
-            scan_list = ui2_list_create(1, 1, cols - 2, rows - 6);
-            ui2_list_set_title(scan_list, "BLE Keyboards");
-            ui2_list_set_colors(scan_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
-                                TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
-            ui2_list_set_border(scan_list, true);
-            ui2_list_set_scrollbar_width(scan_list, 1);
-            ui2_list_set_callbacks(scan_list, on_scan_selection_changed, on_scan_activated, NULL);
-            ui2_list_set_items(scan_list, scan_items, 0);
-
-            ui2_toolbar_item_t scan_tb_items[] = {
-                {ICON_ARROW_UP,   on_scan_toolbar_up,      NULL},
-                {ICON_ARROW_DOWN, on_scan_toolbar_down,    NULL},
-                {ICON_CHECK,      on_scan_toolbar_connect, NULL},
-                {ICON_X,          on_scan_toolbar_back,    NULL},
-            };
-            scan_toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, scan_tb_items, 4);
 
             state = STATE_SCAN_RESULTS;
             ble_scan_pending = true;
-            setup_and_render();
             break;
         }
         case ACTION_BLE_DISCONNECT:
@@ -850,13 +852,19 @@ static void on_scan_activated(int item_index, void *user_data) {
     }
 
     const char *ssid = wifi_scan_get_ssid(item_index);
-    if (ssid && ssid[0]) {
-        strncpy(input_ssid, ssid, sizeof(input_ssid) - 1);
+    if (!ssid || !ssid[0]) return;
+
+    strncpy(input_ssid, ssid, sizeof(input_ssid) - 1);
+    input_ssid[sizeof(input_ssid) - 1] = '\0';
+
+    char stored_pass[64];
+    if (wifi_get_stored_password(ssid, stored_pass, sizeof(stored_pass))) {
+        start_wifi_connect(ssid, stored_pass, true);
+    } else {
         state = STATE_ENTER_PASSWORD;
         input_password[0] = '\0';
         if (!keyboard_is_available())
-            ui2_osk_input_text("Enter Password", input_password, sizeof(input_password), NULL, true);
-        setup_and_render();
+            ui2_osk_input_text("WiFi Password", input_password, sizeof(input_password), NULL, true);
     }
 }
 
@@ -864,14 +872,6 @@ static ui2_text_input_t *get_text_input_for_state(void) {
     int rows = text_mode_get_rows();
     int cols = text_mode_get_cols();
     switch (state) {
-        case STATE_ENTER_SSID: {
-            ui2_text_input_t *input = ui2_text_input_create(0, rows - 4, cols, 4);
-            ui2_text_input_set_title(input, "Enter SSID");
-            ui2_text_input_set_label(input, "SSID:");
-            ui2_text_input_set_hints(input, "Type to enter  Enter Confirm", "ESC Cancel");
-            ui2_text_input_set_buffer(input, input_ssid, sizeof(input_ssid));
-            return input;
-        }
         case STATE_ENTER_PASSWORD: {
             ui2_text_input_t *input = ui2_text_input_create(0, rows - 4, cols, 4);
             ui2_text_input_set_title(input, "Enter Password");
@@ -909,6 +909,10 @@ static ui2_text_input_t *get_text_input_for_state(void) {
 }
 
 static void handle_text_input_confirm(void) {
+    if (state == STATE_ENTER_PASSWORD) {
+        start_wifi_connect(input_ssid, input_password, false);
+        return;
+    }
     if (state == STATE_ENTER_TIMEZONE) {
         os_settings_set_string(SETTINGS_KEY_TIMEZONE, input_timezone);
         ui2_screen_toast_show(screen, "Timezone saved", TEXT_COLOR_BLACK, TEXT_COLOR_GREEN, 6);
@@ -966,13 +970,52 @@ static void setup_scan_view(void) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
 
+    if (is_ble_scan) {
+        scan_list = ui2_list_create(1, 1, cols - 2, rows - 6);
+        ui2_list_set_title(scan_list, "BLE Keyboards");
+        ui2_list_set_colors(scan_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                            TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+        ui2_list_set_border(scan_list, true);
+        ui2_list_set_scrollbar_width(scan_list, 1);
+        ui2_list_set_callbacks(scan_list, on_scan_selection_changed, on_scan_activated, NULL);
+        ui2_list_set_items(scan_list, scan_items, scan_count);
+
+        ui2_toolbar_item_t items[] = {
+            {ICON_ARROW_UP,   on_scan_toolbar_up,      NULL},
+            {ICON_ARROW_DOWN, on_scan_toolbar_down,    NULL},
+            {ICON_CHECK,      on_scan_toolbar_connect, NULL},
+            {ICON_X,          on_scan_toolbar_back,    NULL},
+        };
+        scan_toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, items, 4);
+    } else {
+        scan_list = ui2_list_create(1, 1, cols - 2, rows - 6);
+        ui2_list_set_title(scan_list, "Available Networks");
+        ui2_list_set_colors(scan_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
+                            TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
+        ui2_list_set_border(scan_list, true);
+        ui2_list_set_scrollbar_width(scan_list, 1);
+        ui2_list_set_callbacks(scan_list, NULL, on_scan_activated, NULL);
+        if (scan_count > 0) {
+            ui2_list_set_items(scan_list, scan_items, scan_count);
+            ui2_list_set_selection(scan_list, scan_selected);
+        }
+
+        ui2_toolbar_item_t items[] = {
+            {ICON_ARROW_UP,   on_scan_toolbar_up,   NULL},
+            {ICON_ARROW_DOWN, on_scan_toolbar_down, NULL},
+            {ICON_CHECK,      on_scan_toolbar_sel,  NULL},
+            {ICON_X,          on_scan_toolbar_back, NULL},
+        };
+        scan_toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, items, 4);
+    }
+
     ui2_layout_t *root = ui2_layout_create(0, 0, cols, rows, UI2_LAYOUT_ABSOLUTE);
 
     if (scan_list) {
         ui2_layout_add(root, UI2_WIDGET(scan_list));
     }
 
-    if (is_ble_scan && scan_toolbar) {
+    if (scan_toolbar) {
         ui2_layout_add(root, UI2_WIDGET(scan_toolbar));
     }
 
@@ -1097,6 +1140,8 @@ static void handle_font_size_activated(int item_index, void *user_data) {
 }
 
 static void setup_and_render(void) {
+    if (ui2_osk_is_active()) return;
+
     switch (state) {
         case STATE_MAIN:
             setup_main_view();
@@ -1104,15 +1149,14 @@ static void setup_and_render(void) {
         case STATE_SCAN_RESULTS:
             setup_scan_view();
             break;
-        case STATE_ENTER_SSID:
+        case STATE_WIFI_CONNECTING:
+            setup_main_view();
+            break;
         case STATE_ENTER_PASSWORD:
         case STATE_ENTER_TIMEZONE:
-        case STATE_ENTER_LOCATION: {
-            if (!ui2_osk_is_active()) {
-                setup_text_input_view();
-            }
+        case STATE_ENTER_LOCATION:
+            setup_text_input_view();
             break;
-        }
         case STATE_FONT_SELECTION:
             setup_font_family_view();
             break;
@@ -1208,6 +1252,25 @@ void app_event(app_context_t *ctx, event_t *event) {
     (void)ctx;
 
     if (event->type == EVENT_TIMER) {
+        if (state == STATE_WIFI_CONNECTING) {
+            if (wifi_is_connected()) {
+                ui2_screen_toast_show(screen, "Connected!", TEXT_COLOR_BLACK, TEXT_COLOR_GREEN, 6);
+                state = STATE_MAIN;
+                setup_and_render();
+            } else if (esp_timer_get_time() - wifi_connect_start > 8000000) {
+                if (wifi_used_stored_password) {
+                    state = STATE_ENTER_PASSWORD;
+                    input_password[0] = '\0';
+                    if (!keyboard_is_available())
+                        ui2_osk_input_text("WiFi Password", input_password, sizeof(input_password), NULL, true);
+                    setup_and_render();
+                } else {
+                    ui2_screen_toast_show(screen, "Connection failed", TEXT_COLOR_BLACK, TEXT_COLOR_RED, 6);
+                    state = STATE_MAIN;
+                    setup_and_render();
+                }
+            }
+        }
         if (ble_scan_pending) {
             ble_scan_pending = false;
             ble_keyboard_start_scan(10);
@@ -1244,14 +1307,15 @@ void app_event(app_context_t *ctx, event_t *event) {
     if (event->type == EVENT_KEYBOARD && event->keyboard.pressed) {
         char key = event->keyboard.key;
 
-        if (ui2_osk_is_active()) {
+                if (ui2_osk_is_active()) {
             ui2_osk_handle_event(NULL, event);
             if (!ui2_osk_is_active()) {
                 ui2_osk_result_t result = ui2_osk_get_result();
                 if (result == UI2_OSK_RESULT_CONFIRMED) {
                     handle_text_input_confirm();
+                } else {
+                    state = (state == STATE_ENTER_PASSWORD) ? STATE_SCAN_RESULTS : STATE_MAIN;
                 }
-                state = STATE_MAIN;
                 setup_and_render();
             }
             return;
@@ -1262,10 +1326,35 @@ void app_event(app_context_t *ctx, event_t *event) {
             return;
         }
 
-        if (key == 27 && state != STATE_MAIN) {
-            state = STATE_MAIN;
+        if (key == '\n' && (state == STATE_ENTER_PASSWORD || state == STATE_ENTER_TIMEZONE || state == STATE_ENTER_LOCATION)) {
+            handle_text_input_confirm();
             setup_and_render();
             return;
+        }
+
+        if (key == 27 && state != STATE_MAIN) {
+            state = (state == STATE_ENTER_PASSWORD) ? STATE_SCAN_RESULTS : STATE_MAIN;
+            setup_and_render();
+            return;
+        }
+
+        if (state == STATE_SCAN_RESULTS && scan_list) {
+            if (key == 'w' || key == 'W') {
+                UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), 'w');
+                scan_selected = ui2_list_get_selection(scan_list);
+                force_render();
+                return;
+            }
+            if (key == 's' || key == 'S') {
+                UI2_WIDGET(scan_list)->vtable->handle_key(UI2_WIDGET(scan_list), 's');
+                scan_selected = ui2_list_get_selection(scan_list);
+                force_render();
+                return;
+            }
+            if (key == '\n' || key == '\r') {
+                on_scan_activated(scan_selected, NULL);
+                return;
+            }
         }
     }
 
@@ -1275,8 +1364,9 @@ void app_event(app_context_t *ctx, event_t *event) {
             ui2_osk_result_t result = ui2_osk_get_result();
             if (result == UI2_OSK_RESULT_CONFIRMED) {
                 handle_text_input_confirm();
+            } else {
+                state = (state == STATE_ENTER_PASSWORD) ? STATE_SCAN_RESULTS : STATE_MAIN;
             }
-            state = STATE_MAIN;
             setup_and_render();
         }
         return;
@@ -1285,9 +1375,11 @@ void app_event(app_context_t *ctx, event_t *event) {
     app_state_t prev_state = state;
     bool handled = ui2_screen_handle_event(screen, event);
 
-    if (state != prev_state) {
-        setup_and_render();
-    } else if (handled) {
-        force_render();
+    if (!ui2_osk_is_active()) {
+        if (state != prev_state) {
+            setup_and_render();
+        } else if (handled) {
+            force_render();
+        }
     }
 }
