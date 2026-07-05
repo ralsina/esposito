@@ -347,7 +347,17 @@ static void draw_input_display(void) {
         text_mode_print_at_attr_bg(x, s->input_y, " ", TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_UNDERLINE);
     }
 
-    const char *display = s->mask_input ? "****************" : s->input_buffer;
+    const char *display;
+    char mask_buf[64];
+    if (s->mask_input) {
+        int len = strlen(s->input_buffer);
+        for (int i = 0; i < len && i < (int)sizeof(mask_buf) - 1; i++)
+            mask_buf[i] = '*';
+        mask_buf[len] = '\0';
+        display = mask_buf;
+    } else {
+        display = s->input_buffer;
+    }
     int text_len = strlen(display);
     int max_w = cols - 2;
     int offset = 0;
@@ -472,7 +482,17 @@ bool ui2_osk_handle_event(app_context_t *ctx, event_t *event) {
 
         if (row >= s->input_y && row < s->input_y + 1) {
             if (col >= 1 && col < s->input_display_width - 1) {
-                const char *display = s->mask_input ? "****************" : s->input_buffer;
+                char local_mask[64];
+                const char *display;
+                if (s->mask_input) {
+                    int len = strlen(s->input_buffer);
+                    for (int i = 0; i < len && i < (int)sizeof(local_mask) - 1; i++)
+                        local_mask[i] = '*';
+                    local_mask[len] = '\0';
+                    display = local_mask;
+                } else {
+                    display = s->input_buffer;
+                }
                 int text_len = strlen(display);
                 int max_w = s->input_display_width - 2;
                 int text_x = 1 + (max_w - text_len) / 2;
