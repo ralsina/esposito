@@ -26,6 +26,7 @@ static void ui2_button_draw(ui2_widget_t *widget) {
             int cx = px + pw / 2;
             int cy = py + ph / 2;
             display_draw_text_centered(cx, cy, btn->text, fg, bg);
+            ui2_draw_rounded_rect_border(px, py, pw, ph, r, border);
         }
         return;
     }

@@ -21,6 +21,9 @@ uint16_t ui2_graphical_color(uint8_t palette_index);
 void ui2_draw_rounded_rect(int px, int py, int pw, int ph, int r,
                            uint16_t fill, uint16_t border);
 
+void ui2_draw_rounded_rect_border(int px, int py, int pw, int ph, int r,
+                                   uint16_t border);
+
 void ui2_fill_rounded_rect(int px, int py, int pw, int ph, int r,
                            uint16_t fill);
 

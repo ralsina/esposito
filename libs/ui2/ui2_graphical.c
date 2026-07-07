@@ -122,6 +122,35 @@ void ui2_fill_rounded_rect(int px, int py, int pw, int ph, int r,
     }
 }
 
+void ui2_draw_rounded_rect_border(int px, int py, int pw, int ph, int r,
+                                   uint16_t border) {
+    if (pw <= 0 || ph <= 0 || r <= 0) return;
+    if (r > pw / 2) r = pw / 2;
+    if (r > ph / 2) r = ph / 2;
+
+    for (int dx = r; dx < pw - r; dx++) {
+        display_draw_pixel(px + dx, py, border);
+        display_draw_pixel(px + dx, py + ph - 1, border);
+    }
+    for (int dy = r; dy < ph - r; dy++) {
+        display_draw_pixel(px, py + dy, border);
+        display_draw_pixel(px + pw - 1, py + dy, border);
+    }
+    for (int dy = 0; dy <= r; dy++) {
+        for (int dx = 0; dx <= r; dx++) {
+            int d2 = dx * dx + dy * dy;
+            int outer = r * r;
+            int inner = (r - 1) * (r - 1);
+            if (d2 > inner && d2 <= outer) {
+                display_draw_pixel(px + dx, py + dy, border);
+                display_draw_pixel(px + pw - 1 - dx, py + dy, border);
+                display_draw_pixel(px + dx, py + ph - 1 - dy, border);
+                display_draw_pixel(px + pw - 1 - dx, py + ph - 1 - dy, border);
+            }
+        }
+    }
+}
+
 uint16_t ui2_lighten_color(uint16_t color) {
     uint16_t r = (color >> 11) & 0x1F;
     uint16_t g = (color >> 5) & 0x3F;
