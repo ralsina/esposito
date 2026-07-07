@@ -17,6 +17,7 @@
 #include "ota_update.h"
 #include "ble_keyboard.h"
 #include "audio.h"
+#include "battery.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -128,6 +129,11 @@ static const os_symtab_entry_t symtab[] = {
     {"audio_stream_start",      audio_stream_start},
     {"audio_stream_write",      audio_stream_write},
     {"audio_stream_stop",       audio_stream_stop},
+    // Battery
+    {"battery_init",            battery_init},
+    {"battery_is_available",    battery_is_available},
+    {"battery_read_millivolts", battery_read_millivolts},
+    {"battery_deinit",          battery_deinit},
     // Microphone
     {"mic_init",                mic_init},
     {"mic_deinit",              mic_deinit},

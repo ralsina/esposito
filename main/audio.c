@@ -201,7 +201,8 @@ static void beep_task(void *arg) {
 }
 
 void audio_beep(int frequency_hz, int duration_ms) {
-    if (!audio_initialized || audio_playing) return;
+    if (audio_playing) return;
+    if (!audio_initialized && !audio_init()) return;
     if (frequency_hz < 50 || frequency_hz > 20000) return;
 
     audio_playing = true;
@@ -244,9 +245,8 @@ static void play_task(void *arg) {
 }
 
 bool audio_play(const int16_t *samples, size_t sample_count) {
-    if (!audio_initialized || audio_playing || !samples || sample_count == 0) {
-        return false;
-    }
+    if (audio_playing || !samples || sample_count == 0) return false;
+    if (!audio_initialized && !audio_init()) return false;
 
     play_buffer = samples;
     play_count = sample_count;
@@ -283,7 +283,8 @@ int audio_get_volume(void) {
 // --- Streaming API ---
 
 bool audio_stream_start(void) {
-    if (!audio_initialized || audio_playing) return false;
+    if (audio_playing) return false;
+    if (!audio_initialized && !audio_init()) return false;
     audio_playing = true;
     audio_enable();
     return true;
@@ -315,9 +316,10 @@ bool audio_stream_write(const int16_t *stereo_frames, size_t frame_count) {
 
 void audio_stream_stop(void) {
     if (!audio_initialized) return;
+    audio_playing = false;
     vTaskDelay(pdMS_TO_TICKS(50));
     audio_disable();
-    audio_playing = false;
+    audio_deinit();
 }
 
 // --- Microphone recording API (SPH0645 I2S digital mic) ---

@@ -323,14 +323,7 @@ void boot_sequence(void) {
         boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "Touchscreen not available");
     }
 
-    // Stage 4.9: Audio
-    boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Starting audio init");
-    if (audio_init()) {
-        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, true, "Audio ready");
-        audio_beep(880, 150);
-    } else {
-        boot_display_progress(BOOT_STAGE_KEYBOARD_INIT, false, "Audio not available");
-    }
+    // Stage 4.9: Audio (lazy: init on first use by an app)
 
     // Stage 5: App loader
     boot_display_progress(BOOT_STAGE_APP_LOADER_INIT, true, "Starting app loader");
