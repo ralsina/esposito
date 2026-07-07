@@ -57,4 +57,8 @@
 #define ICON_POWER "\xee\x81\x99"
 #define ICON_REFRESH_CW "\xee\x81\xa4"
 
+// Media
+#define ICON_PLAY "\xee\x84\xbc"
+#define ICON_PAUSE "\xee\x84\xae"
+
 #endif // LUCIDE_ICONS_H

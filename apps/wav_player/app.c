@@ -45,6 +45,9 @@ static uint16_t wav_bits_per_sample;
 static volatile bool playback_done = false;
 static char playback_error[64];
 static char g_play_path[MAX_PATH];
+static volatile bool paused = false;
+static ui2_layout_t *play_toolbar = NULL;
+static ui2_button_t *play_pause_btn = NULL;
 
 // --- WAV header parsing ---
 
@@ -236,6 +239,12 @@ static void mp3_playback_task(void) {
     drmp3_uint64 frames_decoded = 0;
 
     while (!playback_done) {
+        if (paused) {
+            memset(pcm, 0, CHUNK_FRAMES * 2 * sizeof(int16_t));
+            audio_stream_write(pcm, CHUNK_FRAMES);
+            continue;
+        }
+
         drmp3_uint64 frames_read = drmp3_read_pcm_frames_s16(mp3, CHUNK_FRAMES, pcm);
         if (frames_read == 0) break;
 
@@ -320,6 +329,12 @@ static void wav_playback_task(void) {
     uint32_t pos = 0;
 
     while (pos < wav_data_size && !playback_done) {
+        if (paused) {
+            memset(buf, 0, CHUNK_FRAMES * 2 * sizeof(int16_t));
+            audio_stream_write(buf, CHUNK_FRAMES);
+            continue;
+        }
+
         uint32_t bytes_left = wav_data_size - pos;
         uint32_t frames_to_read = CHUNK_FRAMES;
         uint32_t bytes_to_read = frames_to_read * wav_channels * 2;
@@ -430,6 +445,7 @@ static void refresh_browser(void) {
 
 static void start_playback(const char *path) {
     wav_position = 0;
+    paused = false;
     playback_error[0] = '\0';
     playback_done = false;
     strncpy(g_play_path, path, MAX_PATH - 1);
@@ -475,8 +491,9 @@ static void draw_playing(void) {
     int cols = text_mode_get_cols();
     int rows = text_mode_get_rows();
 
-    text_mode_print_at_attr_bg((cols - 8) / 2, 0, " Playing ",
-                               TEXT_COLOR_BRIGHT_CYAN, TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
+    text_mode_print_at_attr_bg((cols - 8) / 2, 0, paused ? " Paused " : " Playing ",
+                               paused ? TEXT_COLOR_BRIGHT_YELLOW : TEXT_COLOR_BRIGHT_CYAN,
+                               TEXT_COLOR_BLACK, TEXT_ATTR_BOLD);
 
     char name_disp[64];
     truncate(playing_name, name_disp, cols - 4);
@@ -524,8 +541,8 @@ static void draw_playing(void) {
                                    TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
     }
 
-    if (toolbar)
-        UI2_WIDGET(toolbar)->vtable->draw(UI2_WIDGET(toolbar));
+    if (play_toolbar)
+        UI2_WIDGET(play_toolbar)->vtable->draw(UI2_WIDGET(play_toolbar));
 }
 
 static void draw_browser(void) {
@@ -600,6 +617,7 @@ static void on_select(ui2_button_t *button, void *user_data) {
 static void on_back(ui2_button_t *button, void *user_data) {
     (void)button; (void)user_data;
     if (state == STATE_PLAYING) {
+        paused = false;
         stop_playback();
         state = STATE_BROWSE;
     } else {
@@ -617,6 +635,38 @@ static void on_exit_app(ui2_button_t *button, void *user_data) {
     (void)button; (void)user_data;
     stop_playback();
     os_exit();
+}
+
+// --- Playback toolbar callbacks ---
+
+static void on_vol_down(ui2_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    int vol = audio_get_volume();
+    if (vol > 0) audio_set_volume(vol - 10);
+    render();
+}
+
+static void on_vol_up(ui2_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    int vol = audio_get_volume();
+    if (vol < 100) audio_set_volume(vol + 10);
+    render();
+}
+
+static void on_play_pause(ui2_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    paused = !paused;
+    if (play_pause_btn)
+        ui2_button_set_text(play_pause_btn, paused ? ICON_PLAY : ICON_PAUSE);
+    render();
+}
+
+static void on_play_back(ui2_button_t *button, void *user_data) {
+    (void)button; (void)user_data;
+    paused = false;
+    stop_playback();
+    state = STATE_BROWSE;
+    refresh_browser();
 }
 
 // --- App lifecycle ---
@@ -649,6 +699,16 @@ void app_init(app_context_t *ctx) {
     };
     toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, tb_items, 5);
 
+    ui2_toolbar_item_t play_items[] = {
+        {ICON_CHEVRON_DOWN, on_vol_down,   NULL},
+        {ICON_PAUSE,        on_play_pause, NULL},
+        {ICON_CHEVRON_UP,   on_vol_up,     NULL},
+        {ICON_ARROW_LEFT,   on_play_back,  NULL},
+        {ICON_X,            on_exit_app,   NULL},
+    };
+    play_toolbar = ui2_toolbar_create(0, rows - 4, cols, 3, play_items, 5);
+    play_pause_btn = (ui2_button_t *)play_toolbar->base.children[1];
+
     refresh_browser();
     render();
 }
@@ -660,6 +720,8 @@ void app_close(app_context_t *ctx) {
     stop_playback();
     if (file_list) { UI2_WIDGET(file_list)->vtable->destroy(UI2_WIDGET(file_list)); file_list = NULL; }
     if (toolbar) { UI2_WIDGET(toolbar)->vtable->destroy(UI2_WIDGET(toolbar)); toolbar = NULL; }
+    if (play_toolbar) { UI2_WIDGET(play_toolbar)->vtable->destroy(UI2_WIDGET(play_toolbar)); play_toolbar = NULL; }
+    play_pause_btn = NULL;
     text_mode_clear(TEXT_COLOR_BLACK);
 }
 
@@ -686,6 +748,7 @@ void app_event(app_context_t *ctx, event_t *event) {
             case STATE_PLAYING:
             case STATE_FINISHED:
                 if (key == 27 || key == 'a' || key == 'A' || key == 'q' || key == 'Q') {
+                    paused = false;
                     stop_playback();
                     state = STATE_BROWSE;
                     refresh_browser();
@@ -700,6 +763,11 @@ void app_event(app_context_t *ctx, event_t *event) {
                     vol = vol > 0 ? vol - 10 : 0;
                     audio_set_volume(vol);
                     render();
+                } else if (key == 'p' || key == 'P' || key == ' ') {
+                    paused = !paused;
+                    if (play_pause_btn)
+                        ui2_button_set_text(play_pause_btn, paused ? ICON_PLAY : ICON_PAUSE);
+                    render();
                 }
                 break;
         }
@@ -709,7 +777,8 @@ void app_event(app_context_t *ctx, event_t *event) {
         int x_col = event->touch.x / cw;
         int y_col = event->touch.y / ch;
 
-        if (toolbar && UI2_WIDGET(toolbar)->vtable->handle_touch(UI2_WIDGET(toolbar), x_col, y_col, true)) {
+        ui2_layout_t *active_toolbar = (state == STATE_PLAYING) ? play_toolbar : toolbar;
+        if (active_toolbar && UI2_WIDGET(active_toolbar)->vtable->handle_touch(UI2_WIDGET(active_toolbar), x_col, y_col, true)) {
             render();
             return;
         }
