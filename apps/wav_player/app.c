@@ -4,6 +4,10 @@
 #include "ui2_toolbar.h"
 #include "lucide_icons.h"
 #include "audio.h"
+#define DR_MP3_NO_STDIO
+#define DRMP3_ASSERT(expression) ((void)0)
+#define DR_MP3_IMPLEMENTATION
+#include "dr_mp3.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,12 +99,183 @@ static bool parse_wav_header(FILE *f, uint32_t *out_data_offset, uint32_t *out_d
     return got_data;
 }
 
-// --- Background playback task ---
+// --- MP3 decoding ---
+
+static size_t mp3_read_cb(void *user_data, void *out, size_t bytes) {
+    return fread(out, 1, bytes, (FILE *)user_data);
+}
+
+static drmp3_bool32 mp3_seek_cb(void *user_data, int offset, drmp3_seek_origin origin) {
+    static const int whence[3] = {SEEK_SET, SEEK_CUR, SEEK_END};
+    if ((unsigned)origin > 2) return DRMP3_FALSE;
+    return fseek((FILE *)user_data, offset, whence[origin]) == 0 ? DRMP3_TRUE : DRMP3_FALSE;
+}
+
+static drmp3_bool32 mp3_tell_cb(void *user_data, drmp3_int64 *cursor) {
+    long pos = ftell((FILE *)user_data);
+    if (pos < 0) return DRMP3_FALSE;
+    *cursor = pos;
+    return DRMP3_TRUE;
+}
+
+static void resample_stereo_s16(const int16_t *src, int src_rate, int src_frames,
+                                 int16_t *dst, int dst_rate, int *out_frames) {
+    if (src_rate == dst_rate) {
+        memcpy(dst, src, src_frames * 2 * sizeof(int16_t));
+        *out_frames = src_frames;
+        return;
+    }
+    float ratio = (float)dst_rate / src_rate;
+    int max_dst = *out_frames;
+    int produced = 0;
+    for (int i = 0; i < max_dst; i++) {
+        float src_pos = i / ratio;
+        int src_idx = (int)src_pos;
+        if (src_idx >= src_frames - 1) {
+            dst[i * 2]     = src[(src_frames - 1) * 2];
+            dst[i * 2 + 1] = src[(src_frames - 1) * 2 + 1];
+            produced = i + 1;
+            break;
+        }
+        float frac = src_pos - src_idx;
+        dst[i * 2]     = (int16_t)(src[src_idx * 2]     + (src[(src_idx + 1) * 2]     - src[src_idx * 2])     * frac);
+        dst[i * 2 + 1] = (int16_t)(src[src_idx * 2 + 1] + (src[(src_idx + 1) * 2 + 1] - src[src_idx * 2 + 1]) * frac);
+        produced = i + 1;
+    }
+    *out_frames = produced;
+}
+
+static void mp3_playback_task(void) {
+    FILE *f = fopen(g_play_path, "rb");
+    if (!f) {
+        strcpy(playback_error, "Cannot open file");
+        playback_done = true;
+        return;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    drmp3 *mp3 = calloc(1, sizeof(drmp3));
+    if (!mp3) {
+        fclose(f);
+        strcpy(playback_error, "Out of memory");
+        playback_done = true;
+        return;
+    }
+
+    if (!drmp3_init(mp3, mp3_read_cb, mp3_seek_cb, mp3_tell_cb, NULL, f, NULL)) {
+        free(mp3);
+        fclose(f);
+        strcpy(playback_error, "Invalid MP3");
+        playback_done = true;
+        return;
+    }
+
+    wav_channels = mp3->channels;
+    wav_sample_rate = mp3->sampleRate;
+    wav_bits_per_sample = 16;
+
+    drmp3_uint64 total_frames = drmp3_get_pcm_frame_count(mp3);
+    drmp3_uint64 start_offset = mp3->streamStartOffset;
+    drmp3_uninit(mp3);
+    fseek(f, (long)start_offset, SEEK_SET);
+
+    if (!drmp3_init(mp3, mp3_read_cb, mp3_seek_cb, mp3_tell_cb, NULL, f, NULL)) {
+        free(mp3);
+        fclose(f);
+        strcpy(playback_error, "Invalid MP3");
+        playback_done = true;
+        return;
+    }
+
+    if (total_frames == 0 || total_frames == DRMP3_UINT64_MAX) {
+        total_frames = (drmp3_uint64)((file_size - (long)start_offset) / 2) * 44100 / 128;
+    }
+    mp3->totalPCMFrameCount = total_frames;
+    wav_data_size = (uint32_t)(total_frames * wav_channels * 2);
+    wav_position = 0;
+
+    if (!audio_stream_start()) {
+        drmp3_uninit(mp3);
+        free(mp3);
+        fclose(f);
+        strcpy(playback_error, "Audio busy");
+        playback_done = true;
+        return;
+    }
+
+    int16_t *pcm = malloc(CHUNK_FRAMES * 2 * sizeof(int16_t));
+    if (!pcm) {
+        audio_stream_stop();
+        drmp3_uninit(mp3);
+        free(mp3);
+        fclose(f);
+        strcpy(playback_error, "Out of memory");
+        playback_done = true;
+        return;
+    }
+
+    bool needs_resample = (wav_sample_rate != 44100);
+    int16_t *resample_buf = NULL;
+    if (needs_resample) {
+        resample_buf = malloc(CHUNK_FRAMES * 2 * sizeof(int16_t));
+        if (!resample_buf) {
+            free(pcm);
+            audio_stream_stop();
+            drmp3_uninit(mp3);
+            free(mp3);
+            fclose(f);
+            strcpy(playback_error, "Out of memory");
+            playback_done = true;
+            return;
+        }
+    }
+
+    drmp3_uint64 frames_decoded = 0;
+
+    while (!playback_done) {
+        drmp3_uint64 frames_read = drmp3_read_pcm_frames_s16(mp3, CHUNK_FRAMES, pcm);
+        if (frames_read == 0) break;
+
+        if (wav_channels == 1) {
+            for (int i = (int)frames_read - 1; i >= 0; i--) {
+                pcm[i * 2]     = pcm[i];
+                pcm[i * 2 + 1] = pcm[i];
+            }
+        }
+
+        int16_t *write_buf = pcm;
+        int write_frames = (int)frames_read;
+
+        if (needs_resample) {
+            write_frames = CHUNK_FRAMES;
+            resample_stereo_s16(pcm, wav_sample_rate, (int)frames_read,
+                                resample_buf, 44100, &write_frames);
+            write_buf = resample_buf;
+        }
+
+        audio_stream_write(write_buf, write_frames);
+        frames_decoded += frames_read;
+        wav_position = (uint32_t)(frames_decoded * wav_channels * 2);
+    }
+
+    free(resample_buf);
+    free(pcm);
+    drmp3_uninit(mp3);
+    free(mp3);
+    audio_stream_stop();
+    fclose(f);
+    playback_done = true;
+}
+
+// WAV-specific playback task - kept separate from MP3
 // Runs in its own FreeRTOS task, continuously reads from the file and
 // writes to the I2S DMA. The blocking i2s_channel_write call inside
 // audio_stream_write naturally throttles to the playback rate.
 
-static void playback_task(void) {
+static void wav_playback_task(void) {
     FILE *f = fopen(g_play_path, "rb");
     if (!f) {
         strcpy(playback_error, "Cannot open file");
@@ -187,6 +362,15 @@ static bool has_wav_ext(const char *name) {
             (ext[3] == 'v' || ext[3] == 'V'));
 }
 
+static bool has_mp3_ext(const char *name) {
+    int len = (int)strlen(name);
+    if (len < 5) return false;
+    const char *ext = name + len - 4;
+    return (ext[0] == '.' && (ext[1] == 'm' || ext[1] == 'M') &&
+            (ext[2] == 'p' || ext[2] == 'P') &&
+            (ext[3] == '3'));
+}
+
 static int scan_files(const char *dir) {
     DIR *d = opendir(dir);
     if (!d) return 0;
@@ -204,7 +388,7 @@ static int scan_files(const char *dir) {
 
         if (S_ISDIR(st.st_mode)) {
             snprintf(file_names[count], MAX_PATH, "[%s]", ent->d_name);
-        } else if (has_wav_ext(ent->d_name)) {
+        } else if (has_wav_ext(ent->d_name) || has_mp3_ext(ent->d_name)) {
             snprintf(file_names[count], MAX_PATH, "  %s", ent->d_name);
         } else {
             continue;
@@ -257,7 +441,11 @@ static void start_playback(const char *path) {
 
     audio_set_volume(80);
 
-    if (!os_start_task(playback_task, "wav_play", 16384, 5)) {
+    bool is_mp3 = has_mp3_ext(path);
+    const char *task_name = is_mp3 ? "mp3_play" : "wav_play";
+    void (*task_func)(void) = is_mp3 ? mp3_playback_task : wav_playback_task;
+
+    if (!os_start_task(task_func, task_name, 16384, 5)) {
         strcpy(playback_error, "Cannot start task");
         playback_done = true;
     }
@@ -324,13 +512,16 @@ static void draw_playing(void) {
     text_mode_print_at_attr_bg((cols - (int)strlen(pct)) / 2, bar_row + 1, pct,
                                TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 
-    uint32_t total_secs = wav_data_size / (wav_channels * 2 * wav_sample_rate);
-    uint32_t cur_secs = wav_position / (wav_channels * 2 * wav_sample_rate);
-    char time_buf[32];
-    snprintf(time_buf, sizeof(time_buf), "%d:%02d / %d:%02d",
-             cur_secs / 60, cur_secs % 60, total_secs / 60, total_secs % 60);
-    text_mode_print_at_attr_bg((cols - (int)strlen(time_buf)) / 2, bar_row + 2, time_buf,
-                               TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+    uint32_t bytes_per_sec = wav_channels * 2 * wav_sample_rate;
+    if (bytes_per_sec > 0) {
+        uint32_t total_secs = wav_data_size / bytes_per_sec;
+        uint32_t cur_secs = wav_position / bytes_per_sec;
+        char time_buf[32];
+        snprintf(time_buf, sizeof(time_buf), "%d:%02d / %d:%02d",
+                 cur_secs / 60, cur_secs % 60, total_secs / 60, total_secs % 60);
+        text_mode_print_at_attr_bg((cols - (int)strlen(time_buf)) / 2, bar_row + 2, time_buf,
+                                   TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
+    }
 
     if (toolbar)
         UI2_WIDGET(toolbar)->vtable->draw(UI2_WIDGET(toolbar));
@@ -441,7 +632,7 @@ void app_init(app_context_t *ctx) {
     int rows = text_mode_get_rows();
 
     file_list = ui2_list_create(0, 0, cols, rows - 4);
-    ui2_list_set_title(file_list, "WAV Files");
+    ui2_list_set_title(file_list, "Audio Files");
     ui2_list_set_colors(file_list, TEXT_COLOR_WHITE, TEXT_COLOR_BLACK,
                         TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_GREEN, TEXT_COLOR_CYAN);
     ui2_list_set_border(file_list, true);

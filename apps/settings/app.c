@@ -649,10 +649,10 @@ static void execute_main_action(settings_action_t action) {
             break;
         }
         case ACTION_SET_BRIGHTNESS: {
-            static const int levels[] = {255, 192, 128, 64, 0};
+            static const int levels[] = {255, 192, 128, 64};
             int current = os_settings_get_int("display/backlight", 255);
             int next = levels[0];
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 3; i++) {
                 if (levels[i] == current) { next = levels[i + 1]; break; }
             }
             os_settings_set_int("display/backlight", next);
