@@ -484,10 +484,11 @@ static void draw_playing(void) {
                                TEXT_COLOR_BRIGHT_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 
     char info[64];
-    snprintf(info, sizeof(info), "%d-bit %s %ldHz",
+    snprintf(info, sizeof(info), "%d-bit %s %ldHz  Vol:%d%%",
              wav_bits_per_sample,
              wav_channels == 2 ? "stereo" : "mono",
-             (long)wav_sample_rate);
+             (long)wav_sample_rate,
+             audio_get_volume());
     text_mode_print_at_attr_bg(2, 3, info,
                                TEXT_COLOR_WHITE, TEXT_COLOR_BLACK, TEXT_ATTR_NORMAL);
 
@@ -688,6 +689,16 @@ void app_event(app_context_t *ctx, event_t *event) {
                     stop_playback();
                     state = STATE_BROWSE;
                     refresh_browser();
+                    render();
+                } else if (key == '+' || key == '=') {
+                    int vol = audio_get_volume();
+                    vol = vol < 100 ? vol + 10 : 100;
+                    audio_set_volume(vol);
+                    render();
+                } else if (key == '-' || key == '_') {
+                    int vol = audio_get_volume();
+                    vol = vol > 0 ? vol - 10 : 0;
+                    audio_set_volume(vol);
                     render();
                 }
                 break;
