@@ -5,6 +5,7 @@
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
+#include "adc_cali_schemes.h"
 
 static const char *TAG = "battery";
 
@@ -50,6 +51,7 @@ bool battery_init(void) {
         return false;
     }
 
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
     adc_cali_curve_fitting_config_t cali_cfg = {
         .unit_id = BATTERY_ADC_UNIT,
         .chan = BATTERY_ADC_CHANNEL,
@@ -57,6 +59,17 @@ bool battery_init(void) {
         .bitwidth = BATTERY_ADC_BITWIDTH,
     };
     ret = adc_cali_create_scheme_curve_fitting(&cali_cfg, &cali_handle);
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    adc_cali_line_fitting_config_t cali_cfg = {
+        .unit_id = BATTERY_ADC_UNIT,
+        .atten = BATTERY_ADC_ATTEN,
+        .bitwidth = BATTERY_ADC_BITWIDTH,
+    };
+    ret = adc_cali_create_scheme_line_fitting(&cali_cfg, &cali_handle);
+#else
+    cali_handle = NULL;
+    ret = ESP_ERR_NOT_SUPPORTED;
+#endif
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "ADC calibration not available, using raw values: %s", esp_err_to_name(ret));
         cali_handle = NULL;
@@ -106,7 +119,11 @@ int battery_read_millivolts(void) {
 
 void battery_deinit(void) {
     if (cali_handle) {
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
         adc_cali_delete_scheme_curve_fitting(cali_handle);
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+        adc_cali_delete_scheme_line_fitting(cali_handle);
+#endif
         cali_handle = NULL;
     }
     if (adc_handle) {
